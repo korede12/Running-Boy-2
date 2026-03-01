@@ -10,6 +10,16 @@ class GameScene extends Phaser.Scene {
             const p = String(i).padStart(2,'0');
             this.load.image(`idle_${p}`, `assets/skeleton-00_idle_${p}.png`);
         }
+
+        // ── Sounds ────────────────────────────────────────────────────────
+        this.load.audio('snd_jump',     'sounds/game-scene-jumping-floor-sound-effect-material.mp3');
+        this.load.audio('snd_land',     'sounds/landing-effect.mp3');
+        this.load.audio('snd_hit',      'sounds/hit-sound-in-game.mp3');
+        this.load.audio('snd_stomp',    'sounds/shock-with-vibration.mp3');
+        this.load.audio('snd_ptero',    'sounds/the-sound-of-flight.mp3');
+        this.load.audio('snd_score',    'sounds/flew-far-into-the-sky.mp3');
+        this.load.audio('snd_skubu',    'sounds/the-sound-of-getting-a-bonus-or-extra-life-in-an-arcade-game.mp3');
+        this.load.audio('snd_gameover', 'sounds/freesound_community-game-over-arcade-6435.mp3');
     }
 
     create() {
@@ -493,6 +503,7 @@ class GameScene extends Phaser.Scene {
     _addScore(amount) {
         this.score += amount;
         this.scoreText.setText(`Score: ${this.score}`);
+        this.sound.play('snd_score', { volume: 0.4 });
         this._showScorePopup(amount);
         this._checkSkubuMilestone();
     }
@@ -510,6 +521,7 @@ class GameScene extends Phaser.Scene {
             localStorage.setItem('runningboy_skubu', this.skubuCount);
         } catch (_) {}
         this.skubuLabel.setText(`✦ SKUBU: ${this.skubuCount}`);
+        this.sound.play('snd_skubu', { volume: 0.6 });
         this._showSkubuSplash();
     }
 
@@ -556,6 +568,7 @@ class GameScene extends Phaser.Scene {
         this.boyState = 'jumping';
         this.boy.play('idle');
         this.chargeBar.clear();
+        this.sound.play('snd_jump', { volume: 0.5 });
 
         // Takeoff dust burst
         this.jumpDust.setPosition(BOY_SCREEN_X, GROUND_Y);
@@ -587,6 +600,7 @@ class GameScene extends Phaser.Scene {
         this.boy.play('idle');
         this.cameras.main.shake(280, 0.014);
         this.cameras.main.flash(100, 255, 180, 80, false);
+        this.sound.play('snd_hit', { volume: 0.6 });
     }
 
     _landBoy() {
@@ -705,6 +719,7 @@ class GameScene extends Phaser.Scene {
 
     _gameOver() {
         this._saveScore(this.score);
+        this.sound.play('snd_gameover', { volume: 0.7 });
 
         // Check if this is the 5th loss — if so, show cooldown instead of normal game over
         const blockedUntil = this._recordLossAndCheck();
@@ -1139,6 +1154,7 @@ class GameScene extends Phaser.Scene {
                 this.boyState = 'running';
                 this.boy.play('run');
                 this.trailHistory = [];
+                this.sound.play('snd_land', { volume: 0.4 });
 
                 // Landing dust burst
                 this.jumpDust.setPosition(BOY_SCREEN_X, GROUND_Y);

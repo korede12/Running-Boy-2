@@ -92,6 +92,7 @@ class Godzilla {
         this.scene.time.delayedCall(520, () => {
             this.scene.cameras.main.shake(350, 0.011);
             this.dustEmitter?.explode(14, Math.round(this.x), GROUND_Y - 4);
+            this.scene.sound.play('snd_stomp', { volume: 0.5 });
         });
     }
 

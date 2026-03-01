@@ -19,6 +19,15 @@
     }
 })();
 
+// ── UI audio ───────────────────────────────────────────────────────────────
+function _playUiSound(file, vol = 0.4) {
+    try {
+        const a = new Audio('sounds/' + file);
+        a.volume = vol;
+        a.play().catch(() => {});
+    } catch (_) {}
+}
+
 // ── Storage helpers ────────────────────────────────────────────────────────
 const LS_NAME   = 'runningboy_name';
 const LS_SCORES = 'runningboy_scores';
@@ -44,6 +53,13 @@ function openModal(id) {
 function closeModal(id) {
     document.getElementById(id).classList.remove('open');
 }
+
+// ── Click sounds on all interactive elements ───────────────────────────────
+document.addEventListener('click', e => {
+    if (e.target.closest('.menu-btn, .modal-close, #name-save-btn, #hs-clear-btn, .market-buy-btn, .wallet-btn, .wallet-copy-btn, .wallet-share-btn, .amt-pill, .wrp-send-btn, .wrp-decline-btn')) {
+        _playUiSound('single-click.mp3');
+    }
+});
 
 // Close on backdrop click
 document.querySelectorAll('.modal-backdrop').forEach(el => {
@@ -242,6 +258,7 @@ function showSkubuSplash(amount, onDone, fromName) {
 
 // ── Market tab switching ───────────────────────────────────────────────────
 function switchMarketTab(name) {
+    _playUiSound('category-selection-sound.mp3', 0.3);
     document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
     document.getElementById('tab-wallet').classList.toggle('active', name === 'wallet');
     document.getElementById('mkt-shop-panel').style.display  = name === 'shop'   ? '' : 'none';

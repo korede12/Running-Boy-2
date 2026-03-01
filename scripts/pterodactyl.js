@@ -34,6 +34,7 @@ class Pterodactyl {
             if (screenX < Pterodactyl.SWOOP_TRIGGER_X) {
                 this.swoopState = 'swooping';
                 this.swoopProg  = 0;
+                this.scene.sound.play('snd_ptero', { volume: 0.35 });
             }
         } else if (this.swoopState === 'swooping') {
             this.swoopProg += delta * 0.0008;
