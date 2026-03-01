@@ -1,6 +1,3 @@
-// ── Per-page-load play guard (scene restarts don't cost a play) ────────────
-let _playConsumedThisSession = false;
-
 // ── GameScene ─────────────────────────────────────────────────────────────
 class GameScene extends Phaser.Scene {
 
