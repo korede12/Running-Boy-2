@@ -29,6 +29,8 @@ class GameScene extends Phaser.Scene {
 
         // ── Game state ────────────────────────────────────────────────────
         this.isGameOver      = false;
+        this.isPaused        = false;
+        this.pauseOverlay    = null;
         this.score           = 0;
         this.lives           = 5;
         this.skubuCount      = (() => {
@@ -442,8 +444,15 @@ class GameScene extends Phaser.Scene {
         spaceKey.on('down', () => this._startJumpCharge());
         spaceKey.on('up',   () => this._releaseJump());
 
+        const escKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+        escKey.on('down', () => {
+            if (this.isGameOver || this.isBlocked) return;
+            if (this.isPaused) this._resume(); else this._pause();
+        });
+
         this._addSkubuBar();
         this._addLivesDisplay();
+        this._addPauseButton();
     }
 
     // ── Skubu bar ─────────────────────────────────────────────────────────
@@ -533,7 +542,7 @@ class GameScene extends Phaser.Scene {
 
     // ── Jump ──────────────────────────────────────────────────────────────
     _startJumpCharge() {
-        if (this.isGameOver || this.boyState !== 'running' || this.isCharging) return;
+        if (this.isGameOver || this.isPaused || this.boyState !== 'running' || this.isCharging) return;
         this.isCharging      = true;
         this.chargeStartTime = this.time.now;
     }
@@ -1003,6 +1012,75 @@ class GameScene extends Phaser.Scene {
           .on('pointerdown', () => { window.location.href = 'index.html'; });
     }
 
+    // ── Pause / Resume ────────────────────────────────────────────────────
+    _addPauseButton() {
+        const gfx = this.add.graphics().setScrollFactor(0).setDepth(50);
+        gfx.fillStyle(0x112244, 0.85);
+        gfx.fillRoundedRect(10, 368, 60, 24, 7);
+        gfx.lineStyle(1.5, 0x4488ff, 0.8);
+        gfx.strokeRoundedRect(10, 368, 60, 24, 7);
+
+        this.pauseBtn = this.add.text(40, 380, '❚❚ PAUSE', {
+            fontSize: '9px', color: '#88bbff', fontFamily: 'monospace',
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(51)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerover', function() { this.setColor('#aaddff'); })
+          .on('pointerout',  function() { this.setColor('#88bbff'); })
+          .on('pointerdown', () => {
+              if (this.isGameOver || this.isBlocked) return;
+              if (this.isPaused) this._resume(); else this._pause();
+          });
+    }
+
+    _pause() {
+        if (this.isPaused || this.isGameOver || this.boyState === 'hit' || this.boyState === 'dazed') return;
+        this.isPaused = true;
+        this.pauseBtn.setText('▶ START');
+        this.boy.anims.pause();
+
+        const objs = [];
+        const bg = this.add.graphics().setScrollFactor(0).setDepth(95);
+        bg.fillStyle(0x000000, 0.72);
+        bg.fillRect(0, 0, 400, 400);
+        objs.push(bg);
+
+        objs.push(this.add.text(200, 155, 'PAUSED', {
+            fontSize: '36px', color: '#ffffff',
+            fontFamily: 'monospace', fontStyle: 'bold',
+            stroke: '#000000', strokeThickness: 5,
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(96));
+
+        objs.push(this.add.text(200, 225, '[ START ]', {
+            fontSize: '18px', color: '#88bbff',
+            fontFamily: 'monospace', fontStyle: 'bold',
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(96)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerover', function() { this.setColor('#aaddff'); })
+          .on('pointerout',  function() { this.setColor('#88bbff'); })
+          .on('pointerdown', () => this._resume()));
+
+        objs.push(this.add.text(200, 267, '[ MENU ]', {
+            fontSize: '12px', color: '#446688', fontFamily: 'monospace',
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(96)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerover', function() { this.setColor('#88bbff'); })
+          .on('pointerout',  function() { this.setColor('#446688'); })
+          .on('pointerdown', () => { window.location.href = 'index.html'; }));
+
+        this.pauseOverlay = objs;
+    }
+
+    _resume() {
+        if (!this.isPaused) return;
+        this.isPaused = false;
+        this.pauseBtn.setText('❚❚ PAUSE');
+        this.boy.anims.resume();
+        if (this.pauseOverlay) {
+            this.pauseOverlay.forEach(o => o.destroy());
+            this.pauseOverlay = null;
+        }
+    }
+
     // ── Scene cleanup (called by Phaser on restart/stop) ──────────────────
     shutdown() {
         if (this.isBlocked) return;
@@ -1017,6 +1095,7 @@ class GameScene extends Phaser.Scene {
     // ── Main loop ─────────────────────────────────────────────────────────
     update(_, delta) {
         if (this.isBlocked) return;
+        if (this.isPaused)  return;
         const dt   = delta / 1000;
         const camX = this.cameras.main.scrollX;
 

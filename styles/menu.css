@@ -339,3 +339,278 @@ body {
     font-size: 12px;
     letter-spacing: 1px;
 }
+
+/* ── Skubu Market menu button accent ── */
+.market-menu-btn { border-color: #2a4a22 !important; }
+.market-menu-btn .icon { color: #ccaa44; }
+.market-menu-btn:hover { border-color: #55aa33 !important; color: #ccffaa !important; }
+.market-menu-btn:hover .arrow { color: #88dd55 !important; }
+
+/* ── Market modal overrides ── */
+.market-modal {
+    width: 400px;
+    max-height: 88vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #1e3a6e #050912;
+}
+
+/* ── Balance row ── */
+.market-balance {
+    font-size: 13px;
+    color: #6688aa;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+}
+.market-balance span { color: #ffcc44; font-weight: bold; }
+.market-bal-unit { color: #886622; }
+
+/* ── Demo badge ── */
+.market-demo-badge {
+    display: inline-block;
+    background: #1a1200;
+    border: 1px solid #443300;
+    border-radius: 4px;
+    color: #886622;
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    margin-bottom: 18px;
+    text-transform: uppercase;
+}
+
+/* ── Package grid ── */
+.market-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+/* ── Package card ── */
+.market-card {
+    background: #05090f;
+    border: 1.5px solid #0e1e36;
+    border-radius: 10px;
+    padding: 16px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transition: border-color 0.18s, background 0.18s;
+    cursor: default;
+    position: relative;
+    overflow: hidden;
+}
+.market-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--card-accent);
+    opacity: 0.6;
+}
+.market-card:hover {
+    background: #080e1a;
+    border-color: var(--card-accent);
+}
+
+.market-card-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--card-accent);
+    text-transform: uppercase;
+    font-weight: bold;
+}
+.market-card-gems {
+    font-size: 18px;
+    letter-spacing: 2px;
+    color: #ccaa44;
+    margin: 2px 0;
+    line-height: 1;
+}
+.market-card-amount {
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffdd66;
+    line-height: 1;
+    text-shadow: 0 0 10px #886600;
+}
+.market-card-unit {
+    font-size: 10px;
+    color: #887744;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+}
+.market-card-price {
+    font-size: 15px;
+    color: #99bbcc;
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+.market-card-best {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: var(--card-accent);
+    color: #000;
+    font-size: 7px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    opacity: 0.85;
+}
+.market-buy-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px 0;
+    background: transparent;
+    border: 1.5px solid var(--card-accent);
+    border-radius: 6px;
+    color: var(--card-accent);
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.market-buy-btn:hover {
+    background: var(--card-accent);
+    color: #000a1a;
+}
+.market-buy-btn.bought {
+    background: #113322;
+    border-color: #44cc88;
+    color: #44cc88;
+    cursor: default;
+}
+
+/* ── Market footer ── */
+.market-footer {
+    font-size: 10px;
+    color: #1e2e3e;
+    text-align: center;
+    letter-spacing: 1px;
+    padding-top: 4px;
+    border-top: 1px solid #0a1020;
+}
+
+/* ── Skubu Purchase Splash ── */
+#skubu-splash {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+#skubu-splash.active {
+    display: flex;
+    pointer-events: all;
+}
+#skubu-splash.hiding .splash-bg,
+#skubu-splash.hiding .splash-content {
+    animation: splashOut 0.45s ease forwards;
+}
+#skubu-splash.hiding #splash-coins {
+    transition: opacity 0.3s;
+    opacity: 0;
+}
+
+.splash-bg {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    animation: splashBgIn 0.2s ease forwards;
+}
+@keyframes splashBgIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes splashOut {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(1.04); }
+}
+
+/* Coin rain layer */
+#splash-coins {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+.splash-coin {
+    position: absolute;
+    top: -40px;
+    color: #ffcc44;
+    font-family: monospace;
+    animation: coinFall var(--dur) var(--delay) cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    text-shadow: 0 0 6px #ff8800;
+}
+@keyframes coinFall {
+    0%   { transform: translateY(0)      rotate(0deg)   scale(0);   opacity: 0; }
+    12%  { transform: translateY(20px)   rotate(60deg)  scale(1.1); opacity: 1; }
+    80%  { opacity: 0.7; }
+    100% { transform: translateY(110vh)  rotate(540deg) scale(0.6); opacity: 0; }
+}
+
+/* Central content */
+.splash-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    animation: splashPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+@keyframes splashPop {
+    from { opacity: 0; transform: scale(0.4); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.splash-stars {
+    font-size: 22px;
+    color: #ccaa44;
+    letter-spacing: 10px;
+    margin-bottom: 10px;
+    animation: starsPulse 0.7s ease-in-out infinite alternate;
+}
+@keyframes starsPulse {
+    from { opacity: 0.5; letter-spacing: 8px; }
+    to   { opacity: 1;   letter-spacing: 12px; }
+}
+.splash-title {
+    font-size: 58px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: #ffdd33;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    text-shadow:
+        0 0 12px #ffaa00,
+        0 0 28px #ff8800,
+        0 0 55px #ff440055;
+    animation: titleGlow 0.5s ease-in-out infinite alternate;
+}
+@keyframes titleGlow {
+    from { text-shadow: 0 0 12px #ffaa00, 0 0 28px #ff8800; }
+    to   { text-shadow: 0 0 20px #ffdd00, 0 0 45px #ffaa00, 0 0 70px #ff660066; }
+}
+.splash-amount {
+    font-size: 38px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: #ffffff;
+    letter-spacing: 2px;
+    margin-top: 10px;
+    text-shadow: 0 0 14px #88ffaa, 0 0 30px #44cc7755;
+}
+.splash-sub {
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    color: #886622;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 8px;
+}

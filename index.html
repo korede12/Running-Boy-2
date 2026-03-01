@@ -110,6 +110,11 @@
             <span class="label">About the Game</span>
             <span class="arrow">›</span>
         </button>
+        <button class="menu-btn market-menu-btn" onclick="openModal('market-modal')">
+            <span class="icon">&#10022;</span>
+            <span class="label">Skubu Market</span>
+            <span class="arrow">›</span>
+        </button>
     </div>
 
     <div id="skubu-badge">&#10022; Skubu: <span id="skubu-count">0</span></div>
@@ -173,6 +178,32 @@
                 <li>Hand-drawn graphics &amp; particle effects</li>
             </ul>
         </div>
+    </div>
+</div>
+
+<!-- ── Market Modal ── -->
+<div class="modal-backdrop" id="market-modal">
+    <div class="modal market-modal">
+        <button class="modal-close" onclick="closeModal('market-modal')">&#10005;</button>
+        <div class="modal-title">&#10022; Skubu Market</div>
+        <div class="market-balance">
+            Your balance: <span id="market-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span>
+        </div>
+        <div class="market-demo-badge">DEMO — purchases are free</div>
+        <div class="market-grid" id="market-grid"></div>
+        <div class="market-footer">Real payments coming soon &nbsp;&#183;&nbsp; earn skubu by playing</div>
+    </div>
+</div>
+
+<!-- ── Skubu Purchase Splash ── -->
+<div id="skubu-splash">
+    <div class="splash-bg"></div>
+    <div id="splash-coins"></div>
+    <div class="splash-content">
+        <div class="splash-stars">&#10022; &#10022; &#10022;</div>
+        <div class="splash-title">SKUBU!</div>
+        <div class="splash-amount" id="splash-amount">+0</div>
+        <div class="splash-sub">added to your balance</div>
     </div>
 </div>
 
