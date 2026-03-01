@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Running Boy</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #04040e;
+            color: #ffffff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── Stars ── */
+        #stars {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .star {
+            position: absolute;
+            background: #fff;
+            border-radius: 50%;
+            animation: twinkle var(--dur) ease-in-out infinite alternate;
+            animation-delay: var(--delay);
+        }
+        @keyframes twinkle {
+            from { opacity: var(--a1); }
+            to   { opacity: var(--a2); }
+        }
+
+        /* ── Moon ── */
+        #moon {
+            position: fixed;
+            top: 36px;
+            right: 60px;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            background: #cddff5;
+            box-shadow:
+                0 0 16px 6px rgba(200,224,255,0.12),
+                0 0 32px 14px rgba(200,224,255,0.07),
+                0 0 56px 28px rgba(200,224,255,0.04);
+            z-index: 0;
+        }
+
+        /* ── City silhouette ── */
+        #city {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 160px;
+            z-index: 0;
+        }
+
+        /* ── Main container ── */
+        #wrap {
+            position: relative;
+            z-index: 10;
+            width: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+        }
+
+        /* ── Title ── */
+        #title-block {
+            text-align: center;
+            margin-bottom: 38px;
+        }
+        #title-sub {
+            font-size: 11px;
+            letter-spacing: 6px;
+            color: #4488cc;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        #title {
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #e8f4ff;
+            text-shadow:
+                0 0 8px #3399ff,
+                0 0 20px #1166cc,
+                0 0 40px #0044aa44;
+            animation: titlePulse 3s ease-in-out infinite;
+        }
+        @keyframes titlePulse {
+            0%,100% { text-shadow: 0 0 8px #3399ff, 0 0 20px #1166cc, 0 0 40px #0044aa44; }
+            50%      { text-shadow: 0 0 14px #55bbff, 0 0 30px #2288ee, 0 0 60px #0055cc55; }
+        }
+        #title-divider {
+            width: 180px;
+            height: 1px;
+            background: linear-gradient(to right, transparent, #4488cc, transparent);
+            margin: 12px auto 0;
+        }
+
+        /* ── Menu buttons ── */
+        #menu {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .menu-btn {
+            width: 100%;
+            padding: 15px 28px;
+            background: rgba(10, 18, 36, 0.85);
+            border: 1.5px solid #1e3a6e;
+            border-radius: 8px;
+            color: #88bbff;
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.12s;
+            position: relative;
+            overflow: hidden;
+        }
+        .menu-btn::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            width: 3px;
+            background: #3377cc;
+            opacity: 0;
+            transition: opacity 0.18s;
+        }
+        .menu-btn:hover {
+            background: rgba(20, 40, 80, 0.95);
+            border-color: #4488cc;
+            color: #cce8ff;
+            transform: translateX(4px);
+        }
+        .menu-btn:hover::before { opacity: 1; }
+        .menu-btn:active { transform: translateX(2px) scale(0.99); }
+
+        .menu-btn .icon {
+            font-size: 20px;
+            width: 28px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .menu-btn .label { flex: 1; }
+        .menu-btn .arrow {
+            color: #2255aa;
+            font-size: 18px;
+            transition: color 0.18s;
+        }
+        .menu-btn:hover .arrow { color: #66aaff; }
+
+        /* ── Footer ── */
+        #footer {
+            margin-top: 32px;
+            font-size: 10px;
+            color: #1e3050;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        /* ── Modal backdrop ── */
+        .modal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.78);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-backdrop.open { display: flex; }
+
+        /* ── Modal panel ── */
+        .modal {
+            width: 360px;
+            background: #080c18;
+            border: 1.5px solid #1e3a6e;
+            border-radius: 12px;
+            padding: 28px 28px 24px;
+            position: relative;
+            box-shadow: 0 0 40px rgba(30,80,180,0.18);
+            animation: modalIn 0.18s ease;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-title {
+            font-size: 13px;
+            letter-spacing: 4px;
+            color: #4488cc;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #0e1c36;
+        }
+        .modal-close {
+            position: absolute;
+            top: 14px; right: 18px;
+            background: none;
+            border: none;
+            color: #334466;
+            font-size: 20px;
+            cursor: pointer;
+            font-family: monospace;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+        .modal-close:hover { color: #88bbff; }
+
+        /* ── High Score modal ── */
+        #hs-list {
+            min-height: 120px;
+        }
+        .hs-empty {
+            color: #2a4060;
+            font-size: 13px;
+            text-align: center;
+            padding: 30px 0;
+        }
+        .hs-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #0a1428;
+            font-size: 14px;
+        }
+        .hs-rank {
+            width: 30px;
+            color: #2a4060;
+            font-size: 12px;
+        }
+        .hs-rank.gold   { color: #ffcc44; }
+        .hs-rank.silver { color: #aaaacc; }
+        .hs-rank.bronze { color: #cc7744; }
+        .hs-name  { flex: 1; color: #88bbff; }
+        .hs-score { color: #ffee88; font-weight: bold; letter-spacing: 1px; }
+
+        #hs-clear-btn {
+            margin-top: 16px;
+            background: none;
+            border: 1px solid #1e2e4e;
+            border-radius: 5px;
+            color: #2a4060;
+            font-family: monospace;
+            font-size: 11px;
+            letter-spacing: 1px;
+            padding: 6px 14px;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        #hs-clear-btn:hover { border-color: #cc3333; color: #cc6666; }
+
+        /* ── Enter Name modal ── */
+        #name-form { display: flex; flex-direction: column; gap: 14px; }
+        #name-input {
+            background: #050912;
+            border: 1.5px solid #1e3a6e;
+            border-radius: 6px;
+            color: #cce8ff;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            letter-spacing: 3px;
+            padding: 12px 16px;
+            outline: none;
+            text-transform: uppercase;
+            transition: border-color 0.18s;
+        }
+        #name-input:focus { border-color: #4488cc; }
+        #name-input::placeholder { color: #1e3050; letter-spacing: 2px; }
+        #name-save-btn {
+            background: #0a1e42;
+            border: 1.5px solid #2255aa;
+            border-radius: 6px;
+            color: #88bbff;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            padding: 12px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: background 0.18s, border-color 0.18s, color 0.18s;
+        }
+        #name-save-btn:hover { background: #10306a; border-color: #4488cc; color: #cce8ff; }
+        #name-saved-msg {
+            color: #44cc88;
+            font-size: 12px;
+            text-align: center;
+            letter-spacing: 2px;
+            min-height: 18px;
+        }
+        #current-name-display {
+            font-size: 12px;
+            color: #2a4060;
+            text-align: center;
+        }
+        #current-name-display span { color: #5599cc; }
+
+        /* ── About modal ── */
+        #about-content {
+            color: #6688aa;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        #about-content h3 {
+            color: #4488cc;
+            font-size: 12px;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin: 16px 0 6px;
+        }
+        #about-content h3:first-child { margin-top: 0; }
+        #about-content ul {
+            list-style: none;
+            padding: 0;
+        }
+        #about-content ul li::before { content: '›  '; color: #2255aa; }
+        #about-content .key {
+            display: inline-block;
+            background: #0a1428;
+            border: 1px solid #1e3a6e;
+            border-radius: 4px;
+            padding: 1px 7px;
+            color: #88bbff;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Stars -->
+<div id="stars"></div>
+<!-- Moon -->
+<div id="moon"></div>
+<!-- City silhouette -->
+<svg id="city" viewBox="0 0 800 160" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#04040e"/>
+            <stop offset="100%" stop-color="#06060e"/>
+        </linearGradient>
+    </defs>
+    <!-- Buildings -->
+    <rect x="0"   y="60"  width="55"  height="100" fill="#0d0d18"/>
+    <polygon points="0,60 27,36 55,60"  fill="#090910"/>
+    <rect x="45"  y="85"  width="45"  height="75"  fill="#111122"/>
+    <polygon points="45,85 67,64 90,85" fill="#090910"/>
+    <rect x="82"  y="50"  width="60"  height="110" fill="#0d0d1a"/>
+    <polygon points="82,50 112,22 142,50" fill="#090910"/>
+    <rect x="130" y="72"  width="45"  height="88"  fill="#0f0f1c"/>
+    <polygon points="130,72 152,52 175,72" fill="#090910"/>
+    <rect x="166" y="45"  width="65"  height="115" fill="#0c0c18"/>
+    <polygon points="166,45 198,18 231,45" fill="#090910"/>
+    <rect x="220" y="78"  width="42"  height="82"  fill="#101020"/>
+    <polygon points="220,78 241,58 262,78" fill="#090910"/>
+    <rect x="254" y="58"  width="55"  height="102" fill="#0d0d1a"/>
+    <polygon points="254,58 281,32 309,58" fill="#090910"/>
+    <rect x="300" y="66"  width="50"  height="94"  fill="#0f0f1e"/>
+    <polygon points="300,66 325,42 350,66" fill="#090910"/>
+    <rect x="343" y="52"  width="60"  height="108" fill="#0c0c18"/>
+    <polygon points="343,52 373,26 403,52" fill="#090910"/>
+    <rect x="394" y="70"  width="48"  height="90"  fill="#0e0e1c"/>
+    <polygon points="394,70 418,48 442,70" fill="#090910"/>
+    <rect x="432" y="40"  width="65"  height="120" fill="#0d0d1a"/>
+    <polygon points="432,40 464,12 497,40" fill="#090910"/>
+    <rect x="486" y="62"  width="52"  height="98"  fill="#0f0f1e"/>
+    <polygon points="486,62 512,38 538,62" fill="#090910"/>
+    <rect x="528" y="55"  width="58"  height="105" fill="#0c0c18"/>
+    <polygon points="528,55 557,28 586,55" fill="#090910"/>
+    <rect x="576" y="74"  width="44"  height="86"  fill="#101020"/>
+    <polygon points="576,74 598,54 620,74" fill="#090910"/>
+    <rect x="610" y="48"  width="62"  height="112" fill="#0d0d1a"/>
+    <polygon points="610,48 641,20 672,48" fill="#090910"/>
+    <rect x="663" y="66"  width="50"  height="94"  fill="#0f0f1e"/>
+    <polygon points="663,66 688,44 713,66" fill="#090910"/>
+    <rect x="704" y="42"  width="58"  height="118" fill="#0c0c18"/>
+    <polygon points="704,42 733,16 762,42" fill="#090910"/>
+    <rect x="752" y="70"  width="50"  height="90"  fill="#0e0e1c"/>
+    <polygon points="752,70 777,48 802,70" fill="#090910"/>
+    <!-- Ground line -->
+    <line x1="0" y1="160" x2="800" y2="160" stroke="#4664b4" stroke-width="0.5" opacity="0.35"/>
+    <!-- Lit windows scattered -->
+    <rect x="10"  y="70"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
+    <rect x="25"  y="82"  width="7" height="7" fill="#ffcc55" opacity="0.40"/>
+    <rect x="94"  y="62"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
+    <rect x="110" y="78"  width="7" height="7" fill="#ffcc55" opacity="0.35"/>
+    <rect x="174" y="56"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
+    <rect x="192" y="72"  width="7" height="7" fill="#ffcc55" opacity="0.45"/>
+    <rect x="263" y="68"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
+    <rect x="282" y="84"  width="7" height="7" fill="#ffcc55" opacity="0.40"/>
+    <rect x="355" y="62"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
+    <rect x="370" y="78"  width="7" height="7" fill="#ffcc55" opacity="0.35"/>
+    <rect x="445" y="52"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
+    <rect x="460" y="68"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
+    <rect x="540" y="66"  width="7" height="7" fill="#ffcc55" opacity="0.40"/>
+    <rect x="558" y="80"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
+    <rect x="622" y="58"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
+    <rect x="638" y="74"  width="7" height="7" fill="#ffcc55" opacity="0.35"/>
+    <rect x="714" y="54"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
+    <rect x="730" y="70"  width="7" height="7" fill="#ffcc55" opacity="0.45"/>
+</svg>
+
+<!-- Main wrap -->
+<div id="wrap">
+    <div id="title-block">
+        <div id="title-sub">&#x25BA;&nbsp; arcade &nbsp;&#x25C4;</div>
+        <div id="title">Running<br>Boy</div>
+        <div id="title-divider"></div>
+    </div>
+
+    <div id="menu">
+        <button class="menu-btn" onclick="startGame()">
+            <span class="icon">&#9654;</span>
+            <span class="label">Start Game</span>
+            <span class="arrow">›</span>
+        </button>
+        <button class="menu-btn" onclick="openModal('hs-modal')">
+            <span class="icon">&#9733;</span>
+            <span class="label">High Scores</span>
+            <span class="arrow">›</span>
+        </button>
+        <button class="menu-btn" onclick="openModal('name-modal')">
+            <span class="icon">&#9998;</span>
+            <span class="label">Enter Name</span>
+            <span class="arrow">›</span>
+        </button>
+        <button class="menu-btn" onclick="openModal('about-modal')">
+            <span class="icon">&#9432;</span>
+            <span class="label">About the Game</span>
+            <span class="arrow">›</span>
+        </button>
+    </div>
+
+    <div id="footer">&#169; Running Boy &nbsp;&#183;&nbsp; v1.0</div>
+</div>
+
+<!-- ── High Score Modal ── -->
+<div class="modal-backdrop" id="hs-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('hs-modal')">&#10005;</button>
+        <div class="modal-title">&#9733; High Scores</div>
+        <div id="hs-list"></div>
+        <button id="hs-clear-btn" onclick="clearScores()">Clear Scores</button>
+    </div>
+</div>
+
+<!-- ── Enter Name Modal ── -->
+<div class="modal-backdrop" id="name-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('name-modal')">&#10005;</button>
+        <div class="modal-title">&#9998; Enter Your Name</div>
+        <div id="name-form">
+            <div id="current-name-display"></div>
+            <input id="name-input" type="text" maxlength="10" placeholder="YOUR NAME" autocomplete="off" spellcheck="false"/>
+            <button id="name-save-btn" onclick="saveName()">Save Name</button>
+            <div id="name-saved-msg"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── About Modal ── -->
+<div class="modal-backdrop" id="about-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('about-modal')">&#10005;</button>
+        <div class="modal-title">&#9432; About the Game</div>
+        <div id="about-content">
+            <h3>Story</h3>
+            A lone skeleton sprints through the rain-soaked city
+            at night — and Godzilla is right behind them.
+            Jump over the beast to survive and rack up points.
+
+            <h3>How to Play</h3>
+            <ul>
+                <li>Press <span class="key">SPACE</span> or tap to jump</li>
+                <li>Hold longer to jump higher</li>
+                <li>Clear Godzilla while airborne to score <b style="color:#ffee88">+2 pts</b></li>
+                <li>Getting hit ends the run</li>
+            </ul>
+
+            <h3>Tips</h3>
+            <ul>
+                <li>Watch the charge bar — full charge = max height</li>
+                <li>Time your jump just as Godzilla closes in</li>
+                <li>Godzilla sometimes stomps or breathes fire!</li>
+            </ul>
+
+            <h3>Built With</h3>
+            <ul>
+                <li>Phaser 3 game framework</li>
+                <li>Hand-drawn graphics &amp; particle effects</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ── Stars ──────────────────────────────────────────────────────────────────
+    (function() {
+        const container = document.getElementById('stars');
+        for (let i = 0; i < 80; i++) {
+            const s = document.createElement('div');
+            s.className = 'star';
+            const size = Math.random() * 2.4 + 0.6;
+            const a1 = (Math.random() * 0.3 + 0.1).toFixed(2);
+            const a2 = (Math.random() * 0.5 + 0.5).toFixed(2);
+            s.style.cssText = `
+                width:${size}px; height:${size}px;
+                left:${Math.random()*100}%;
+                top:${Math.random()*62}%;
+                --a1:${a1}; --a2:${a2};
+                --dur:${(Math.random()*2.5+0.8).toFixed(2)}s;
+                --delay:${(Math.random()*2.5).toFixed(2)}s;
+            `;
+            container.appendChild(s);
+        }
+    })();
+
+    // ── Storage helpers ────────────────────────────────────────────────────────
+    const LS_NAME   = 'runningboy_name';
+    const LS_SCORES = 'runningboy_scores';
+
+    function getScores() {
+        try { return JSON.parse(localStorage.getItem(LS_SCORES)) || []; }
+        catch { return []; }
+    }
+    function getName() {
+        return localStorage.getItem(LS_NAME) || '';
+    }
+
+    // ── Modal helpers ──────────────────────────────────────────────────────────
+    function openModal(id) {
+        if (id === 'hs-modal')   renderHighScores();
+        if (id === 'name-modal') renderNameModal();
+        document.getElementById(id).classList.add('open');
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('open');
+    }
+
+    // Close on backdrop click
+    document.querySelectorAll('.modal-backdrop').forEach(el => {
+        el.addEventListener('click', e => {
+            if (e.target === el) closeModal(el.id);
+        });
+    });
+
+    // Close on Escape
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-backdrop.open').forEach(el => {
+                closeModal(el.id);
+            });
+        }
+    });
+
+    // ── High Scores ────────────────────────────────────────────────────────────
+    function renderHighScores() {
+        const scores = getScores();
+        const list   = document.getElementById('hs-list');
+        if (scores.length === 0) {
+            list.innerHTML = '<div class="hs-empty">No scores yet.<br>Start a game to set your record!</div>';
+            return;
+        }
+        const rankClasses = ['gold', 'silver', 'bronze'];
+        list.innerHTML = scores.slice(0, 10).map((entry, i) => `
+            <div class="hs-row">
+                <div class="hs-rank ${rankClasses[i] || ''}">#${i+1}</div>
+                <div class="hs-name">${escHtml(entry.name || 'ANON')}</div>
+                <div class="hs-score">${entry.score}</div>
+            </div>
+        `).join('');
+    }
+
+    function clearScores() {
+        if (!confirm('Clear all high scores?')) return;
+        localStorage.removeItem(LS_SCORES);
+        renderHighScores();
+    }
+
+    function escHtml(str) {
+        return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // ── Name ──────────────────────────────────────────────────────────────────
+    function renderNameModal() {
+        const current = getName();
+        const display = document.getElementById('current-name-display');
+        display.innerHTML = current
+            ? `Current name: <span>${escHtml(current.toUpperCase())}</span>`
+            : 'No name set yet.';
+        document.getElementById('name-input').value = current;
+        document.getElementById('name-saved-msg').textContent = '';
+    }
+
+    function saveName() {
+        const raw  = document.getElementById('name-input').value.trim();
+        const name = raw.toUpperCase().slice(0, 10);
+        if (!name) {
+            document.getElementById('name-saved-msg').textContent = 'Please enter a name.';
+            document.getElementById('name-saved-msg').style.color = '#cc4444';
+            return;
+        }
+        localStorage.setItem(LS_NAME, name);
+        document.getElementById('current-name-display').innerHTML = `Current name: <span>${escHtml(name)}</span>`;
+        const msg = document.getElementById('name-saved-msg');
+        msg.textContent = 'Name saved!';
+        msg.style.color = '#44cc88';
+        setTimeout(() => { msg.textContent = ''; }, 2000);
+    }
+
+    // Allow Enter key to save name
+    document.getElementById('name-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') saveName();
+    });
+
+    // ── Start Game ────────────────────────────────────────────────────────────
+    function startGame() {
+        window.location.href = 'RunningBoy.html';
+    }
+</script>
+</body>
+</html>
