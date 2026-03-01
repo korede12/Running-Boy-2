@@ -186,12 +186,82 @@
     <div class="modal market-modal">
         <button class="modal-close" onclick="closeModal('market-modal')">&#10005;</button>
         <div class="modal-title">&#10022; Skubu Market</div>
-        <div class="market-balance">
-            Your balance: <span id="market-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span>
+        <div class="market-tabs">
+            <button class="mkt-tab active" id="tab-shop"   onclick="switchMarketTab('shop')">&#9733; SHOP</button>
+            <button class="mkt-tab"        id="tab-wallet" onclick="switchMarketTab('wallet')">&#10022; WALLET</button>
         </div>
-        <div class="market-demo-badge">DEMO — purchases are free</div>
-        <div class="market-grid" id="market-grid"></div>
-        <div class="market-footer">Real payments coming soon &nbsp;&#183;&nbsp; earn skubu by playing</div>
+
+        <!-- Shop panel -->
+        <div id="mkt-shop-panel">
+            <div class="market-balance">
+                Your balance: <span id="market-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span>
+            </div>
+            <div class="market-demo-badge">DEMO — purchases are free</div>
+            <div class="market-grid" id="market-grid"></div>
+            <div class="market-footer">Real payments coming soon &nbsp;&#183;&nbsp; earn skubu by playing</div>
+        </div>
+
+        <!-- Wallet panel -->
+        <div id="mkt-wallet-panel" style="display:none">
+            <div class="wallet-balance-row">Your balance: <span id="wallet-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span></div>
+
+            <div class="wallet-section">
+                <div class="wallet-section-title">Send Skubu</div>
+                <div class="amt-pills" id="send-pills">
+                    <button class="amt-pill" data-amt="1"  onclick="selectPill(this,'send')">1</button>
+                    <button class="amt-pill" data-amt="3"  onclick="selectPill(this,'send')">3</button>
+                    <button class="amt-pill" data-amt="5"  onclick="selectPill(this,'send')">5</button>
+                    <button class="amt-pill" data-amt="10" onclick="selectPill(this,'send')">10</button>
+                </div>
+                <button class="wallet-btn" onclick="generateGiftLink()">&#10022; GENERATE GIFT LINK</button>
+                <div id="send-error" class="wallet-error"></div>
+                <div class="wallet-link-box" id="send-link-box">
+                    <div class="link-msg"></div>
+                    <input type="text" readonly/>
+                    <div class="wallet-link-actions">
+                        <button class="wallet-copy-btn" onclick="copyLinkFromBox('send-link-box', this)">&#128203; COPY</button>
+                        <button class="wallet-share-btn" onclick="shareLinkFromBox('send-link-box', 'Skubu Gift')">&#8679; SHARE</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wallet-section">
+                <div class="wallet-section-title">Request Skubu</div>
+                <div class="amt-pills" id="req-pills">
+                    <button class="amt-pill" data-amt="1"  onclick="selectPill(this,'req')">1</button>
+                    <button class="amt-pill" data-amt="3"  onclick="selectPill(this,'req')">3</button>
+                    <button class="amt-pill" data-amt="5"  onclick="selectPill(this,'req')">5</button>
+                    <button class="amt-pill" data-amt="10" onclick="selectPill(this,'req')">10</button>
+                </div>
+                <button class="wallet-btn" onclick="generateRequestLink()">&#9993; GENERATE REQUEST LINK</button>
+                <div class="wallet-link-box" id="req-link-box">
+                    <div class="link-msg"></div>
+                    <input type="text" readonly/>
+                    <div class="wallet-link-actions">
+                        <button class="wallet-copy-btn" onclick="copyLinkFromBox('req-link-box', this)">&#128203; COPY</button>
+                        <button class="wallet-share-btn" onclick="shareLinkFromBox('req-link-box', 'Skubu Request')">&#8679; SHARE</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="wallet-request-prompt" id="wallet-request-prompt">
+                <div class="wallet-section-title">Incoming Request</div>
+                <div class="wrp-title" id="wrp-title"></div>
+                <div class="wrp-balance" id="wrp-balance"></div>
+                <div class="wrp-actions">
+                    <button class="wallet-btn wrp-send-btn" id="wrp-send-btn" onclick="fulfillRequest()">SEND SKUBU</button>
+                    <button class="wallet-btn wrp-decline-btn" onclick="document.getElementById('wallet-request-prompt').style.display='none'">DECLINE</button>
+                </div>
+                <div class="wallet-link-box" id="fulfill-link-box">
+                    <div class="link-msg"></div>
+                    <input type="text" readonly/>
+                    <div class="wallet-link-actions">
+                        <button class="wallet-copy-btn" onclick="copyLinkFromBox('fulfill-link-box', this)">&#128203; COPY</button>
+                        <button class="wallet-share-btn" onclick="shareLinkFromBox('fulfill-link-box', 'Skubu Gift')">&#8679; SHARE</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -203,7 +273,7 @@
         <div class="splash-stars">&#10022; &#10022; &#10022;</div>
         <div class="splash-title">SKUBU!</div>
         <div class="splash-amount" id="splash-amount">+0</div>
-        <div class="splash-sub">added to your balance</div>
+        <div class="splash-sub" id="splash-sub">added to your balance</div>
     </div>
 </div>
 

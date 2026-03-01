@@ -614,3 +614,194 @@ body {
     text-transform: uppercase;
     margin-top: 8px;
 }
+
+/* ── Market Tabs ── */
+.market-tabs {
+    display: flex;
+    border-bottom: 1px solid #0e1c36;
+    margin-bottom: 16px;
+}
+.mkt-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #2a4060;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 16px 8px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+}
+.mkt-tab:hover { color: #88bbff; }
+.mkt-tab.active {
+    color: #4488cc;
+    border-bottom-color: #4488cc;
+}
+
+/* ── Wallet panel ── */
+.wallet-balance-row {
+    font-size: 13px;
+    color: #6688aa;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+}
+.wallet-balance-row #wallet-balance { color: #ffcc44; font-weight: bold; }
+.wallet-section {
+    border-left: 2px solid #1a2e10;
+    padding-left: 10px;
+    margin-bottom: 18px;
+}
+.wallet-section-title {
+    font-size: 9px;
+    color: #446622;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.amt-pills {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0;
+}
+.amt-pill {
+    background: none;
+    border: 1px solid #1e3a2e;
+    border-radius: 5px;
+    color: #446644;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.amt-pill:hover { border-color: #44aa66; color: #88cc88; }
+.amt-pill.active {
+    background: #332200;
+    border-color: #aa8833;
+    color: #ffcc44;
+}
+.wallet-btn {
+    width: 100%;
+    padding: 9px 0;
+    background: transparent;
+    border: 1.5px solid #aa8833;
+    border-radius: 6px;
+    color: #aa8833;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    margin-top: 4px;
+}
+.wallet-btn:hover { background: #2a1a00; color: #ffcc44; }
+.wallet-btn:disabled { opacity: 0.4; cursor: default; }
+.wallet-link-box {
+    display: none;
+    background: #050912;
+    border: 1px solid #0e1c36;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 10px;
+}
+.wallet-link-box .link-msg {
+    font-size: 11px;
+    color: #446644;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+.wallet-link-box input {
+    width: 100%;
+    background: #020408;
+    border: 1px solid #0e1c36;
+    border-radius: 4px;
+    color: #4488aa;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    padding: 6px 8px;
+    outline: none;
+    letter-spacing: 0.5px;
+}
+.wallet-link-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.wallet-copy-btn, .wallet-share-btn {
+    background: transparent;
+    border: 1px solid #1e3a2e;
+    border-radius: 5px;
+    color: #446644;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+.wallet-copy-btn:hover, .wallet-share-btn:hover { border-color: #44aa66; color: #88cc88; }
+.wallet-error {
+    display: none;
+    color: #cc4444;
+    font-size: 11px;
+    letter-spacing: 1px;
+    margin-top: 6px;
+}
+.wallet-request-prompt {
+    display: none;
+    background: #0d0900;
+    border: 1px solid #443300;
+    border-radius: 8px;
+    padding: 14px;
+    margin-top: 4px;
+}
+.wrp-title {
+    color: #ccaa44;
+    font-size: 13px;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+.wrp-balance {
+    font-size: 11px;
+    color: #6688aa;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+.wrp-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.wrp-actions .wallet-btn { margin-top: 0; }
+.wrp-send-btn { border-color: #55aa33; color: #55aa33; }
+.wrp-send-btn:hover:not(:disabled) { background: #0a1a00; color: #88ff44; }
+.wrp-decline-btn { border-color: #553333; color: #884444; }
+.wrp-decline-btn:hover { background: #1a0a0a; color: #cc6666; }
+
+/* ── Toast notification ── */
+#_toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a0d00;
+    border: 1px solid #443300;
+    color: #ccaa44;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    border-radius: 6px;
+    z-index: 1000;
+    pointer-events: none;
+    transition: opacity 0.4s;
+    opacity: 0;
+}
+#_toast.visible { opacity: 1; }

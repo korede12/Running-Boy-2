@@ -194,11 +194,14 @@ function buyPackage(id, amount) {
     });
 }
 
-function showSkubuSplash(amount, onDone) {
+function showSkubuSplash(amount, onDone, fromName) {
     const splash  = document.getElementById('skubu-splash');
     const coinsEl = document.getElementById('splash-coins');
 
     document.getElementById('splash-amount').textContent = '+' + amount + ' ✦';
+    document.getElementById('splash-sub').textContent = fromName
+        ? 'from ' + fromName
+        : 'added to your balance';
 
     // Generate coin rain
     coinsEl.innerHTML = '';
@@ -235,4 +238,174 @@ function showSkubuSplash(amount, onDone) {
         history.replaceState(null, '', window.location.pathname);
         openModal('market-modal');
     }
+})();
+
+// ── Market tab switching ───────────────────────────────────────────────────
+function switchMarketTab(name) {
+    document.getElementById('tab-shop').classList.toggle('active', name === 'shop');
+    document.getElementById('tab-wallet').classList.toggle('active', name === 'wallet');
+    document.getElementById('mkt-shop-panel').style.display  = name === 'shop'   ? '' : 'none';
+    document.getElementById('mkt-wallet-panel').style.display = name === 'wallet' ? '' : 'none';
+    if (name === 'wallet') refreshWalletBalance();
+}
+
+// ── Wallet storage helpers ─────────────────────────────────────────────────
+const LS_USED_TOKENS = 'runningboy_used_tokens';
+
+function makeToken() { return Math.random().toString(36).slice(2, 10); }
+function encodeSkb(p) { return btoa(JSON.stringify(p)); }
+function decodeSkb(s) { try { return JSON.parse(atob(s)); } catch { return null; } }
+function buildSkbUrl(payload) {
+    return location.origin + location.pathname + '?skb=' + encodeSkb(payload);
+}
+function isTokenUsed(id) {
+    return (JSON.parse(localStorage.getItem(LS_USED_TOKENS) || '[]')).includes(id);
+}
+function markTokenUsed(id) {
+    const used = JSON.parse(localStorage.getItem(LS_USED_TOKENS) || '[]');
+    used.push(id);
+    localStorage.setItem(LS_USED_TOKENS, JSON.stringify(used.slice(-200)));
+}
+
+// ── Wallet UI helpers ──────────────────────────────────────────────────────
+function refreshWalletBalance() {
+    const el = document.getElementById('wallet-balance');
+    if (el) el.textContent = getSkubu();
+}
+
+function selectPill(el, prefix) {
+    document.querySelectorAll('#' + prefix + '-pills .amt-pill').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+}
+
+function getSelectedAmt(prefix) {
+    const active = document.querySelector('#' + prefix + '-pills .amt-pill.active');
+    return active ? parseInt(active.dataset.amt) : 0;
+}
+
+function copyLink(url, btn) {
+    navigator.clipboard?.writeText(url).catch(() => {
+        const t = Object.assign(document.createElement('textarea'), { value: url });
+        document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
+    });
+    const orig = btn.textContent;
+    btn.textContent = '✓ COPIED';
+    setTimeout(() => { btn.textContent = orig; }, 1600);
+}
+
+function shareLink(url, title) {
+    if (navigator.share) navigator.share({ title, url }).catch(() => {});
+    else copyLink(url, { textContent: '' });
+}
+
+function copyLinkFromBox(boxId, btn) {
+    copyLink(document.querySelector('#' + boxId + ' input').value, btn);
+}
+
+function shareLinkFromBox(boxId, title) {
+    shareLink(document.querySelector('#' + boxId + ' input').value, title);
+}
+
+function populateLinkBox(boxId, url, msg) {
+    const box = document.getElementById(boxId);
+    box.querySelector('.link-msg').textContent = msg;
+    box.querySelector('input').value = url;
+    box.style.display = 'block';
+}
+
+function showToast(msg) {
+    let t = document.getElementById('_toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = '_toast';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.add('visible');
+    clearTimeout(t._timeout);
+    t._timeout = setTimeout(() => { t.classList.remove('visible'); }, 2200);
+}
+
+// ── Gift & Request generators ──────────────────────────────────────────────
+function generateGiftLink() {
+    const amt   = getSelectedAmt('send');
+    const errEl = document.getElementById('send-error');
+    if (!amt) {
+        errEl.textContent = 'Select an amount first.';
+        errEl.style.display = 'block';
+        return;
+    }
+    if (getSkubu() < amt) {
+        errEl.textContent = 'Not enough skubu!';
+        errEl.style.display = 'block';
+        return;
+    }
+    errEl.style.display = 'none';
+    setSkubu(getSkubu() - amt);
+    refreshWalletBalance();
+    const url = buildSkbUrl({ t: 'gift', from: getName() || 'FRIEND', amt, id: makeToken(), v: 1 });
+    populateLinkBox('send-link-box', url, '✓ ' + amt + ' skubu sent! Balance: ' + getSkubu() + ' ✦');
+}
+
+function generateRequestLink() {
+    const amt = getSelectedAmt('req');
+    if (!amt) return;
+    const url = buildSkbUrl({ t: 'request', from: getName() || 'FRIEND', amt, id: makeToken(), v: 1 });
+    populateLinkBox('req-link-box', url, 'Share this with your friend:');
+}
+
+// ── Incoming request handling ──────────────────────────────────────────────
+let _pendingRequest = null;
+
+function handleIncomingGift(data) {
+    if (isTokenUsed(data.id)) {
+        showToast('Already claimed!');
+        return;
+    }
+    markTokenUsed(data.id);
+    setSkubu(getSkubu() + data.amt);
+    showSkubuSplash(data.amt, null, data.from);
+}
+
+function handleIncomingRequest(data) {
+    _pendingRequest = data;
+    openModal('market-modal');
+    switchMarketTab('wallet');
+
+    document.getElementById('wrp-title').textContent =
+        '✦ ' + data.from + ' is requesting ' + data.amt + ' skubu from you';
+    document.getElementById('wrp-balance').textContent =
+        'Your balance: ' + getSkubu() + ' ✦';
+
+    const sendBtn = document.getElementById('wrp-send-btn');
+    sendBtn.textContent = 'SEND ' + data.amt + ' SKUBU';
+    sendBtn.disabled    = getSkubu() < data.amt;
+
+    document.getElementById('fulfill-link-box').style.display = 'none';
+    document.getElementById('wallet-request-prompt').style.display = 'block';
+}
+
+function fulfillRequest() {
+    if (!_pendingRequest) return;
+    const data = _pendingRequest;
+    if (getSkubu() < data.amt) return;
+
+    setSkubu(getSkubu() - data.amt);
+    refreshWalletBalance();
+
+    const url = buildSkbUrl({ t: 'gift', from: getName() || 'FRIEND', amt: data.amt, id: makeToken(), v: 1 });
+    populateLinkBox('fulfill-link-box', url, 'Send this back to ' + data.from + ':');
+    document.getElementById('wrp-send-btn').disabled = true;
+}
+
+// ── On-load ?skb= handler ──────────────────────────────────────────────────
+(function handleIncomingSkb() {
+    const params = new URLSearchParams(location.search);
+    const raw    = params.get('skb');
+    if (!raw) return;
+    history.replaceState(null, '', location.pathname);
+    const data = decodeSkb(raw);
+    if (!data || data.v !== 1 || !data.t || !data.amt) return;
+    if (data.t === 'gift')    handleIncomingGift(data);
+    if (data.t === 'request') handleIncomingRequest(data);
 })();
