@@ -13,13 +13,18 @@ class GameScene extends Phaser.Scene {
     }
 
     create() {
-        // ── Play-limit gate (runs once per page load, not on scene restart) ──
+        // ── Launch cooldown check (blocked if 5 losses already used this window) ──
         this.isBlocked = false;
-        if (!_playConsumedThisSession) {
-            if (!this._checkAndConsumePlay()) {
-                this.isBlocked = true;
-                return;
+        const _rt = this._checkLaunchCooldown();
+        if (_rt) {
+            const _sk = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
+            if (_sk > 0) {
+                this._showSpendSkubuToPlayScreen(_sk, _rt);
+            } else {
+                this._showCooldownScreen(_rt);
             }
+            this.isBlocked = true;
+            return;
         }
 
         // ── Game state ────────────────────────────────────────────────────
@@ -692,6 +697,13 @@ class GameScene extends Phaser.Scene {
     _gameOver() {
         this._saveScore(this.score);
 
+        // Check if this is the 5th loss — if so, show cooldown instead of normal game over
+        const blockedUntil = this._recordLossAndCheck();
+        if (blockedUntil) {
+            this._showCooldownScreen(blockedUntil);
+            return;
+        }
+
         const ol = this.add.graphics().setScrollFactor(0).setDepth(100);
         ol.fillStyle(0x000000, 0.75);
         ol.fillRect(0, 0, 400, 400);
@@ -816,49 +828,43 @@ class GameScene extends Phaser.Scene {
         }
     }
 
-    // ── Play-limit logic ──────────────────────────────────────────────────
-    _checkAndConsumePlay() {
+    // ── Loss-limit logic ──────────────────────────────────────────────────
+
+    // Returns resetAt (epoch ms) if player is in cooldown, otherwise 0.
+    _checkLaunchCooldown() {
         try {
-            // Reset plays if the 5-hour cooldown has elapsed
-            const resetAt = parseInt(localStorage.getItem('runningboy_plays_reset')) || 0;
+            const resetAt = parseInt(localStorage.getItem('runningboy_losses_reset')) || 0;
             if (resetAt > 0 && Date.now() >= resetAt) {
-                localStorage.removeItem('runningboy_plays_reset');
-                localStorage.setItem('runningboy_plays', 5);
+                localStorage.removeItem('runningboy_losses_reset');
+                localStorage.setItem('runningboy_losses', 0);
+                return 0;
+            }
+            const losses = parseInt(localStorage.getItem('runningboy_losses')) || 0;
+            return (losses >= 5 && resetAt > 0) ? resetAt : 0;
+        } catch (_) { return 0; }
+    }
+
+    // Called on each true game over. Returns resetAt if the 5th loss just triggered.
+    _recordLossAndCheck() {
+        try {
+            // If a previous cooldown has already expired, clear it first
+            const existing = parseInt(localStorage.getItem('runningboy_losses_reset')) || 0;
+            if (existing > 0 && Date.now() >= existing) {
+                localStorage.removeItem('runningboy_losses_reset');
+                localStorage.setItem('runningboy_losses', 0);
             }
 
-            let plays = parseInt(localStorage.getItem('runningboy_plays'));
-            if (isNaN(plays)) plays = 5; // first ever launch
+            let losses = parseInt(localStorage.getItem('runningboy_losses')) || 0;
+            losses += 1;
+            localStorage.setItem('runningboy_losses', losses);
 
-            if (plays > 0) {
-                plays -= 1;
-                localStorage.setItem('runningboy_plays', plays);
-                if (plays === 0) {
-                    // Start 5-hour cooldown from this moment
-                    localStorage.setItem('runningboy_plays_reset',
-                        Date.now() + 5 * 60 * 60 * 1000);
-                }
-                _playConsumedThisSession = true;
-                return true;
+            if (losses >= 5) {
+                const rt = Date.now() + 5 * 60 * 60 * 1000;
+                localStorage.setItem('runningboy_losses_reset', rt);
+                return rt;
             }
-
-            // Plays exhausted — ensure a reset timer exists
-            let rt = parseInt(localStorage.getItem('runningboy_plays_reset')) || 0;
-            if (!rt) {
-                rt = Date.now() + 5 * 60 * 60 * 1000;
-                localStorage.setItem('runningboy_plays_reset', rt);
-            }
-
-            const skubuCount = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
-            if (skubuCount > 0) {
-                this._showSpendSkubuToPlayScreen(skubuCount, rt);
-            } else {
-                this._showCooldownScreen(rt);
-            }
-            return false;
-        } catch (_) {
-            _playConsumedThisSession = true;
-            return true; // fail open
-        }
+            return 0;
+        } catch (_) { return 0; }
     }
 
     _showSpendSkubuToPlayScreen(skubuCount, resetAt) {
@@ -906,7 +912,9 @@ class GameScene extends Phaser.Scene {
           .on('pointerout',  function() { this.setColor('#ffcc22'); })
           .on('pointerdown', () => {
               localStorage.setItem('runningboy_skubu', skubuCount - 1);
-              _playConsumedThisSession = true;
+              // Spending a skubu clears the loss counter for a fresh set of 5 games
+              localStorage.setItem('runningboy_losses', 0);
+              localStorage.removeItem('runningboy_losses_reset');
               this.scene.restart();
           });
 
@@ -932,14 +940,14 @@ class GameScene extends Phaser.Scene {
         bg.fillGradientStyle(0x000005, 0x000005, 0x06080f, 0x06080f, 1);
         bg.fillRect(0, 0, 400, 400);
 
-        this.add.text(200, 70, 'NO PLAYS LEFT', {
-            fontSize: '24px', color: '#ff4444',
+        this.add.text(200, 70, 'GAME LIMIT REACHED', {
+            fontSize: '22px', color: '#ff4444',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 4,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 115, "You've used all 5 plays.", {
-            fontSize: '12px', color: '#667788', fontFamily: 'monospace',
+        this.add.text(200, 112, "You've lost 5 times without skubu.", {
+            fontSize: '11px', color: '#667788', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
         this.add.text(200, 148, 'Come back in:', {
@@ -970,11 +978,11 @@ class GameScene extends Phaser.Scene {
         div.lineStyle(1, 0x334455, 0.6);
         div.lineBetween(60, 238, 340, 238);
 
-        this.add.text(200, 258, 'Earn ✦ skubu by playing to bypass', {
+        this.add.text(200, 258, 'Earn ✦ skubu while playing — spending one', {
             fontSize: '10px', color: '#445566', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 272, 'the wait — or buy them in the market.', {
+        this.add.text(200, 272, 'resets the limit, or buy more in the market.', {
             fontSize: '10px', color: '#445566', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
