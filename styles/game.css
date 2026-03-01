@@ -1,0 +1,10 @@
+body { margin: 0; background: #000; overflow: hidden; }
+
+#skubu-badge {
+    margin-top: 18px;
+    font-family: monospace;
+    font-size: 13px;
+    color: #ccaa44;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 8px #886600;
+}
