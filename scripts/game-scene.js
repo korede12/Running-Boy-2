@@ -804,7 +804,8 @@ class GameScene extends Phaser.Scene {
         objs.push(this.add.graphics().setScrollFactor(0).setDepth(75)
             .fillStyle(0x001a00, 0.76)
             .fillRoundedRect(100, 100, 200, 38, 7));
-        objs.push(this.add.text(200, 119, `▶▶  SPEED UP`, {
+        const mult = (this.scrollSpeed / SCROLL_SPEED).toFixed(1);
+        objs.push(this.add.text(200, 119, `▶▶  SPEED  ×${mult}`, {
             fontSize: '16px', color: '#44ff88',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 3,
@@ -963,7 +964,7 @@ class GameScene extends Phaser.Scene {
     // ── Pterodactyls ──────────────────────────────────────────────────────
     get _pteroInterval() {
         if (this.currentPhase === 0) return Infinity;
-        return Math.max(2000, 7500 - this.score * 55);
+        return Math.max(400, 7500 - this.score * 70);
     }
 
     _spawnPterodactyl() {
@@ -1324,10 +1325,10 @@ class GameScene extends Phaser.Scene {
         const dt   = delta / 1000;
         const camX = this.cameras.main.scrollX;
 
-        // Gradually increase world speed: 2 at start → 4 at score 67+ (cap)
+        // Speed scales indefinitely with score — no meaningful cap (score 2000 = ×61)
         if (!this.isGameOver) {
-            this.scrollSpeed = SCROLL_SPEED + Math.min(this.score * 0.03, 2);
-            const newLevel = Math.floor((this.scrollSpeed - SCROLL_SPEED) / 0.5);
+            this.scrollSpeed = SCROLL_SPEED + this.score * 0.06;
+            const newLevel = Math.floor(this.score / 10);
             if (newLevel > this._lastSpeedLevel) {
                 this._lastSpeedLevel = newLevel;
                 this._showSpeedBanner();
