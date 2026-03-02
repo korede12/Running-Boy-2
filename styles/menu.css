@@ -953,6 +953,126 @@ body {
     letter-spacing: 2px;
 }
 
+/* ── Global Leaderboard ── */
+#global-lb {
+    width: 100%;
+    margin-top: 20px;
+    background: rgba(4, 8, 20, 0.82);
+    border: 1px solid #0e1c36;
+    border-radius: 10px;
+    padding: 14px 18px 12px;
+    position: relative;
+}
+#global-lb-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid #0a1428;
+}
+.lb-title {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: #4488cc;
+    text-transform: uppercase;
+    flex: 1;
+}
+.lb-live {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: #44cc88;
+    border: 1px solid #1a4a30;
+    border-radius: 3px;
+    padding: 2px 6px;
+    animation: lbLivePulse 2s ease-in-out infinite;
+}
+@keyframes lbLivePulse {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+}
+.lb-refresh-btn {
+    background: none;
+    border: none;
+    color: #1e3a6e;
+    font-size: 16px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 2px;
+    transition: color 0.18s, transform 0.18s;
+}
+.lb-refresh-btn:hover { color: #4488cc; }
+.lb-refresh-btn.spinning {
+    animation: lbSpin 0.6s linear infinite;
+    color: #4488cc;
+}
+@keyframes lbSpin { to { transform: rotate(360deg); } }
+
+.lb-loading, .lb-empty {
+    text-align: center;
+    color: #1e3050;
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 14px 0;
+}
+.lb-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid #080e1a;
+    gap: 10px;
+    font-size: 13px;
+}
+.lb-row:last-child { border-bottom: none; }
+.lb-row.lb-top .lb-name { color: #cce8ff; }
+.lb-rank {
+    width: 30px;
+    font-size: 14px;
+    text-align: center;
+    flex-shrink: 0;
+    color: #2a4060;
+}
+.lb-name {
+    flex: 1;
+    color: #6688aa;
+    letter-spacing: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.lb-score {
+    color: #ffee88;
+    font-weight: bold;
+    letter-spacing: 1px;
+    flex-shrink: 0;
+}
+
+/* ── Send address input ── */
+.wallet-addr-input {
+    width: 100%;
+    background: #050912;
+    border: 1px solid #1e3a2e;
+    border-radius: 5px;
+    color: #4488aa;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    padding: 7px 10px;
+    outline: none;
+    letter-spacing: 0.5px;
+    transition: border-color 0.18s;
+    margin-bottom: 2px;
+}
+.wallet-addr-input:focus { border-color: #44aa66; }
+.wallet-addr-input::placeholder { color: #1e3a2e; }
+
+/* ── Receive hint ── */
+.wallet-receive-hint {
+    font-size: 11px;
+    color: #2a4060;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
 /* ── Wallet tab address display ── */
 .wallet-tab-addr {
     font-size: 10px;

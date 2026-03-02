@@ -124,6 +124,16 @@
         </button>
     </div>
 
+    <!-- ── Global Leaderboard ── -->
+    <div id="global-lb">
+        <div id="global-lb-header">
+            <span class="lb-title">&#9733; World Leaderboard</span>
+            <span class="lb-live">LIVE</span>
+            <button class="lb-refresh-btn" id="lb-refresh-btn" onclick="fetchLeaderboard()" title="Refresh">&#8635;</button>
+        </div>
+        <div id="global-lb-list"><div class="lb-loading">Loading&#8230;</div></div>
+    </div>
+
     <div id="skubu-badge">
         <span id="skubu-badge-local">&#10022; Skubu: <span id="skubu-count">0</span></span>
         <span id="skubu-badge-chain" style="display:none">

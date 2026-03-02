@@ -156,6 +156,43 @@ document.getElementById('name-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveName();
 });
 
+// ── Global Leaderboard ────────────────────────────────────────────────────
+async function fetchLeaderboard() {
+    const list = document.getElementById('global-lb-list');
+    const btn  = document.getElementById('lb-refresh-btn');
+    if (btn) btn.classList.add('spinning');
+
+    let scores = [];
+    if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+        try {
+            const res = await fetch(
+                window.SUPABASE_URL + '/rest/v1/scores?select=player_name,score&order=score.desc&limit=10',
+                { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } }
+            );
+            if (res.ok) scores = await res.json();
+        } catch (_) {}
+    }
+
+    if (btn) btn.classList.remove('spinning');
+
+    if (!scores.length) {
+        list.innerHTML = '<div class="lb-empty">No scores yet — be the first!</div>';
+        return;
+    }
+
+    const medals = ['&#127947;', '&#129352;', '&#129353;'];
+    list.innerHTML = scores.map((s, i) => `
+        <div class="lb-row ${i < 3 ? 'lb-top' : ''}">
+            <span class="lb-rank">${medals[i] || '#' + (i + 1)}</span>
+            <span class="lb-name">${escHtml(s.player_name || 'ANON')}</span>
+            <span class="lb-score">${s.score}</span>
+        </div>
+    `).join('');
+}
+
+// Fetch on page load
+(function () { fetchLeaderboard(); })();
+
 // ── Start Game ────────────────────────────────────────────────────────────
 function startGame() {
     window.location.href = 'RunningBoy.html';
