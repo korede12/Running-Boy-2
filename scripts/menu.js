@@ -300,8 +300,8 @@ function paystackCheckout(packageId) {
         return;
     }
 
-    // Use wallet address as email-like identifier (Paystack requires email)
-    const email = walletAddress.toLowerCase() + '@wallet.skubu';
+    // Paystack requires a valid email format — use wallet address as identifier
+    const email = 'wallet.' + walletAddress.toLowerCase().slice(2, 10) + '@skubu.app';
 
     const handler = window.PaystackPop.setup({
         key:       window.PAYSTACK_PUBLIC_KEY,
