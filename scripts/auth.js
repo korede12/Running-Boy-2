@@ -2,12 +2,14 @@
 // Exposes window.SkubuAuth for global scripts to use.
 // Loaded as <script type="module"> so it can use ES imports.
 
-import { createThirdwebClient }             from "https://esm.sh/thirdweb@5";
-import { inAppWallet, preAuthenticate }     from "https://esm.sh/thirdweb@5/wallets/in-app";
-import { baseSepolia }                      from "https://esm.sh/thirdweb@5/chains";
-import { signMessage as twSignMessage }     from "https://esm.sh/thirdweb@5/utils";
+import { createThirdwebClient }         from "https://esm.sh/thirdweb@5";
+import { inAppWallet, preAuthenticate } from "https://esm.sh/thirdweb@5/wallets/in-app";
+import { baseSepolia }                  from "https://esm.sh/thirdweb@5/chains";
+import { signMessage as twSignMessage } from "https://esm.sh/thirdweb@5";
 
-// ── Wait for config to be available ────────────────────────────────────────
+console.log('[SkubuAuth] Module loaded');
+
+// ── Wait for config ─────────────────────────────────────────────────────────
 function waitForConfig() {
     return new Promise(resolve => {
         if (window.THIRDWEB_CLIENT_ID) { resolve(); return; }
@@ -66,8 +68,8 @@ const SkubuAuth = {
         _notify();
     },
 
-    getAccount()   { return _account; },
-    isConnected()  { return !!_account; },
+    getAccount()  { return _account; },
+    isConnected() { return !!_account; },
 
     async signMessage(msg) {
         if (!_account) throw new Error('No wallet connected');
@@ -80,31 +82,37 @@ const SkubuAuth = {
     },
 };
 
-// Export immediately so UI is never blocked
+// Export immediately — never block the UI
 window.SkubuAuth = SkubuAuth;
+console.log('[SkubuAuth] window.SkubuAuth set');
 
-// ── Initialise ─────────────────────────────────────────────────────────────
+// ── Initialise ──────────────────────────────────────────────────────────────
 try {
     await waitForConfig();
+    console.log('[SkubuAuth] Config ready. CLIENT_ID:', window.THIRDWEB_CLIENT_ID ? 'present' : 'MISSING');
 
-    if (window.THIRDWEB_CLIENT_ID) {
-        client = createThirdwebClient({ clientId: window.THIRDWEB_CLIENT_ID });
-        wallet = inAppWallet();
-        console.log('[SkubuAuth] Initialised');
-    } else {
+    if (!window.THIRDWEB_CLIENT_ID) {
         console.warn('[SkubuAuth] No THIRDWEB_CLIENT_ID — auth disabled');
-    }
+    } else {
+        console.log('[SkubuAuth] Creating client...');
+        client = createThirdwebClient({ clientId: window.THIRDWEB_CLIENT_ID });
+        console.log('[SkubuAuth] Client created');
 
-    // Auto-restore saved session
-    if (wallet) {
+        console.log('[SkubuAuth] Creating wallet...');
+        wallet = inAppWallet({
+            auth: { options: ['email', 'google'] },
+        });
+        console.log('[SkubuAuth] Wallet created');
+
+        // Auto-restore saved session
         try {
             _account = await wallet.autoConnect({ client, chain: baseSepolia });
             console.log('[SkubuAuth] Session restored:', _account.address);
             _notify();
         } catch (_) {
-            // No saved session — stay logged out
+            console.log('[SkubuAuth] No saved session');
         }
     }
 } catch (err) {
-    console.error('[SkubuAuth] Init failed:', err);
+    console.error('[SkubuAuth] Init failed at step:', err);
 }
