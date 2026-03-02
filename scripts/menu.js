@@ -56,7 +56,7 @@ function closeModal(id) {
 
 // ── Click sounds on all interactive elements ───────────────────────────────
 document.addEventListener('click', e => {
-    if (e.target.closest('.menu-btn, .modal-close, #name-save-btn, #hs-clear-btn, .market-buy-btn, .wallet-btn, .wallet-copy-btn, .wallet-share-btn, .amt-pill, .wrp-send-btn, .wrp-decline-btn, #send-onchain-btn')) {
+    if (e.target.closest('.menu-btn, .modal-close, #name-save-btn, .market-buy-btn, .wallet-btn, .wallet-copy-btn, .wallet-share-btn, .amt-pill, .wrp-send-btn, .wrp-decline-btn, #send-onchain-btn')) {
         _playUiSound('single-click.mp3');
     }
 });
@@ -78,13 +78,38 @@ document.addEventListener('keydown', e => {
 });
 
 // ── High Scores ────────────────────────────────────────────────────────────
-function renderHighScores() {
-    const scores = getScores();
-    const list   = document.getElementById('hs-list');
+async function renderHighScores() {
+    const list = document.getElementById('hs-list');
+    list.innerHTML = '<div class="hs-empty">Loading…</div>';
+
+    let scores = [];
+
+    if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+        try {
+            const res = await fetch(
+                window.SUPABASE_URL + '/rest/v1/scores?select=player_name,score&order=score.desc&limit=10',
+                {
+                    headers: {
+                        'apikey':        window.SUPABASE_ANON_KEY,
+                        'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
+                    },
+                }
+            );
+            if (res.ok) {
+                const data = await res.json();
+                scores = data.map(r => ({ name: r.player_name, score: r.score }));
+            }
+        } catch (_) {}
+    }
+
+    // Fall back to localStorage if fetch failed
+    if (scores.length === 0) scores = getScores();
+
     if (scores.length === 0) {
         list.innerHTML = '<div class="hs-empty">No scores yet.<br>Start a game to set your record!</div>';
         return;
     }
+
     const rankClasses = ['gold', 'silver', 'bronze'];
     list.innerHTML = scores.slice(0, 10).map((entry, i) => `
         <div class="hs-row">
@@ -93,12 +118,6 @@ function renderHighScores() {
             <div class="hs-score">${entry.score}</div>
         </div>
     `).join('');
-}
-
-function clearScores() {
-    if (!confirm('Clear all high scores?')) return;
-    localStorage.removeItem(LS_SCORES);
-    renderHighScores();
 }
 
 function escHtml(str) {
