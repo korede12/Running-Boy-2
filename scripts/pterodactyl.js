@@ -37,14 +37,14 @@ class Pterodactyl {
                 this.scene.sound.play('snd_ptero', { volume: 0.35 });
             }
         } else if (this.swoopState === 'swooping') {
-            this.swoopProg += delta * 0.0008;
+            this.swoopProg += delta * 0.0008 * (this.speed / 2.8);
             if (this.swoopProg >= 1) {
                 this.swoopProg  = 1;
                 this.swoopState = 'recovering';
             }
             this.swoopY = Pterodactyl.GLIDE_Y + Math.sin(this.swoopProg * Math.PI) * (this.maxSwoopY - Pterodactyl.GLIDE_Y);
         } else if (this.swoopState === 'recovering') {
-            this.swoopProg -= delta * 0.001;
+            this.swoopProg -= delta * 0.001 * (this.speed / 2.8);
             if (this.swoopProg <= 0) {
                 this.swoopProg  = 0;
                 this.swoopState = 'gliding';

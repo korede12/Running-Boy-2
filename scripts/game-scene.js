@@ -57,6 +57,8 @@ class GameScene extends Phaser.Scene {
         this.streakCount     = 0;   // consecutive dodges; resets on hit
         this.continueCount   = 0;   // how many times continue modal has been shown
         this.bossWarned      = false; // true once boss-approaching banner has shown
+        this.scrollSpeed     = SCROLL_SPEED; // dynamic — increases with score
+        this._lastSpeedLevel = 0;   // tracks speed-up banners shown
 
         // ── Phase / background state ───────────────────────────────────────
         this.currentPhase      = 0;
@@ -796,6 +798,27 @@ class GameScene extends Phaser.Scene {
         });
     }
 
+    // ── Speed-up banner ───────────────────────────────────────────────────
+    _showSpeedBanner() {
+        const objs = [];
+        objs.push(this.add.graphics().setScrollFactor(0).setDepth(75)
+            .fillStyle(0x001a00, 0.76)
+            .fillRoundedRect(100, 100, 200, 38, 7));
+        objs.push(this.add.text(200, 119, `▶▶  SPEED UP`, {
+            fontSize: '16px', color: '#44ff88',
+            fontFamily: 'monospace', fontStyle: 'bold',
+            stroke: '#000', strokeThickness: 3,
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(76));
+        objs.forEach(o => o.setAlpha(0));
+        this.tweens.add({
+            targets: objs, alpha: 1, duration: 180,
+            onComplete: () => this.tweens.add({
+                targets: objs, alpha: 0, duration: 500, delay: 700,
+                onComplete: () => objs.forEach(o => o.destroy()),
+            }),
+        });
+    }
+
     // ── Daily 3-run reward ────────────────────────────────────────────────
     _checkDailyRunReward() {
         try {
@@ -940,7 +963,7 @@ class GameScene extends Phaser.Scene {
     // ── Pterodactyls ──────────────────────────────────────────────────────
     get _pteroInterval() {
         if (this.currentPhase === 0) return Infinity;
-        return Math.max(3000, 8000 - (this.score - 15) * 60);
+        return Math.max(2000, 7500 - this.score * 55);
     }
 
     _spawnPterodactyl() {
@@ -957,8 +980,10 @@ class GameScene extends Phaser.Scene {
             this.pterodactylTimer = this._pteroInterval;
         }
 
+        const speedMult = (this.scrollSpeed || SCROLL_SPEED) / SCROLL_SPEED;
         for (let i = this.pterodactyls.length - 1; i >= 0; i--) {
             const pt = this.pterodactyls[i];
+            pt.speed = 2.8 * speedMult;
             pt.update(delta, camX);
 
             if (pt.dead) {
@@ -1299,8 +1324,22 @@ class GameScene extends Phaser.Scene {
         const dt   = delta / 1000;
         const camX = this.cameras.main.scrollX;
 
+        // Gradually increase world speed: 2 at start → 4 at score 67+ (cap)
+        if (!this.isGameOver) {
+            this.scrollSpeed = SCROLL_SPEED + Math.min(this.score * 0.03, 2);
+            const newLevel = Math.floor((this.scrollSpeed - SCROLL_SPEED) / 0.5);
+            if (newLevel > this._lastSpeedLevel) {
+                this._lastSpeedLevel = newLevel;
+                this._showSpeedBanner();
+            }
+        }
+        const speedMult = this.scrollSpeed / SCROLL_SPEED;
+
+        // Scale Godzilla speed with world speed
+        this.godzilla.speed = this.godzilla.tierConfig.speed * speedMult;
+
         // Scroll the world left (camera moves right)
-        this.cameras.main.scrollX += SCROLL_SPEED;
+        this.cameras.main.scrollX += this.scrollSpeed;
 
         // Phase transitions and background interpolation (run even during game over)
         this._updatePhase();
