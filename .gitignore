@@ -1,2 +1,2 @@
 .claude/
-scripts/config.js
+# scripts/config.js is intentionally tracked — values are public client-side keys
