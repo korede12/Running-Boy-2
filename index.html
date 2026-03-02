@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="styles/menu.css">
 </head>
 <body>
+<!-- Config must load first (defines window.THIRDWEB_CLIENT_ID etc.) -->
+<script src="scripts/config.js"></script>
+<script type="module" src="scripts/auth.js"></script>
+<script type="module" src="scripts/skubu-chain.js"></script>
 
 <!-- Stars -->
 <div id="stars"></div>
@@ -118,7 +122,15 @@
         </button>
     </div>
 
-    <div id="skubu-badge">&#10022; Skubu: <span id="skubu-count">0</span></div>
+    <div id="skubu-badge">
+        <span id="skubu-badge-local">&#10022; Skubu: <span id="skubu-count">0</span></span>
+        <span id="skubu-badge-chain" style="display:none">
+            <span id="wallet-addr-short" class="wallet-addr"></span>
+            &nbsp;&#10022; <span id="skubu-chain-count">0</span>
+        </span>
+        <button id="auth-connect-btn" class="auth-connect-btn" onclick="openModal('auth-modal')">Connect</button>
+        <button id="auth-disconnect-btn" class="auth-disconnect-btn" style="display:none" onclick="SkubuAuth&&SkubuAuth.disconnect()">Sign Out</button>
+    </div>
 
     <div id="footer">&#169; Running Boy &nbsp;&#183;&nbsp; v1.0</div>
 </div>
@@ -204,6 +216,7 @@
 
         <!-- Wallet panel -->
         <div id="mkt-wallet-panel" style="display:none">
+            <div id="wallet-tab-address" class="wallet-tab-addr" style="display:none"></div>
             <div class="wallet-balance-row">Your balance: <span id="wallet-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span></div>
 
             <div class="wallet-section">
@@ -275,6 +288,46 @@
         <div class="splash-title">SKUBU!</div>
         <div class="splash-amount" id="splash-amount">+0</div>
         <div class="splash-sub" id="splash-sub">added to your balance</div>
+    </div>
+</div>
+
+<!-- ── Auth Modal ── -->
+<div class="modal-backdrop" id="auth-modal">
+    <div class="modal auth-modal">
+        <button class="modal-close" onclick="closeModal('auth-modal')">&#10005;</button>
+        <div class="modal-title">&#9670; Connect Wallet</div>
+
+        <!-- Step 1: Choose method -->
+        <div id="auth-step-1">
+            <button class="wallet-btn auth-google-btn" id="auth-google-btn" onclick="authWithGoogle()">
+                &#9670; Continue with Google
+            </button>
+            <div class="auth-divider"><span>or</span></div>
+            <div class="auth-email-row">
+                <input id="auth-email-input" type="email" placeholder="your@email.com"
+                    autocomplete="email" spellcheck="false"/>
+                <button class="wallet-btn" id="auth-send-otp-btn" onclick="authSendOtp()">Send Code</button>
+            </div>
+            <div id="auth-step1-error" class="wallet-error"></div>
+        </div>
+
+        <!-- Step 2: OTP verify -->
+        <div id="auth-step-2" style="display:none">
+            <div class="auth-otp-hint" id="auth-otp-hint"></div>
+            <div class="auth-email-row">
+                <input id="auth-otp-input" type="text" maxlength="6" placeholder="000000"
+                    autocomplete="one-time-code" inputmode="numeric"/>
+                <button class="wallet-btn" id="auth-verify-btn" onclick="authVerifyOtp()">Verify</button>
+            </div>
+            <div id="auth-step2-error" class="wallet-error"></div>
+            <button class="auth-back-btn" onclick="authBackToStep1()">&#8592; Back</button>
+        </div>
+
+        <!-- Spinner -->
+        <div id="auth-spinner" class="auth-spinner" style="display:none">
+            <div class="auth-spinner-ring"></div>
+            <div class="auth-spinner-msg" id="auth-spinner-msg">Connecting...</div>
+        </div>
     </div>
 </div>
 

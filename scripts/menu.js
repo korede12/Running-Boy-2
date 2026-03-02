@@ -46,7 +46,7 @@ function getName() {
 function openModal(id) {
     if (id === 'hs-modal')     renderHighScores();
     if (id === 'name-modal')   renderNameModal();
-    if (id === 'market-modal') renderMarket();
+    if (id === 'market-modal') { renderMarket(); refreshChainBalance(); }
     document.getElementById(id).classList.add('open');
 }
 
@@ -156,6 +156,58 @@ function setSkubu(n) {
     if (el) el.textContent = getSkubu();
 })();
 
+// ── On-chain balance refresh ───────────────────────────────────────────────
+async function refreshChainBalance() {
+    const auth  = window.SkubuAuth;
+    const chain = window.SkubuChain;
+    if (!auth || !chain || !auth.isConnected()) return;
+
+    const account = auth.getAccount();
+    const balance = await chain.getBalance(account.address);
+
+    // Update on-chain display
+    const chainEl = document.getElementById('skubu-chain-count');
+    if (chainEl) chainEl.textContent = balance;
+
+    // Sync localStorage cache so game-scene reads a plausible number
+    localStorage.setItem(LS_SKUBU, balance);
+    const localEl = document.getElementById('skubu-count');
+    if (localEl) localEl.textContent = balance;
+}
+
+// ── Wallet display update ──────────────────────────────────────────────────
+function _updateWalletDisplay(account) {
+    const connectBtn    = document.getElementById('auth-connect-btn');
+    const disconnectBtn = document.getElementById('auth-disconnect-btn');
+    const badgeLocal    = document.getElementById('skubu-badge-local');
+    const badgeChain    = document.getElementById('skubu-badge-chain');
+    const addrShort     = document.getElementById('wallet-addr-short');
+
+    if (account) {
+        const addr = account.address;
+        if (addrShort)  addrShort.textContent = addr.slice(0, 6) + '…' + addr.slice(-4);
+        if (badgeLocal) badgeLocal.style.display = 'none';
+        if (badgeChain) badgeChain.style.display = 'inline';
+        if (connectBtn)    connectBtn.style.display    = 'none';
+        if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
+        refreshChainBalance();
+    } else {
+        if (badgeLocal) badgeLocal.style.display = 'inline';
+        if (badgeChain) badgeChain.style.display = 'none';
+        if (connectBtn)    connectBtn.style.display    = 'inline-block';
+        if (disconnectBtn) disconnectBtn.style.display = 'none';
+    }
+}
+
+// Wire up auth state changes once SkubuAuth is ready
+(function pollForAuth() {
+    if (window.SkubuAuth) {
+        window.SkubuAuth.onAuthChange(_updateWalletDisplay);
+    } else {
+        setTimeout(pollForAuth, 100);
+    }
+})();
+
 // ── Skubu Market ──────────────────────────────────────────────────────────
 const MARKET_PACKAGES = [
     {
@@ -263,7 +315,8 @@ function switchMarketTab(name) {
     document.getElementById('tab-wallet').classList.toggle('active', name === 'wallet');
     document.getElementById('mkt-shop-panel').style.display  = name === 'shop'   ? '' : 'none';
     document.getElementById('mkt-wallet-panel').style.display = name === 'wallet' ? '' : 'none';
-    if (name === 'wallet') refreshWalletBalance();
+    if (name === 'wallet') { refreshWalletBalance(); refreshChainBalance(); }
+    _updateWalletTabInfo();
 }
 
 // ── Wallet storage helpers ─────────────────────────────────────────────────
@@ -288,6 +341,19 @@ function markTokenUsed(id) {
 function refreshWalletBalance() {
     const el = document.getElementById('wallet-balance');
     if (el) el.textContent = getSkubu();
+}
+
+function _updateWalletTabInfo() {
+    const auth    = window.SkubuAuth;
+    const addrEl  = document.getElementById('wallet-tab-address');
+    if (!addrEl) return;
+    if (auth && auth.isConnected()) {
+        const addr = auth.getAccount().address;
+        addrEl.textContent = addr.slice(0, 10) + '…' + addr.slice(-8);
+        addrEl.style.display = 'block';
+    } else {
+        addrEl.style.display = 'none';
+    }
 }
 
 function selectPill(el, prefix) {
@@ -426,3 +492,98 @@ function fulfillRequest() {
     if (data.t === 'gift')    handleIncomingGift(data);
     if (data.t === 'request') handleIncomingRequest(data);
 })();
+
+// ── Auth Modal helpers ─────────────────────────────────────────────────────
+let _authPendingEmail = '';
+
+function _authSetSpinner(visible, msg) {
+    const spinner = document.getElementById('auth-spinner');
+    const step1   = document.getElementById('auth-step-1');
+    const step2   = document.getElementById('auth-step-2');
+    const msgEl   = document.getElementById('auth-spinner-msg');
+    if (!spinner) return;
+    spinner.style.display = visible ? 'flex' : 'none';
+    if (step1) step1.style.display = visible ? 'none' : '';
+    if (step2) step2.style.display = visible ? 'none' : (_authPendingEmail ? '' : 'none');
+    if (msg && msgEl) msgEl.textContent = msg;
+}
+
+function _authSetError(stepNum, msg) {
+    const el = document.getElementById('auth-step' + stepNum + '-error');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+}
+
+function authBackToStep1() {
+    _authPendingEmail = '';
+    const step1 = document.getElementById('auth-step-1');
+    const step2 = document.getElementById('auth-step-2');
+    if (step1) step1.style.display = '';
+    if (step2) step2.style.display = 'none';
+    _authSetError(1, '');
+}
+
+async function authSendOtp() {
+    const emailInput = document.getElementById('auth-email-input');
+    const email = emailInput ? emailInput.value.trim() : '';
+    if (!email) { _authSetError(1, 'Please enter your email.'); return; }
+    if (!window.SkubuAuth) { _authSetError(1, 'Auth not ready. Try again in a moment.'); return; }
+
+    _authSetSpinner(true, 'Sending code...');
+    try {
+        await window.SkubuAuth.sendOtp(email);
+        _authPendingEmail = email;
+        const spinner = document.getElementById('auth-spinner');
+        const step1   = document.getElementById('auth-step-1');
+        const step2   = document.getElementById('auth-step-2');
+        const hint    = document.getElementById('auth-otp-hint');
+        if (spinner) spinner.style.display = 'none';
+        if (step1)   step1.style.display   = 'none';
+        if (step2)   step2.style.display   = '';
+        if (hint)    hint.textContent = 'Code sent to ' + email;
+        _authSetError(2, '');
+    } catch (err) {
+        _authSetSpinner(false, '');
+        _authSetError(1, err.message || 'Failed to send code.');
+    }
+}
+
+async function authVerifyOtp() {
+    const otpInput = document.getElementById('auth-otp-input');
+    const otp = otpInput ? otpInput.value.trim() : '';
+    if (!otp) { _authSetError(2, 'Please enter the verification code.'); return; }
+    if (!_authPendingEmail) { _authSetError(2, 'Session lost — go back and try again.'); return; }
+
+    _authSetSpinner(true, 'Verifying...');
+    try {
+        await window.SkubuAuth.connect('email', _authPendingEmail, otp);
+        _authSetSpinner(false, '');
+        closeModal('auth-modal');
+        _authPendingEmail = '';
+    } catch (err) {
+        _authSetSpinner(false, '');
+        _authSetError(2, err.message || 'Invalid code. Try again.');
+    }
+}
+
+async function authWithGoogle() {
+    if (!window.SkubuAuth) { _authSetError(1, 'Auth not ready. Try again.'); return; }
+    _authSetSpinner(true, 'Opening Google...');
+    try {
+        await window.SkubuAuth.connect('google');
+        _authSetSpinner(false, '');
+        closeModal('auth-modal');
+    } catch (err) {
+        _authSetSpinner(false, '');
+        _authSetError(1, err.message || 'Google sign-in failed.');
+    }
+}
+
+// Allow Enter to submit OTP
+document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+        if (document.getElementById('auth-email-input') === document.activeElement) authSendOtp();
+        if (document.getElementById('auth-otp-input')   === document.activeElement) authVerifyOtp();
+    }
+});

@@ -805,3 +805,160 @@ body {
     opacity: 0;
 }
 #_toast.visible { opacity: 1; }
+
+/* ── Skubu badge — wallet-aware ── */
+#skubu-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.wallet-addr {
+    color: #4488cc;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+.auth-connect-btn, .auth-disconnect-btn {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 4px;
+    transition: background 0.18s, color 0.18s;
+}
+.auth-connect-btn {
+    background: transparent;
+    border: 1px solid #2255aa;
+    color: #4488cc;
+}
+.auth-connect-btn:hover {
+    background: #0a1530;
+    color: #88ccff;
+    border-color: #4488cc;
+}
+.auth-disconnect-btn {
+    background: transparent;
+    border: 1px solid #442222;
+    color: #884444;
+    font-size: 9px;
+}
+.auth-disconnect-btn:hover {
+    background: #1a0808;
+    color: #cc6666;
+}
+
+/* ── Auth Modal ── */
+.auth-modal {
+    width: 360px;
+}
+.auth-google-btn {
+    width: 100%;
+    justify-content: center;
+    background: #0d1a2e;
+    color: #88bbff;
+    border-color: #224488;
+    margin-bottom: 4px;
+}
+.auth-google-btn:hover {
+    background: #0a1530;
+    color: #bbddff;
+}
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0;
+    color: #2a3a50;
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+.auth-divider::before, .auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #1a2a40;
+}
+.auth-email-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.auth-email-row input {
+    flex: 1;
+    background: #080e18;
+    border: 1px solid #1e3050;
+    color: #aaccee;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.18s;
+}
+.auth-email-row input:focus {
+    border-color: #3366aa;
+}
+.auth-email-row .wallet-btn {
+    margin: 0;
+    white-space: nowrap;
+    padding: 9px 16px;
+}
+.auth-otp-hint {
+    font-size: 11px;
+    color: #4477aa;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+.auth-back-btn {
+    display: block;
+    margin: 14px auto 0;
+    background: none;
+    border: none;
+    color: #334466;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: color 0.18s;
+}
+.auth-back-btn:hover { color: #6699cc; }
+
+/* Spinner */
+.auth-spinner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 24px 0 8px;
+}
+.auth-spinner-ring {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #1a2a40;
+    border-top-color: #4488cc;
+    border-radius: 50%;
+    animation: authSpin 0.8s linear infinite;
+}
+@keyframes authSpin {
+    to { transform: rotate(360deg); }
+}
+.auth-spinner-msg {
+    font-size: 12px;
+    color: #4488cc;
+    letter-spacing: 2px;
+}
+
+/* ── Wallet tab address display ── */
+.wallet-tab-addr {
+    font-size: 10px;
+    color: #2a4466;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    text-align: center;
+    word-break: break-all;
+}

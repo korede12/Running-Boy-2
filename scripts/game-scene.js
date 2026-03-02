@@ -43,6 +43,8 @@ class GameScene extends Phaser.Scene {
         this.pauseOverlay    = null;
         this.score           = 0;
         this.lives           = 5;
+        this.sessionId       = crypto.randomUUID();
+        this.pendingSkubu    = 0;
         this.skubuCount      = (() => {
             try { return parseInt(localStorage.getItem('runningboy_skubu')) || 0; }
             catch { return 0; }
@@ -516,10 +518,9 @@ class GameScene extends Phaser.Scene {
     }
 
     _awardSkubu() {
-        try {
-            this.skubuCount += 1;
-            localStorage.setItem('runningboy_skubu', this.skubuCount);
-        } catch (_) {}
+        this.pendingSkubu += 1;
+        this.skubuCount   += 1;   // optimistic for display
+        try { localStorage.setItem('runningboy_skubu', this.skubuCount); } catch (_) {}
         this.skubuLabel.setText(`✦ SKUBU: ${this.skubuCount}`);
         this.sound.play('snd_skubu', { volume: 0.6 });
         this._showSkubuSplash();
@@ -708,17 +709,42 @@ class GameScene extends Phaser.Scene {
     _saveScore(score) {
         const LS_SCORES = 'runningboy_scores';
         const LS_NAME   = 'runningboy_name';
+        let playerName  = 'ANON';
         try {
-            const name   = (localStorage.getItem(LS_NAME) || 'ANON').toUpperCase();
+            playerName   = (localStorage.getItem(LS_NAME) || 'ANON').toUpperCase();
             const scores = JSON.parse(localStorage.getItem(LS_SCORES)) || [];
-            scores.push({ name, score });
+            scores.push({ name: playerName, score });
             scores.sort((a, b) => b.score - a.score);
             localStorage.setItem(LS_SCORES, JSON.stringify(scores.slice(0, 20)));
         } catch (_) {}
+
+        // POST to Supabase leaderboard if connected
+        const auth = window.SkubuAuth;
+        if (auth && auth.isConnected() && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+            const address = auth.getAccount().address;
+            fetch(window.SUPABASE_URL + '/rest/v1/scores', {
+                method: 'POST',
+                headers: {
+                    'Content-Type':  'application/json',
+                    'apikey':        window.SUPABASE_ANON_KEY,
+                    'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
+                    'Prefer':        'return=minimal',
+                },
+                body: JSON.stringify({
+                    wallet_address: address,
+                    player_name:    playerName,
+                    score,
+                }),
+            }).catch(() => {});  // fire-and-forget, never block gameplay
+        }
     }
 
     _gameOver() {
         this._saveScore(this.score);
+        // Mint any skubu earned this session on-chain (fire-and-forget)
+        if (this.pendingSkubu > 0 && window.SkubuChain) {
+            window.SkubuChain.mintSkubu(this.pendingSkubu, this.sessionId);
+        }
         this.sound.play('snd_gameover', { volume: 0.7 });
 
         // Check if this is the 5th loss — if so, show cooldown instead of normal game over
