@@ -5,7 +5,6 @@
 import { createThirdwebClient }         from "https://esm.sh/thirdweb@5";
 import { inAppWallet, preAuthenticate } from "https://esm.sh/thirdweb@5/wallets/in-app";
 import { baseSepolia }                  from "https://esm.sh/thirdweb@5/chains";
-import { signMessage as twSignMessage } from "https://esm.sh/thirdweb@5";
 
 console.log('[SkubuAuth] Module loaded');
 
@@ -73,7 +72,7 @@ const SkubuAuth = {
 
     async signMessage(msg) {
         if (!_account) throw new Error('No wallet connected');
-        return await twSignMessage({ account: _account, message: msg });
+        return await _account.signMessage({ message: msg });
     },
 
     onAuthChange(cb) {
