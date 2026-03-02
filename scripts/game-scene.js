@@ -827,22 +827,21 @@ class GameScene extends Phaser.Scene {
             localStorage.setItem(LS_SCORES, JSON.stringify(scores.slice(0, 20)));
         } catch (_) {}
 
-        // POST to Supabase leaderboard if connected
+        // Upsert to Supabase leaderboard (personal best only) if connected
         const auth = window.SkubuAuth;
         if (auth && auth.isConnected() && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
             const address = auth.getAccount().address;
-            fetch(window.SUPABASE_URL + '/rest/v1/scores', {
+            fetch(window.SUPABASE_URL + '/rest/v1/rpc/upsert_score', {
                 method: 'POST',
                 headers: {
                     'Content-Type':  'application/json',
                     'apikey':        window.SUPABASE_ANON_KEY,
                     'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
-                    'Prefer':        'return=minimal',
                 },
                 body: JSON.stringify({
-                    wallet_address: address,
-                    player_name:    playerName,
-                    score,
+                    p_wallet_address: address,
+                    p_player_name:    playerName,
+                    p_score:          score,
                 }),
             }).catch(() => {});  // fire-and-forget, never block gameplay
         }
