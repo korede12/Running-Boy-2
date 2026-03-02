@@ -54,6 +54,9 @@ class GameScene extends Phaser.Scene {
         this.dodgedInWindow  = false;
         this.isCharging      = false;
         this.chargeStartTime = 0;
+        this.streakCount     = 0;   // consecutive dodges; resets on hit
+        this.continueCount   = 0;   // how many times continue modal has been shown
+        this.bossWarned      = false; // true once boss-approaching banner has shown
 
         // ── Phase / background state ───────────────────────────────────────
         this.currentPhase      = 0;
@@ -508,6 +511,10 @@ class GameScene extends Phaser.Scene {
         this.sound.play('snd_score', { volume: 0.4 });
         this._showScorePopup(amount);
         this._checkSkubuMilestone();
+        if (!this.bossWarned && this.score >= 40) {
+            this.bossWarned = true;
+            this._showBossWarning();
+        }
     }
 
     _checkSkubuMilestone() {
@@ -594,6 +601,7 @@ class GameScene extends Phaser.Scene {
         this.isGameOver = true;
         this.isCharging = false;
         this.boyState   = 'hit';
+        this.streakCount = 0;
         this.boyVelX    = -260;
         this.boyVelY    = -480;
         this.boyAngle   = 0;
@@ -650,30 +658,39 @@ class GameScene extends Phaser.Scene {
     }
 
     _showContinueScreen() {
+        this.continueCount++;
         const objs = [];
         const add  = o => { objs.push(o); return o; };
 
+        const modalH = this.continueCount >= 2 ? 210 : 185;
         const bg = add(this.add.graphics().setScrollFactor(0).setDepth(90));
-        bg.fillStyle(0x000000, 0.80);
-        bg.fillRoundedRect(50, 120, 300, 165, 10);
+        bg.fillStyle(0x000000, 0.85);
+        bg.fillRoundedRect(45, 108, 310, modalH, 10);
         bg.lineStyle(1.5, 0x886600, 0.8);
-        bg.strokeRoundedRect(50, 120, 300, 165, 10);
+        bg.strokeRoundedRect(45, 108, 310, modalH, 10);
 
-        add(this.add.text(200, 145, 'OUT OF LIVES', {
-            fontSize: '20px', color: '#ff4444',
+        add(this.add.text(200, 126, 'OUT OF LIVES', {
+            fontSize: '18px', color: '#ff4444',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 3,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
-        add(this.add.text(200, 182, 'Spend 1 skubu to continue?', {
-            fontSize: '11px', color: '#ccaa44', fontFamily: 'monospace',
+        // Score + next SKUBU distance
+        add(this.add.text(200, 151, `Score: ${this.score}`, {
+            fontSize: '20px', color: '#ffffff',
+            fontFamily: 'monospace', fontStyle: 'bold',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
-        add(this.add.text(200, 200, `You have: ${this.skubuCount} skubu`, {
-            fontSize: '11px', color: '#aa8844', fontFamily: 'monospace',
+        const skubuDist = this.nextSkubuAt - this.score;
+        add(this.add.text(200, 174, `next ✦ in ${skubuDist} pts`, {
+            fontSize: '10px', color: '#886622', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
-        add(this.add.text(200, 237, '[ CONTINUE ]', {
+        add(this.add.text(200, 193, `spend 1 skubu (have ${this.skubuCount}) to continue`, {
+            fontSize: '10px', color: '#ccaa44', fontFamily: 'monospace',
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
+
+        add(this.add.text(200, 226, '[ CONTINUE — 1 ✦ ]', {
             fontSize: '14px', color: '#ffcc22',
             fontFamily: 'monospace', fontStyle: 'bold',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91)
@@ -682,13 +699,24 @@ class GameScene extends Phaser.Scene {
           .on('pointerout',  function() { this.setColor('#ffcc22'); })
           .on('pointerdown', () => this._doContinue(objs)));
 
-        add(this.add.text(200, 266, '[ GIVE UP ]', {
+        add(this.add.text(200, 254, '[ GIVE UP ]', {
             fontSize: '11px', color: '#446688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91)
           .setInteractive({ useHandCursor: true })
           .on('pointerover', function() { this.setColor('#88bbff'); })
           .on('pointerout',  function() { this.setColor('#446688'); })
           .on('pointerdown', () => this._doGiveUp(objs)));
+
+        // Show shop link on 2nd+ continue prompt
+        if (this.continueCount >= 2) {
+            add(this.add.text(200, 295, '→ Need more skubu? Get a pack', {
+                fontSize: '10px', color: '#44aa66', fontFamily: 'monospace',
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(91)
+              .setInteractive({ useHandCursor: true })
+              .on('pointerover', function() { this.setColor('#66ffaa'); })
+              .on('pointerout',  function() { this.setColor('#44aa66'); })
+              .on('pointerdown', () => { window.location.href = 'index.html#market'; }));
+        }
     }
 
     _doContinue(objs) {
@@ -704,6 +732,87 @@ class GameScene extends Phaser.Scene {
     _doGiveUp(objs) {
         objs.forEach(o => o.destroy());
         this._gameOver();
+    }
+
+    // ── Streak system ─────────────────────────────────────────────────────
+    _onDodge(baseScore) {
+        this.streakCount++;
+        let pts = baseScore;
+        if (this.streakCount >= 3) {
+            pts = Math.ceil(baseScore * 1.5);
+            this._showStreakBanner(pts);
+            this.streakCount = 0;
+        }
+        this._addScore(pts);
+    }
+
+    _showStreakBanner(pts) {
+        const objs = [];
+        objs.push(this.add.graphics().setScrollFactor(0).setDepth(78)
+            .fillStyle(0x002244, 0.75)
+            .fillRoundedRect(80, 136, 240, 48, 8));
+        objs.push(this.add.text(200, 152, `✦  STREAK  ×1.5  +${pts}`, {
+            fontSize: '18px', color: '#44ddff',
+            fontFamily: 'monospace', fontStyle: 'bold',
+            stroke: '#001122', strokeThickness: 3,
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(79));
+        objs.push(this.add.text(200, 174, '3 dodges in a row!', {
+            fontSize: '10px', color: '#226688', fontFamily: 'monospace',
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(79));
+        objs.forEach(o => o.setAlpha(0));
+        this.tweens.add({
+            targets: objs, alpha: 1, duration: 200,
+            onComplete: () => this.tweens.add({
+                targets: objs, alpha: 0, duration: 600, delay: 900,
+                onComplete: () => objs.forEach(o => o.destroy()),
+            }),
+        });
+    }
+
+    // ── Boss warning ───────────────────────────────────────────────────────
+    _showBossWarning() {
+        const objs = [];
+        const bg = this.add.graphics().setScrollFactor(0).setDepth(75);
+        bg.fillStyle(0x330000, 0.82);
+        bg.fillRoundedRect(40, 128, 320, 58, 8);
+        bg.lineStyle(1.5, 0x880000, 0.9);
+        bg.strokeRoundedRect(40, 128, 320, 58, 8);
+        objs.push(bg);
+        objs.push(this.add.text(200, 147, '⚠  BOSS APPROACHING  ⚠', {
+            fontSize: '17px', color: '#ff4422',
+            fontFamily: 'monospace', fontStyle: 'bold',
+            stroke: '#000', strokeThickness: 3,
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(76));
+        objs.push(this.add.text(200, 170, 'the purple titan is near — stay sharp', {
+            fontSize: '10px', color: '#882222', fontFamily: 'monospace',
+        }).setScrollFactor(0).setOrigin(0.5).setDepth(76));
+        objs.forEach(o => o.setAlpha(0));
+        this.tweens.add({
+            targets: objs, alpha: 1, duration: 350,
+            onComplete: () => this.tweens.add({
+                targets: objs, alpha: 0, duration: 800, delay: 2200,
+                onComplete: () => objs.forEach(o => o.destroy()),
+            }),
+        });
+    }
+
+    // ── Daily 3-run reward ────────────────────────────────────────────────
+    _checkDailyRunReward() {
+        try {
+            const today = new Date().toISOString().slice(0, 10);
+            if (localStorage.getItem('runningboy_daily_reward') === today) return false;
+            let rd = {};
+            try { rd = JSON.parse(localStorage.getItem('runningboy_daily_runs') || '{}'); } catch {}
+            const count = (rd.date === today ? (rd.count || 0) : 0) + 1;
+            localStorage.setItem('runningboy_daily_runs', JSON.stringify({ date: today, count }));
+            if (count >= 3) {
+                const cur = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
+                localStorage.setItem('runningboy_skubu', cur + 1);
+                localStorage.setItem('runningboy_daily_reward', today);
+                return true;
+            }
+        } catch (_) {}
+        return false;
     }
 
     _saveScore(score) {
@@ -741,6 +850,7 @@ class GameScene extends Phaser.Scene {
 
     _gameOver() {
         this._saveScore(this.score);
+        const dailyRewardGiven = this._checkDailyRunReward();
         // Mint any skubu earned this session on-chain (fire-and-forget)
         if (this.pendingSkubu > 0 && window.SkubuChain) {
             window.SkubuChain.mintSkubu(this.pendingSkubu, this.sessionId);
@@ -767,6 +877,14 @@ class GameScene extends Phaser.Scene {
         this.add.text(200, 172, `Score: ${this.score}`, {
             fontSize: '22px', color: '#ffffff', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+
+        if (dailyRewardGiven) {
+            this.add.text(200, 215, '✦ DAILY REWARD: +1 SKUBU  (3 runs today)', {
+                fontSize: '11px', color: '#44cc88',
+                fontFamily: 'monospace', fontStyle: 'bold',
+                stroke: '#001a08', strokeThickness: 2,
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+        }
 
         this.add.text(200, 240, 'Click or SPACE to restart', {
             fontSize: '12px', color: '#888888', fontFamily: 'monospace',
@@ -865,7 +983,7 @@ class GameScene extends Phaser.Scene {
                 }
                 if (pt.dodgeWindow && !inDanger) {
                     if (pt.dodgedInWindow) {
-                        this._addScore(1);
+                        this._onDodge(1);
                     }
                     pt.dodgeWindow = false;
                 }
@@ -943,6 +1061,25 @@ class GameScene extends Phaser.Scene {
         const div = this.add.graphics().setScrollFactor(0).setDepth(101);
         div.lineStyle(1, 0x334455, 0.6);
         div.lineBetween(60, 172, 340, 172);
+
+        // Free daily bypass
+        const _today2 = new Date().toISOString().slice(0, 10);
+        const _bypassUsed2 = localStorage.getItem('runningboy_free_bypass') === _today2;
+        if (!_bypassUsed2) {
+            this.add.text(200, 190, '[ FREE BYPASS — 1 available today ]', {
+                fontSize: '12px', color: '#44cc88',
+                fontFamily: 'monospace', fontStyle: 'bold',
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
+              .setInteractive({ useHandCursor: true })
+              .on('pointerover', function() { this.setColor('#66ffaa'); })
+              .on('pointerout',  function() { this.setColor('#44cc88'); })
+              .on('pointerdown', () => {
+                  localStorage.setItem('runningboy_free_bypass', _today2);
+                  localStorage.setItem('runningboy_losses', 0);
+                  localStorage.removeItem('runningboy_losses_reset');
+                  this.scene.restart();
+              });
+        }
 
         this.add.text(200, 195, 'Spend 1 ✦ skubu to play now?', {
             fontSize: '13px', color: '#ccaa44', fontFamily: 'monospace',
@@ -1028,13 +1165,36 @@ class GameScene extends Phaser.Scene {
         div.lineStyle(1, 0x334455, 0.6);
         div.lineBetween(60, 238, 340, 238);
 
-        this.add.text(200, 258, 'Earn ✦ skubu while playing — spending one', {
-            fontSize: '10px', color: '#445566', fontFamily: 'monospace',
-        }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+        // Free daily bypass
+        const _today = new Date().toISOString().slice(0, 10);
+        const _bypassUsed = localStorage.getItem('runningboy_free_bypass') === _today;
+        if (!_bypassUsed) {
+            this.add.text(200, 258, '[ FREE BYPASS — 1 available today ]', {
+                fontSize: '12px', color: '#44cc88',
+                fontFamily: 'monospace', fontStyle: 'bold',
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
+              .setInteractive({ useHandCursor: true })
+              .on('pointerover', function() { this.setColor('#66ffaa'); })
+              .on('pointerout',  function() { this.setColor('#44cc88'); })
+              .on('pointerdown', () => {
+                  localStorage.setItem('runningboy_free_bypass', _today);
+                  localStorage.setItem('runningboy_losses', 0);
+                  localStorage.removeItem('runningboy_losses_reset');
+                  this.scene.restart();
+              });
 
-        this.add.text(200, 272, 'resets the limit, or buy more in the market.', {
-            fontSize: '10px', color: '#445566', fontFamily: 'monospace',
-        }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+            this.add.text(200, 276, 'resets once per day — no skubu needed', {
+                fontSize: '10px', color: '#336644', fontFamily: 'monospace',
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+        } else {
+            this.add.text(200, 258, 'Earn ✦ skubu while playing — spending one', {
+                fontSize: '10px', color: '#445566', fontFamily: 'monospace',
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+
+            this.add.text(200, 272, 'resets the limit, or buy more in the market.', {
+                fontSize: '10px', color: '#445566', fontFamily: 'monospace',
+            }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
+        }
 
         this.add.text(200, 316, '[ MARKET ]', {
             fontSize: '14px', color: '#44aa66', fontFamily: 'monospace',
@@ -1272,7 +1432,7 @@ class GameScene extends Phaser.Scene {
         }
         if (this.dodgeWindow && !inDangerZone) {
             if (this.dodgedInWindow) {
-                this._addScore(2);
+                this._onDodge(2);
             }
             this.dodgeWindow    = false;
             this.dodgedInWindow = false;
