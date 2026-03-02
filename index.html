@@ -9,6 +9,8 @@
 <body>
 <!-- Config must load first (defines window.THIRDWEB_CLIENT_ID etc.) -->
 <script src="scripts/config.js"></script>
+<!-- Paystack Inline JS -->
+<script src="https://js.paystack.co/v1/inline.js"></script>
 <script type="module" src="scripts/auth.js"></script>
 <script type="module" src="scripts/skubu-chain.js"></script>
 
@@ -209,9 +211,8 @@
             <div class="market-balance">
                 Your balance: <span id="market-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span>
             </div>
-            <div class="market-demo-badge">DEMO — purchases are free</div>
             <div class="market-grid" id="market-grid"></div>
-            <div class="market-footer">Real payments coming soon &nbsp;&#183;&nbsp; earn skubu by playing</div>
+            <div class="market-footer">earn skubu by playing &nbsp;&#183;&nbsp; spend it in-game</div>
         </div>
 
         <!-- Wallet panel -->
@@ -219,26 +220,39 @@
             <div id="wallet-tab-address" class="wallet-tab-addr" style="display:none"></div>
             <div class="wallet-balance-row">Your balance: <span id="wallet-balance">0</span> <span class="market-bal-unit">&#10022; skubu</span></div>
 
+            <!-- Send section -->
             <div class="wallet-section">
                 <div class="wallet-section-title">Send Skubu</div>
+                <input id="send-addr-input" type="text" placeholder="Recipient 0x address…"
+                    autocomplete="off" spellcheck="false" class="wallet-addr-input"/>
                 <div class="amt-pills" id="send-pills">
                     <button class="amt-pill" data-amt="1"  onclick="selectPill(this,'send')">1</button>
                     <button class="amt-pill" data-amt="3"  onclick="selectPill(this,'send')">3</button>
                     <button class="amt-pill" data-amt="5"  onclick="selectPill(this,'send')">5</button>
                     <button class="amt-pill" data-amt="10" onclick="selectPill(this,'send')">10</button>
                 </div>
-                <button class="wallet-btn" onclick="generateGiftLink()">&#10022; GENERATE GIFT LINK</button>
+                <button class="wallet-btn" id="send-onchain-btn" onclick="sendOnChain()">&#10022; SEND ON-CHAIN</button>
                 <div id="send-error" class="wallet-error"></div>
-                <div class="wallet-link-box" id="send-link-box">
+                <div class="wallet-link-box" id="send-link-box" style="display:none">
                     <div class="link-msg"></div>
-                    <input type="text" readonly/>
-                    <div class="wallet-link-actions">
-                        <button class="wallet-copy-btn" onclick="copyLinkFromBox('send-link-box', this)">&#128203; COPY</button>
-                        <button class="wallet-share-btn" onclick="shareLinkFromBox('send-link-box', 'Skubu Gift')">&#8679; SHARE</button>
-                    </div>
                 </div>
             </div>
 
+            <!-- Receive section -->
+            <div class="wallet-section">
+                <div class="wallet-section-title">Receive Skubu</div>
+                <div class="wallet-receive-hint">Share your address to receive SKUBU from anyone.</div>
+                <div class="wallet-link-box" id="receive-addr-box" style="display:none">
+                    <div class="link-msg">Your wallet address:</div>
+                    <input type="text" readonly id="receive-addr-input"/>
+                    <div class="wallet-link-actions">
+                        <button class="wallet-copy-btn" onclick="copyLinkFromBox('receive-addr-box', this)">&#128203; COPY</button>
+                    </div>
+                </div>
+                <div id="receive-connect-hint" class="wallet-error" style="display:none">Connect wallet to see your address.</div>
+            </div>
+
+            <!-- Request section -->
             <div class="wallet-section">
                 <div class="wallet-section-title">Request Skubu</div>
                 <div class="amt-pills" id="req-pills">
@@ -248,7 +262,7 @@
                     <button class="amt-pill" data-amt="10" onclick="selectPill(this,'req')">10</button>
                 </div>
                 <button class="wallet-btn" onclick="generateRequestLink()">&#9993; GENERATE REQUEST LINK</button>
-                <div class="wallet-link-box" id="req-link-box">
+                <div class="wallet-link-box" id="req-link-box" style="display:none">
                     <div class="link-msg"></div>
                     <input type="text" readonly/>
                     <div class="wallet-link-actions">
@@ -258,21 +272,14 @@
                 </div>
             </div>
 
-            <div class="wallet-request-prompt" id="wallet-request-prompt">
+            <!-- Incoming request prompt (shown when opening a ?skb=request link) -->
+            <div class="wallet-request-prompt" id="wallet-request-prompt" style="display:none">
                 <div class="wallet-section-title">Incoming Request</div>
                 <div class="wrp-title" id="wrp-title"></div>
                 <div class="wrp-balance" id="wrp-balance"></div>
                 <div class="wrp-actions">
-                    <button class="wallet-btn wrp-send-btn" id="wrp-send-btn" onclick="fulfillRequest()">SEND SKUBU</button>
+                    <button class="wallet-btn wrp-send-btn" id="wrp-send-btn">SEND SKUBU</button>
                     <button class="wallet-btn wrp-decline-btn" onclick="document.getElementById('wallet-request-prompt').style.display='none'">DECLINE</button>
-                </div>
-                <div class="wallet-link-box" id="fulfill-link-box">
-                    <div class="link-msg"></div>
-                    <input type="text" readonly/>
-                    <div class="wallet-link-actions">
-                        <button class="wallet-copy-btn" onclick="copyLinkFromBox('fulfill-link-box', this)">&#128203; COPY</button>
-                        <button class="wallet-share-btn" onclick="shareLinkFromBox('fulfill-link-box', 'Skubu Gift')">&#8679; SHARE</button>
-                    </div>
                 </div>
             </div>
         </div>

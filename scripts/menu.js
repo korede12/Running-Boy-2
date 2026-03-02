@@ -56,7 +56,7 @@ function closeModal(id) {
 
 // ── Click sounds on all interactive elements ───────────────────────────────
 document.addEventListener('click', e => {
-    if (e.target.closest('.menu-btn, .modal-close, #name-save-btn, #hs-clear-btn, .market-buy-btn, .wallet-btn, .wallet-copy-btn, .wallet-share-btn, .amt-pill, .wrp-send-btn, .wrp-decline-btn')) {
+    if (e.target.closest('.menu-btn, .modal-close, #name-save-btn, #hs-clear-btn, .market-buy-btn, .wallet-btn, .wallet-copy-btn, .wallet-share-btn, .amt-pill, .wrp-send-btn, .wrp-decline-btn, #send-onchain-btn')) {
         _playUiSound('single-click.mp3');
     }
 });
@@ -212,22 +212,22 @@ function _updateWalletDisplay(account) {
 const MARKET_PACKAGES = [
     {
         id: 'starter', label: 'Starter', gems: '✦',
-        amount: 3,  price: '$0.99',
+        amount: 3,  price: '₦1,500',
         accent: '#3366aa',
     },
     {
         id: 'standard', label: 'Standard', gems: '✦✦',
-        amount: 10, price: '$2.49',
+        amount: 10, price: '₦4,000',
         accent: '#336644',
     },
     {
         id: 'mega', label: 'Mega', gems: '✦✦✦',
-        amount: 25, price: '$4.99',
+        amount: 25, price: '₦7,500',
         accent: '#885522', best: 'POPULAR',
     },
     {
         id: 'ultimate', label: 'Ultimate', gems: '✦✦✦✦',
-        amount: 60, price: '$9.99',
+        amount: 60, price: '₦15,000',
         accent: '#664488', best: 'BEST VALUE',
     },
 ];
@@ -244,22 +244,89 @@ function renderMarket() {
             <div class="market-card-unit">SKUBU</div>
             <div class="market-card-price">${pkg.price}</div>
             <button class="market-buy-btn" id="buy-${pkg.id}"
-                onclick="buyPackage('${pkg.id}', ${pkg.amount})">BUY</button>
+                onclick="paystackCheckout('${pkg.id}')">BUY</button>
         </div>
     `).join('');
 }
 
-function buyPackage(id, amount) {
-    const btn = document.getElementById('buy-' + id);
-    if (!btn || btn.classList.contains('bought')) return;
-    btn.classList.add('bought'); // prevent double-tap during splash
+// Paystack package prices in kobo (₦)
+const PAYSTACK_PRICES = {
+    starter:  150_000,   // ₦1,500
+    standard: 400_000,   // ₦4,000
+    mega:     750_000,   // ₦7,500
+    ultimate: 1_500_000, // ₦15,000
+};
 
-    const newTotal = getSkubu() + amount;
-    setSkubu(newTotal);
-
-    showSkubuSplash(amount, () => {
+function paystackCheckout(packageId) {
+    const auth = window.SkubuAuth;
+    if (!auth || !auth.isConnected()) {
         closeModal('market-modal');
+        openModal('auth-modal');
+        return;
+    }
+
+    if (!window.PaystackPop) {
+        showToast('Payment module loading — try again in a moment.');
+        return;
+    }
+
+    const btn = document.getElementById('buy-' + packageId);
+    if (btn) { btn.disabled = true; }
+
+    const walletAddress = auth.getAccount().address;
+    const priceKobo     = PAYSTACK_PRICES[packageId];
+    if (!priceKobo) {
+        showToast('Unknown package');
+        if (btn) { btn.disabled = false; }
+        return;
+    }
+
+    // Use wallet address as email-like identifier (Paystack requires email)
+    const email = walletAddress.toLowerCase() + '@wallet.skubu';
+
+    const handler = window.PaystackPop.setup({
+        key:       window.PAYSTACK_PUBLIC_KEY,
+        email,
+        amount:    priceKobo,
+        currency:  'NGN',
+        ref:       'skubu_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        metadata:  { walletAddress, packageId },
+
+        callback(response) {
+            if (btn) { btn.textContent = 'Verifying…'; }
+            _verifyPaystackPayment(response.reference, walletAddress, packageId, btn);
+        },
+        onClose() {
+            if (btn) { btn.disabled = false; btn.textContent = 'BUY'; }
+        },
     });
+    handler.openIframe();
+}
+
+async function _verifyPaystackPayment(reference, walletAddress, packageId, btn) {
+    try {
+        const res = await fetch(`${window.SUPABASE_URL}/functions/v1/verify-paystack`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${window.SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({ reference, walletAddress, packageId }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showSkubuSplash(data.amount, () => {
+                closeModal('market-modal');
+                refreshChainBalance();
+            });
+        } else {
+            showToast('Mint failed: ' + (data.error || 'Unknown error'));
+            if (btn) { btn.disabled = false; btn.textContent = 'BUY'; }
+        }
+    } catch (err) {
+        showToast('Verification error — contact support with your ref: ' + reference);
+        if (btn) { btn.disabled = false; btn.textContent = 'BUY'; }
+    }
 }
 
 function showSkubuSplash(amount, onDone, fromName) {
@@ -308,6 +375,7 @@ function showSkubuSplash(amount, onDone, fromName) {
     }
 })();
 
+
 // ── Market tab switching ───────────────────────────────────────────────────
 function switchMarketTab(name) {
     _playUiSound('category-selection-sound.mp3', 0.3);
@@ -319,22 +387,11 @@ function switchMarketTab(name) {
     _updateWalletTabInfo();
 }
 
-// ── Wallet storage helpers ─────────────────────────────────────────────────
-const LS_USED_TOKENS = 'runningboy_used_tokens';
-
-function makeToken() { return Math.random().toString(36).slice(2, 10); }
+// ── URL helpers (request links only — no embedded funds) ──────────────────
 function encodeSkb(p) { return btoa(JSON.stringify(p)); }
 function decodeSkb(s) { try { return JSON.parse(atob(s)); } catch { return null; } }
 function buildSkbUrl(payload) {
     return location.origin + location.pathname + '?skb=' + encodeSkb(payload);
-}
-function isTokenUsed(id) {
-    return (JSON.parse(localStorage.getItem(LS_USED_TOKENS) || '[]')).includes(id);
-}
-function markTokenUsed(id) {
-    const used = JSON.parse(localStorage.getItem(LS_USED_TOKENS) || '[]');
-    used.push(id);
-    localStorage.setItem(LS_USED_TOKENS, JSON.stringify(used.slice(-200)));
 }
 
 // ── Wallet UI helpers ──────────────────────────────────────────────────────
@@ -346,13 +403,22 @@ function refreshWalletBalance() {
 function _updateWalletTabInfo() {
     const auth    = window.SkubuAuth;
     const addrEl  = document.getElementById('wallet-tab-address');
-    if (!addrEl) return;
-    if (auth && auth.isConnected()) {
-        const addr = auth.getAccount().address;
-        addrEl.textContent = addr.slice(0, 10) + '…' + addr.slice(-8);
-        addrEl.style.display = 'block';
-    } else {
-        addrEl.style.display = 'none';
+    const recvBox = document.getElementById('receive-addr-box');
+    const recvIn  = document.getElementById('receive-addr-input');
+    const recvHint= document.getElementById('receive-connect-hint');
+    if (addrEl) {
+        if (auth && auth.isConnected()) {
+            const addr = auth.getAccount().address;
+            addrEl.textContent = addr.slice(0, 10) + '…' + addr.slice(-8);
+            addrEl.style.display = 'block';
+            if (recvIn)  recvIn.value = addr;
+            if (recvBox) recvBox.style.display = 'block';
+            if (recvHint) recvHint.style.display = 'none';
+        } else {
+            addrEl.style.display = 'none';
+            if (recvBox)  recvBox.style.display  = 'none';
+            if (recvHint) recvHint.style.display = 'block';
+        }
     }
 }
 
@@ -409,89 +475,130 @@ function showToast(msg) {
     t._timeout = setTimeout(() => { t.classList.remove('visible'); }, 2200);
 }
 
-// ── Gift & Request generators ──────────────────────────────────────────────
-function generateGiftLink() {
-    const amt   = getSelectedAmt('send');
+// ── On-chain Send ──────────────────────────────────────────────────────────
+async function sendOnChain() {
     const errEl = document.getElementById('send-error');
+    errEl.style.display = 'none';
+
+    const auth = window.SkubuAuth;
+    if (!auth || !auth.isConnected()) {
+        errEl.textContent = 'Connect wallet first.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const addrInput = document.getElementById('send-addr-input');
+    const toAddress = addrInput ? addrInput.value.trim() : '';
+    if (!/^0x[0-9a-fA-F]{40}$/.test(toAddress)) {
+        errEl.textContent = 'Enter a valid 0x wallet address.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    const amt = getSelectedAmt('send');
     if (!amt) {
         errEl.textContent = 'Select an amount first.';
         errEl.style.display = 'block';
         return;
     }
-    if (getSkubu() < amt) {
-        errEl.textContent = 'Not enough skubu!';
+
+    const chain   = window.SkubuChain;
+    const balance = await chain.getBalance(auth.getAccount().address);
+    if (balance < amt) {
+        errEl.textContent = 'Insufficient balance (' + balance + ' SKUBU).';
         errEl.style.display = 'block';
         return;
     }
-    errEl.style.display = 'none';
-    setSkubu(getSkubu() - amt);
-    refreshWalletBalance();
-    const url = buildSkbUrl({ t: 'gift', from: getName() || 'FRIEND', amt, id: makeToken(), v: 1 });
-    populateLinkBox('send-link-box', url, '✓ ' + amt + ' skubu sent! Balance: ' + getSkubu() + ' ✦');
+
+    const sendBtn = document.getElementById('send-onchain-btn');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+
+    try {
+        const { txHash } = await chain.transferSkubu(toAddress, amt);
+        const scanUrl = `https://sepolia.basescan.org/tx/${txHash}`;
+        populateLinkBox('send-link-box', scanUrl,
+            '✓ Sent ' + amt + ' SKUBU on-chain!');
+        document.querySelector('#send-link-box input').readOnly = false;
+        // Replace with a clickable link approach via the msg
+        document.querySelector('#send-link-box .link-msg').innerHTML =
+            '✓ Sent ' + amt + ' SKUBU — <a href="' + escHtml(scanUrl) + '" target="_blank" rel="noopener">view tx ↗</a>';
+        document.getElementById('send-link-box').style.display = 'block';
+        refreshChainBalance();
+    } catch (err) {
+        errEl.textContent = 'Transfer failed: ' + (err.message || err);
+        errEl.style.display = 'block';
+    } finally {
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '✦ SEND ON-CHAIN'; }
+    }
 }
 
+// ── Request link generator (request-only, no embedded funds) ──────────────
 function generateRequestLink() {
     const amt = getSelectedAmt('req');
     if (!amt) return;
-    const url = buildSkbUrl({ t: 'request', from: getName() || 'FRIEND', amt, id: makeToken(), v: 1 });
+    const auth = window.SkubuAuth;
+    const addr = (auth && auth.isConnected()) ? auth.getAccount().address : '';
+    const url = buildSkbUrl({ t: 'request', from: getName() || 'FRIEND', amt, addr, v: 2 });
     populateLinkBox('req-link-box', url, 'Share this with your friend:');
 }
 
-// ── Incoming request handling ──────────────────────────────────────────────
-let _pendingRequest = null;
-
-function handleIncomingGift(data) {
-    if (isTokenUsed(data.id)) {
-        showToast('Already claimed!');
-        return;
-    }
-    markTokenUsed(data.id);
-    setSkubu(getSkubu() + data.amt);
-    showSkubuSplash(data.amt, null, data.from);
-}
-
-function handleIncomingRequest(data) {
-    _pendingRequest = data;
-    openModal('market-modal');
-    switchMarketTab('wallet');
-
-    document.getElementById('wrp-title').textContent =
-        '✦ ' + data.from + ' is requesting ' + data.amt + ' skubu from you';
-    document.getElementById('wrp-balance').textContent =
-        'Your balance: ' + getSkubu() + ' ✦';
-
-    const sendBtn = document.getElementById('wrp-send-btn');
-    sendBtn.textContent = 'SEND ' + data.amt + ' SKUBU';
-    sendBtn.disabled    = getSkubu() < data.amt;
-
-    document.getElementById('fulfill-link-box').style.display = 'none';
-    document.getElementById('wallet-request-prompt').style.display = 'block';
-}
-
-function fulfillRequest() {
-    if (!_pendingRequest) return;
-    const data = _pendingRequest;
-    if (getSkubu() < data.amt) return;
-
-    setSkubu(getSkubu() - data.amt);
-    refreshWalletBalance();
-
-    const url = buildSkbUrl({ t: 'gift', from: getName() || 'FRIEND', amt: data.amt, id: makeToken(), v: 1 });
-    populateLinkBox('fulfill-link-box', url, 'Send this back to ' + data.from + ':');
-    document.getElementById('wrp-send-btn').disabled = true;
-}
-
-// ── On-load ?skb= handler ──────────────────────────────────────────────────
+// ── Incoming ?skb= request handler ────────────────────────────────────────
 (function handleIncomingSkb() {
     const params = new URLSearchParams(location.search);
     const raw    = params.get('skb');
     if (!raw) return;
     history.replaceState(null, '', location.pathname);
     const data = decodeSkb(raw);
-    if (!data || data.v !== 1 || !data.t || !data.amt) return;
-    if (data.t === 'gift')    handleIncomingGift(data);
-    if (data.t === 'request') handleIncomingRequest(data);
+    if (!data || !data.t || !data.amt) return;
+    if (data.t === 'request') _handleIncomingRequest(data);
 })();
+
+function _handleIncomingRequest(data) {
+    openModal('market-modal');
+    switchMarketTab('wallet');
+
+    const titleEl = document.getElementById('wrp-title');
+    const balEl   = document.getElementById('wrp-balance');
+    const sendBtn = document.getElementById('wrp-send-btn');
+
+    if (titleEl) titleEl.textContent = '✦ ' + data.from + ' wants ' + data.amt + ' SKUBU';
+    if (balEl)   balEl.textContent   = 'This will send ' + data.amt + ' SKUBU on-chain to ' + (data.addr || 'unknown address');
+
+    if (sendBtn) {
+        sendBtn.textContent = 'SEND ' + data.amt + ' SKUBU';
+        sendBtn.onclick = () => {
+            if (data.addr) _fulfillRequestOnChain(data.addr, data.amt);
+        };
+    }
+
+    document.getElementById('wallet-request-prompt').style.display = 'block';
+}
+
+async function _fulfillRequestOnChain(toAddress, amt) {
+    const errEl = document.getElementById('send-error');
+    errEl.style.display = 'none';
+
+    const auth = window.SkubuAuth;
+    if (!auth || !auth.isConnected()) {
+        if (errEl) { errEl.textContent = 'Connect wallet first.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const sendBtn = document.getElementById('wrp-send-btn');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+
+    try {
+        const { txHash } = await window.SkubuChain.transferSkubu(toAddress, amt);
+        const scanUrl = `https://sepolia.basescan.org/tx/${txHash}`;
+        document.getElementById('wrp-title').innerHTML =
+            '✓ Sent ' + amt + ' SKUBU — <a href="' + escHtml(scanUrl) + '" target="_blank" rel="noopener">view tx ↗</a>';
+        if (sendBtn) sendBtn.style.display = 'none';
+        refreshChainBalance();
+    } catch (err) {
+        if (errEl) { errEl.textContent = 'Transfer failed: ' + (err.message || err); errEl.style.display = 'block'; }
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'SEND ' + amt + ' SKUBU'; }
+    }
+}
 
 // ── Auth Modal helpers ─────────────────────────────────────────────────────
 let _authPendingEmail = '';

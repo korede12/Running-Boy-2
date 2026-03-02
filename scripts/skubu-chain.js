@@ -1,8 +1,9 @@
 // ── On-Chain Skubu (ERC-20 on Base Sepolia) ───────────────────────────────
 // Exposes window.SkubuChain for global scripts to use.
 
-import { createThirdwebClient, getContract, readContract } from "https://esm.sh/thirdweb@5";
+import { createThirdwebClient, getContract, readContract, sendTransaction } from "https://esm.sh/thirdweb@5";
 import { baseSepolia }  from "https://esm.sh/thirdweb@5/chains";
+import { transfer }     from "https://esm.sh/thirdweb@5/extensions/erc20";
 
 // ── Wait for config ─────────────────────────────────────────────────────────
 function waitForConfig() {
@@ -82,6 +83,29 @@ const SkubuChain = {
             console.warn('[SkubuChain] getBalance failed:', err);
             return 0;
         }
+    },
+
+    /**
+     * Transfer SKUBU to another address on-chain.
+     * Requires the user to be connected via SkubuAuth.
+     *
+     * @param {string} toAddress - Recipient 0x address
+     * @param {number} amount    - Whole token count to send
+     * @returns {{ txHash: string }}
+     */
+    async transferSkubu(toAddress, amount) {
+        const auth = window.SkubuAuth;
+        if (!auth || !auth.isConnected()) {
+            throw new Error('Wallet not connected');
+        }
+        const account  = auth.getAccount();
+        const contract = _getContract();
+        if (!contract) throw new Error('Contract not configured');
+
+        const tx      = transfer({ contract, to: toAddress, amount: amount.toString() });
+        const receipt = await sendTransaction({ transaction: tx, account });
+        this.invalidateCache();
+        return { txHash: receipt.transactionHash };
     },
 
     /** Invalidate the balance cache (e.g. after a mint). */
