@@ -248,6 +248,9 @@ body {
 .hs-rank.bronze { color: #cc7744; }
 .hs-name  { flex: 1; color: #88bbff; }
 .hs-score { color: #ffee88; font-weight: bold; letter-spacing: 1px; }
+.hs-row.hs-me { background: rgba(68,136,204,0.1); border-radius: 4px; }
+.hs-row.hs-me .hs-name { color: #aaddff; }
+.hs-row.hs-my-rank { margin-top: 8px; border-top: 1px dashed #0a1a30; padding-top: 8px; }
 
 #hs-clear-btn {
     margin-top: 16px;
@@ -1025,6 +1028,18 @@ body {
 }
 .lb-row:last-child { border-bottom: none; }
 .lb-row.lb-top .lb-name { color: #cce8ff; }
+.lb-row.lb-me { background: rgba(68,136,204,0.08); border-radius: 4px; }
+.lb-row.lb-me .lb-name { color: #66aaee; }
+.lb-row.lb-my-rank { margin-top: 6px; border-top: 1px dashed #0a1a30; padding-top: 8px; }
+.lb-period {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: #2a5a8a;
+    border: 1px solid #0a2040;
+    border-radius: 3px;
+    padding: 2px 5px;
+    margin-right: 4px;
+}
 .lb-rank {
     width: 30px;
     font-size: 14px;

@@ -866,6 +866,7 @@ class GameScene extends Phaser.Scene {
                     p_wallet_address: address,
                     p_player_name:    playerName,
                     p_score:          score,
+                    p_period:         new Date().toISOString().slice(0, 10),
                 }),
             }).catch(() => {});  // fire-and-forget, never block gameplay
         }

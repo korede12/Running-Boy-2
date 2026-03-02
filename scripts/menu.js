@@ -78,46 +78,86 @@ document.addEventListener('keydown', e => {
 });
 
 // ── High Scores ────────────────────────────────────────────────────────────
+function _todayUTC() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+async function _fetchPeriodLeaderboard(period) {
+    if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) return null;
+    try {
+        const res = await fetch(window.SUPABASE_URL + '/rest/v1/rpc/get_leaderboard', {
+            method: 'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'apikey':        window.SUPABASE_ANON_KEY,
+                'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ p_period: period, p_limit: 10 }),
+        });
+        if (res.ok) return await res.json();
+    } catch (_) {}
+    return null;
+}
+
+async function _fetchPlayerRank(wallet, period) {
+    if (!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY || !wallet) return null;
+    try {
+        const res = await fetch(window.SUPABASE_URL + '/rest/v1/rpc/get_player_rank', {
+            method: 'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'apikey':        window.SUPABASE_ANON_KEY,
+                'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ p_wallet: wallet, p_period: period }),
+        });
+        if (res.ok) { const d = await res.json(); return d[0] || null; }
+    } catch (_) {}
+    return null;
+}
+
 async function renderHighScores() {
-    const list = document.getElementById('hs-list');
+    const list   = document.getElementById('hs-list');
     list.innerHTML = '<div class="hs-empty">Loading…</div>';
 
-    let scores = [];
+    const period = _todayUTC();
+    const wallet = window.SkubuAuth?.isConnected() ? window.SkubuAuth.getAccount().address.toLowerCase() : null;
 
-    if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
-        try {
-            const res = await fetch(
-                window.SUPABASE_URL + '/rest/v1/scores?select=player_name,score&order=score.desc&limit=10',
-                {
-                    headers: {
-                        'apikey':        window.SUPABASE_ANON_KEY,
-                        'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
-                    },
-                }
-            );
-            if (res.ok) {
-                const data = await res.json();
-                scores = data.map(r => ({ name: r.player_name, score: r.score }));
-            }
-        } catch (_) {}
-    }
+    const [rows, myRank] = await Promise.all([
+        _fetchPeriodLeaderboard(period),
+        _fetchPlayerRank(wallet, period),
+    ]);
 
-    // Fall back to localStorage if fetch failed
-    if (scores.length === 0) scores = getScores();
+    // Fall back to localStorage if Supabase unavailable
+    let scores = rows
+        ? rows.map(r => ({ name: r.player_name, score: r.score, wallet: r.wallet_address?.toLowerCase() }))
+        : getScores().map(s => ({ name: s.name, score: s.score }));
 
     if (scores.length === 0) {
-        list.innerHTML = '<div class="hs-empty">No scores yet.<br>Start a game to set your record!</div>';
+        list.innerHTML = '<div class="hs-empty">No scores today.<br>Start a game to set the record!</div>';
         return;
     }
 
-    const rankClasses = ['gold', 'silver', 'bronze'];
-    list.innerHTML = scores.slice(0, 10).map((entry, i) => `
-        <div class="hs-row">
-            <div class="hs-rank ${rankClasses[i] || ''}">#${i + 1}</div>
-            <div class="hs-name">${escHtml(entry.name || 'ANON')}</div>
+    const medals = ['&#127947;', '&#129352;', '&#129353;'];
+    const inTop  = wallet && scores.some(s => s.wallet === wallet);
+
+    list.innerHTML = scores.slice(0, 10).map((entry, i) => {
+        const isMe = wallet && entry.wallet === wallet;
+        return `<div class="hs-row${isMe ? ' hs-me' : ''}">
+            <div class="hs-rank">${medals[i] || '#' + (i + 1)}</div>
+            <div class="hs-name">${escHtml(entry.name || 'ANON')}${isMe ? ' ◀' : ''}</div>
             <div class="hs-score">${entry.score}</div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+
+    // Show player's rank below top 10 if they're not already visible
+    if (myRank && !inTop) {
+        list.innerHTML += `<div class="hs-row hs-me hs-my-rank">
+            <div class="hs-rank">#${myRank.rank}</div>
+            <div class="hs-name">YOU</div>
+            <div class="hs-score">${myRank.score}</div>
+        </div>`;
+    }
 }
 
 function escHtml(str) {
@@ -159,39 +199,60 @@ document.getElementById('name-input').addEventListener('keydown', e => {
 // ── Global Leaderboard ────────────────────────────────────────────────────
 async function fetchLeaderboard() {
     const list = document.getElementById('global-lb-list');
+    const myEl = document.getElementById('global-lb-my-rank');
     const btn  = document.getElementById('lb-refresh-btn');
     if (btn) btn.classList.add('spinning');
 
-    let scores = [];
-    if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
-        try {
-            const res = await fetch(
-                window.SUPABASE_URL + '/rest/v1/scores?select=player_name,score&order=score.desc&limit=10',
-                { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY } }
-            );
-            if (res.ok) scores = await res.json();
-        } catch (_) {}
-    }
+    const period = _todayUTC();
+    const wallet = window.SkubuAuth?.isConnected() ? window.SkubuAuth.getAccount().address.toLowerCase() : null;
+
+    const [rows, myRank] = await Promise.all([
+        _fetchPeriodLeaderboard(period),
+        _fetchPlayerRank(wallet, period),
+    ]);
 
     if (btn) btn.classList.remove('spinning');
 
-    if (!scores.length) {
-        list.innerHTML = '<div class="lb-empty">No scores yet — be the first!</div>';
+    if (!rows || !rows.length) {
+        list.innerHTML = '<div class="lb-empty">No scores today — be the first!</div>';
+        if (myEl) myEl.style.display = 'none';
         return;
     }
 
     const medals = ['&#127947;', '&#129352;', '&#129353;'];
-    list.innerHTML = scores.map((s, i) => `
-        <div class="lb-row ${i < 3 ? 'lb-top' : ''}">
+    const inTop  = wallet && rows.some(r => r.wallet_address?.toLowerCase() === wallet);
+
+    list.innerHTML = rows.map((s, i) => {
+        const isMe = wallet && s.wallet_address?.toLowerCase() === wallet;
+        return `<div class="lb-row ${i < 3 ? 'lb-top' : ''}${isMe ? ' lb-me' : ''}">
             <span class="lb-rank">${medals[i] || '#' + (i + 1)}</span>
-            <span class="lb-name">${escHtml(s.player_name || 'ANON')}</span>
+            <span class="lb-name">${escHtml(s.player_name || 'ANON')}${isMe ? ' ◀' : ''}</span>
             <span class="lb-score">${s.score}</span>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
+
+    // Show player's rank below the list if outside top 10
+    if (myEl) {
+        if (myRank && !inTop) {
+            myEl.innerHTML = `<div class="lb-row lb-me lb-my-rank">
+                <span class="lb-rank">#${myRank.rank}</span>
+                <span class="lb-name">YOUR BEST TODAY</span>
+                <span class="lb-score">${myRank.score}</span>
+            </div>`;
+            myEl.style.display = 'block';
+        } else {
+            myEl.style.display = 'none';
+        }
+    }
 }
 
-// Fetch on page load
-(function () { fetchLeaderboard(); })();
+// Fetch on page load + auto-refresh when tab becomes visible (e.g. returning from game)
+(function () {
+    fetchLeaderboard();
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) fetchLeaderboard();
+    });
+})();
 
 // ── Start Game ────────────────────────────────────────────────────────────
 function startGame() {
