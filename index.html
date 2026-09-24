@@ -102,6 +102,11 @@
             <span class="label">Start Game</span>
             <span class="arrow">›</span>
         </button>
+        <button class="menu-btn" onclick="openModal('char-modal')">
+            <span class="icon">&#9679;</span>
+            <span class="label">Choose Character</span>
+            <span class="arrow">›</span>
+        </button>
         <button class="menu-btn" onclick="openModal('hs-modal')">
             <span class="icon">&#9733;</span>
             <span class="label">High Scores</span>
@@ -155,6 +160,16 @@
         <button class="modal-close" onclick="closeModal('hs-modal')">&#10005;</button>
         <div class="modal-title">&#9733; High Scores</div>
         <div id="hs-list"></div>
+    </div>
+</div>
+
+<!-- ── Choose Character Modal ── -->
+<div class="modal-backdrop" id="char-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('char-modal')">&#10005;</button>
+        <div class="modal-title">&#9679; Choose Character</div>
+        <div id="char-grid"><!-- built from THEMES by menu.js --></div>
+        <div id="char-credit"></div>
     </div>
 </div>
 
@@ -349,6 +364,7 @@
     </div>
 </div>
 
+<script src="scripts/themes.js"></script>
 <script src="scripts/menu.js"></script>
 </body>
 </html>

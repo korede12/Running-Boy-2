@@ -811,3 +811,41 @@ document.addEventListener('keydown', e => {
         if (document.getElementById('auth-otp-input')   === document.activeElement) authVerifyOtp();
     }
 });
+
+// ── Character selection ───────────────────────────────────────────────────
+const LS_CHARACTER = 'runningboy_character';
+
+function getCharacter() {
+    try { return localStorage.getItem(LS_CHARACTER) || 'skeleton'; }
+    catch (_) { return 'skeleton'; }
+}
+
+function selectCharacter(id) {
+    try { localStorage.setItem(LS_CHARACTER, id); } catch (_) {}
+    refreshCharacterCards();
+}
+
+function refreshCharacterCards() {
+    const grid = document.getElementById('char-grid');
+    if (!grid || typeof THEMES === 'undefined') return;
+    const current = getCharacter();
+
+    grid.innerHTML = Object.entries(THEMES).map(([id, t]) => {
+        const sel = id === current ? ' selected' : '';
+        const obs = (typeof OBSTACLE_SETS !== 'undefined' && OBSTACLE_SETS[t.obstacles])
+            ? OBSTACLE_SETS[t.obstacles].length + ' hazards'
+            : 'classic';
+        return `<div class="char-card${sel}" data-char="${id}" onclick="selectCharacter('${id}')">` +
+               `<img src="${t.preview}" alt="${t.label}">` +
+               `<div class="char-name">${t.label}</div>` +
+               `<div class="char-obs">${obs}</div></div>`;
+    }).join('');
+
+    const credit = document.getElementById('char-credit');
+    if (credit) {
+        const c = (THEMES[current] || {}).credit;
+        credit.textContent = c ? 'Art: ' + c : '';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', refreshCharacterCards);

@@ -1097,3 +1097,60 @@ body {
     text-align: center;
     word-break: break-all;
 }
+
+/* ── Character picker ─────────────────────────────────────────────────── */
+#char-grid {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 6px 0 2px;
+}
+.char-card {
+    width: 116px;
+    padding: 12px 8px 10px;
+    border: 1px solid #3a3a4a;
+    border-radius: 10px;
+    background: #16161f;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color .15s, background .15s, transform .15s;
+}
+.char-card:hover { border-color: #ccaa44; transform: translateY(-2px); }
+.char-card.selected {
+    border-color: #ccaa44;
+    background: #211d14;
+    box-shadow: 0 0 14px rgba(204,170,68,.28);
+}
+.char-card img {
+    width: 100%;
+    height: 96px;
+    object-fit: contain;
+    display: block;
+    margin-bottom: 8px;
+    image-rendering: auto;
+}
+.char-name {
+    font-family: monospace;
+    font-size: 12px;
+    letter-spacing: .06em;
+    color: #ccc;
+}
+.char-card.selected .char-name { color: #ccaa44; }
+
+.char-obs {
+    font-family: monospace;
+    font-size: 9px;
+    letter-spacing: .05em;
+    color: #666;
+    margin-top: 3px;
+}
+.char-card.selected .char-obs { color: #8a7233; }
+#char-credit {
+    font-family: monospace;
+    font-size: 10px;
+    color: #555;
+    text-align: center;
+    margin-top: 10px;
+    min-height: 12px;
+}

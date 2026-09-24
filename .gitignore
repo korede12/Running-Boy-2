@@ -1,2 +1,6 @@
 .claude/
 # scripts/config.js is intentionally tracked — values are public client-side keys
+
+# Higgsfield CLI skills (tooling, not game code)
+.agents/
+skills-lock.json
