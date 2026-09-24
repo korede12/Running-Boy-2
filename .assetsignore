@@ -1,0 +1,13 @@
+# Not part of the playable site
+.git
+.wrangler
+.github
+.claude
+.agents
+skills-lock.json
+supabase
+wrangler.jsonc
+.assetsignore
+.gitignore
+scripts.js
+rig-test.html
