@@ -4,3 +4,6 @@
 # Higgsfield CLI skills (tooling, not game code)
 .agents/
 skills-lock.json
+
+# wrangler working directory (local state, not source)
+.wrangler/
