@@ -1,8 +1,8 @@
 // ── Phaser game entry point ───────────────────────────────────────────────
 new Phaser.Game({
     type:            Phaser.AUTO,
-    width:           400,
-    height:          400,
+    width:           GAME_W,
+    height:          GAME_H,
     backgroundColor: '#000000',
     pixelArt:        true,
     scene:           GameScene,

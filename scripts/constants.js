@@ -1,4 +1,9 @@
 // ── Game constants ────────────────────────────────────────────────────────
+// Canvas size. Every width-dependent value below and in the scene is
+// expressed relative to these, so changing GAME_W re-lays-out the game.
+const GAME_W       = 800;    // landscape; set to 400 for the original square
+const GAME_H       = 400;
+
 const GROUND_Y     = 330;
 const TOTAL_FRAMES = 25;
 const SCROLL_SPEED = 2;      // world scrolls left at this speed (px/frame)

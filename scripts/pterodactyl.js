@@ -2,7 +2,7 @@
 class Pterodactyl {
     static GLIDE_Y         = 155;
     static SWOOP_Y         = 268;
-    static SWOOP_TRIGGER_X = 280;
+    static get SWOOP_TRIGGER_X() { return GAME_W * 0.7; }
 
     constructor(scene, maxSwoopY = 268) {
         this.scene      = scene;
