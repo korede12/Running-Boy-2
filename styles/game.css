@@ -45,3 +45,30 @@ body { margin: 0; background: #000; overflow: hidden; }
     0%, 30%   { transform: rotate(0deg); }
     60%, 100% { transform: rotate(-90deg); }
 }
+
+/* ── Fit the canvas to the device viewport ────────────────────────────── */
+/* iOS Safari reports a page taller than the visible area, which pushed the
+   canvas partly off-screen. Pin the page to the real viewport and let
+   Phaser's FIT mode scale inside it. */
+html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    /* respect the notch / home indicator */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+    box-sizing: border-box;
+    -webkit-text-size-adjust: 100%;
+    touch-action: none;           /* no pinch-zoom or double-tap zoom */
+    overscroll-behavior: none;    /* no rubber-band scroll */
+}
+canvas {
+    display: block;
+    margin: 0 auto;
+    touch-action: none;
+}

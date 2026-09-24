@@ -7,7 +7,7 @@ class Pterodactyl {
     constructor(scene, maxSwoopY = 268) {
         this.scene      = scene;
         const camX      = scene.cameras.main.scrollX;
-        this.x          = camX + 520;   // world x
+        this.x          = camX + GAME_W + 120;   // world x, just off the right edge
         this.maxSwoopY  = maxSwoopY;    // how low this pterodactyl swoops (score-scaled)
         this.swoopY     = Pterodactyl.GLIDE_Y;
         this.swoopState = 'gliding';

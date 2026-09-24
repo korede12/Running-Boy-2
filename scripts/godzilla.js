@@ -70,7 +70,7 @@ class Godzilla {
             if (this.onRecycle) {
                 this.onRecycle();
             } else {
-                this.x = camX + 530;
+                this.x = camX + GAME_W + 130;   // just off the right edge
                 this.state = 'walking';
                 this.stateTime = Phaser.Math.Between(3000, 5000);
                 this.fireEmitter?.stop();

@@ -284,7 +284,7 @@ class GameScene extends Phaser.Scene {
             // ── Building bodies ──────────────────────────────────────────
             for (const b of BUILDINGS) {
                 const bx = off + b.x;
-                if (bx + b.width < camX - 10 || bx > camX + 410) continue;
+                if (bx + b.width < camX - 10 || bx > camX + GAME_W + 10) continue;
                 g.fillStyle(b.color, 1);
                 g.fillRect(bx, b.y, b.width, b.height);
             }
@@ -293,7 +293,7 @@ class GameScene extends Phaser.Scene {
             g.fillStyle(0x0a0a10, 1);
             for (const b of BUILDINGS) {
                 const bx = off + b.x;
-                if (bx + b.width < camX - 10 || bx > camX + 410) continue;
+                if (bx + b.width < camX - 10 || bx > camX + GAME_W + 10) continue;
                 g.fillTriangle(
                     bx - 2,             b.y,
                     bx + b.width / 2,   b.y - 24,
@@ -304,7 +304,7 @@ class GameScene extends Phaser.Scene {
             // ── Windows ──────────────────────────────────────────────────
             for (const b of BUILDINGS) {
                 const bx = off + b.x;
-                if (bx + b.width < camX - 10 || bx > camX + 410) continue;
+                if (bx + b.width < camX - 10 || bx > camX + GAME_W + 10) continue;
                 for (const w of b.windows) {
                     if (w.lit) {
                         g.fillStyle(0xffcc55, 0.12);
@@ -321,7 +321,7 @@ class GameScene extends Phaser.Scene {
             for (const lrx of LAMPPOST_RX) {
                 const topX = off + lrx + 12;
                 const topY = GROUND_Y - 82;
-                if (topX < camX - 60 || topX > camX + 460) continue;
+                if (topX < camX - 60 || topX > camX + GAME_W + 60) continue;
 
                 // Ambient halo
                 [45, 30, 15].forEach((r, i) => {
