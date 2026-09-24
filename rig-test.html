@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kolu Rig Test</title>
+<style>
+    body { margin:0; background:#12121a; color:#ccc; font-family:monospace; display:flex; gap:20px; padding:16px; }
+    #game { border:1px solid #333; }
+    #panel { width:300px; }
+    h3 { margin:0 0 10px; color:#ccaa44; font-size:13px; letter-spacing:.08em; }
+    .row { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:11px; }
+    .row label { width:96px; color:#888; }
+    .row input { flex:1; }
+    .row span { width:46px; text-align:right; color:#ccaa44; }
+    #dump { width:100%; height:150px; margin-top:12px; background:#0c0c12; color:#7c7; border:1px solid #333;
+            font-family:monospace; font-size:10px; padding:6px; box-sizing:border-box; }
+    button { margin-top:8px; padding:6px 12px; background:#2a2a38; color:#ccc; border:1px solid #444; cursor:pointer; }
+    .hint { font-size:10px; color:#666; margin-top:10px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="panel">
+    <h3>RIG CONTROLS</h3>
+    <div id="sliders"></div>
+    <button onclick="dumpCfg()">copy values</button>
+    <textarea id="dump" readonly></textarea>
+    <div class="hint">
+        Watch the planted foot. If it drags backwards faster than the ground,
+        lower cycleHz or raise groundSpeed until the foot sticks.
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+<script src="scripts/kolu-rig.js"></script>
+<script>
+const GROUND_Y = 330, BOY_X = 110;
+let rig, groundGfx, scrollX = 0;
+const tune = { groundSpeed: 2.0 };
+
+class TestScene extends Phaser.Scene {
+    preload() { KoluRig.preload(this); }
+
+    create() {
+        // sky
+        this.add.graphics().fillGradientStyle(0x1a2a44, 0x1a2a44, 0x3a5a7a, 0x3a5a7a, 1)
+            .fillRect(0, 0, 400, GROUND_Y);
+        groundGfx = this.add.graphics().setDepth(12);
+
+        rig = new KoluRig(this, BOY_X, GROUND_Y);
+        buildSliders();
+    }
+
+    update(time, delta) {
+        scrollX = (scrollX + tune.groundSpeed) % 40;
+        groundGfx.clear();
+        groundGfx.fillStyle(0x2a2a20, 1).fillRect(0, GROUND_Y, 400, 400 - GROUND_Y);
+        groundGfx.lineStyle(2, 0x55554a, 1);
+        // ground stripes — the reference for judging foot slide
+        for (let i = -1; i < 12; i++) {
+            const x = i * 40 - scrollX;
+            groundGfx.lineBetween(x, GROUND_Y, x, GROUND_Y + 14);
+        }
+        groundGfx.lineStyle(2, 0x77776a, 1).lineBetween(0, GROUND_Y, 400, GROUND_Y);
+        rig.update(delta);
+    }
+}
+
+new Phaser.Game({
+    type: Phaser.AUTO, width: 400, height: 400, parent: 'game',
+    backgroundColor: '#000', pixelArt: false, scene: TestScene,
+});
+
+// ── sliders ────────────────────────────────────────────────────────────────
+const SPEC = [
+    ['scale',      0.03, 0.20, 0.002],
+    ['cycleHz',     0.4,  5.0, 0.05],
+    ['legSwing',      0,   70, 1],
+    ['kneeBend',      0,  110, 1],
+    ['kneePhase',     0,    2, 0.01],
+    ['armSwing',      0,   80, 1],
+    ['bob',           0,   30, 0.5],
+    ['legUpLen',    300,  650, 5],
+    ['shoulderX',  -120,  160, 2],
+    ['shoulderY',  -500, -150, 5],
+];
+
+function buildSliders() {
+    const box = document.getElementById('sliders');
+    const add = (name, min, max, step, get, set) => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `<label>${name}</label><input type="range" min="${min}" max="${max}" step="${step}" value="${get()}"><span>${get()}</span>`;
+        const [inp, out] = [row.querySelector('input'), row.querySelector('span')];
+        inp.oninput = () => { const v = parseFloat(inp.value); set(v); out.textContent = v; };
+        box.appendChild(row);
+    };
+    SPEC.forEach(([k, min, max, step]) =>
+        add(k, min, max, step, () => rig.cfg[k], v => {
+            rig.cfg[k] = v;
+            if (k === 'scale') rig.applyScale();
+        }));
+    add('groundSpeed', 0, 8, 0.1, () => tune.groundSpeed, v => tune.groundSpeed = v);
+}
+
+function dumpCfg() {
+    const o = {};
+    SPEC.forEach(([k]) => o[k] = rig.cfg[k]);
+    o.groundSpeed = tune.groundSpeed;
+    document.getElementById('dump').value = JSON.stringify(o, null, 2);
+}
+</script>
+</body>
+</html>

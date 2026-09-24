@@ -2,13 +2,47 @@
 class GameScene extends Phaser.Scene {
 
     preload() {
-        for (let i = 0; i < TOTAL_FRAMES; i++) {
-            const p = String(i).padStart(2,'0');
-            this.load.image(`run_${p}`, `assets/skeleton-01_run_01start_${p}.png`);
+        // The selected character decides both its own frames and which
+        // obstacle set the run uses. Everything downstream reads the same
+        // run_NN / idle_NN keys, so it never has to care which theme is on.
+        const id = this._readCharacter();
+        this.theme       = (typeof getTheme === 'function') ? getTheme(id) : null;
+        this.useClassic  = !this.theme || this.theme.obstacles === 'classic';
+
+        const f = this.theme && this.theme.frames;
+        if (f && f.type === 'pair') {
+            // two-frame walk packs (Kenney and similar)
+            this.load.image('run_00',  f.run.a);
+            this.load.image('run_01',  f.run.b);
+            this.load.image('idle_00', f.idle.a);
+            this.load.image('idle_01', f.idle.b);
+            this.frameCounts = { run: 2, runFps: f.run.fps, idle: 2, idleFps: f.idle.fps };
+        } else {
+            const run  = f ? f.run  : { path: i => `assets/skeleton-01_run_01start_${i}.png`, count: TOTAL_FRAMES, fps: 15 };
+            const idle = f ? f.idle : { path: i => `assets/skeleton-00_idle_${i}.png`,        count: 21,           fps: 12 };
+            for (let i = 0; i < run.count; i++) {
+                const p = String(i).padStart(2,'0');
+                this.load.image(`run_${p}`, run.path(p));
+            }
+            for (let i = 0; i < idle.count; i++) {
+                const p = String(i).padStart(2,'0');
+                this.load.image(`idle_${p}`, idle.path(p));
+            }
+            this.frameCounts = { run: run.count, runFps: run.fps, idle: idle.count, idleFps: idle.fps };
         }
-        for (let i = 0; i <= 20; i++) {
-            const p = String(i).padStart(2,'0');
-            this.load.image(`idle_${p}`, `assets/skeleton-00_idle_${p}.png`);
+
+        // Obstacle art for the non-classic themes
+        if (!this.useClassic && typeof ObstacleSpawner !== 'undefined') {
+            ObstacleSpawner.preload(this, getObstacles(id));
+        }
+
+        // Themed backdrop. `pending` marks art that hasn't been made yet, so
+        // the theme falls back to the procedural sky rather than loading 404s.
+        const bg = this.theme && this.theme.background;
+        this.themeBg = (bg && !bg.pending) ? bg : null;
+        if (this.themeBg) {
+            this.load.image('theme_sky',    this.themeBg.sky);
+            this.load.image('theme_ground', this.themeBg.ground);
         }
 
         // ── Sounds ────────────────────────────────────────────────────────
@@ -20,6 +54,9 @@ class GameScene extends Phaser.Scene {
         this.load.audio('snd_score',    'sounds/flew-far-into-the-sky.mp3');
         this.load.audio('snd_skubu',    'sounds/the-sound-of-getting-a-bonus-or-extra-life-in-an-arcade-game.mp3');
         this.load.audio('snd_gameover', 'sounds/freesound_community-game-over-arcade-6435.mp3');
+
+        // ── Rig-based characters (optional, selected from the menu) ────────
+        if (typeof KoluRig !== 'undefined') KoluRig.preload(this);
     }
 
     create() {
@@ -72,21 +109,29 @@ class GameScene extends Phaser.Scene {
 
         this._makeTextures();
 
-        // ── Fixed background layers (scrollFactor=0) ──────────────────────
-        this._drawSky();
-        this._drawMoon();
-        this._drawSun();
-        this._addStars();
+        // ── Background: themed tiles, or the original procedural sky ──────
+        if (this.themeBg) {
+            this._drawThemeBackground();
+        } else {
+            this._drawSky();
+            this._drawMoon();
+            this._drawSun();
+            this._addStars();
+        }
 
         // ── Scrolling world (cleared + redrawn each frame) ─────────────────
         this.worldGfx = this.add.graphics().setDepth(6);
 
         // ── Fixed ground (scrollFactor=0, drawn OVER world so horizon is sharp)
-        this._drawGround();
+        if (!this.themeBg) this._drawGround();
 
         // ── Godzilla (world space) ─────────────────────────────────────────
-        this.godzilla = new Godzilla(this, GODZILLA_TIERS[0]);
-        this.godzilla.onRecycle = () => this._respawnGodzilla();
+        if (this.useClassic) {
+            this.godzilla = new Godzilla(this, GODZILLA_TIERS[0]);
+            this.godzilla.onRecycle = () => this._respawnGodzilla();
+        } else if (typeof ObstacleSpawner !== 'undefined') {
+            this.spawner = new ObstacleSpawner(this, getObstacles(this._readCharacter()));
+        }
 
         // ── Boy (fixed to screen) ──────────────────────────────────────────
         this._addBoy();
@@ -96,7 +141,7 @@ class GameScene extends Phaser.Scene {
         this._addRain();
 
         // ── Fire / dust emitters (world space, highest depth so they clear rain)
-        this.godzilla.initEmitters();
+        if (this.godzilla) this.godzilla.initEmitters();
 
         // ── HUD ───────────────────────────────────────────────────────────
         this._addUI();
@@ -151,7 +196,7 @@ class GameScene extends Phaser.Scene {
         const skyBot = lerpColor(pA.skyBot, pB.skyBot, t);
         this.skyGfx.clear();
         this.skyGfx.fillGradientStyle(skyTop, skyTop, skyBot, skyBot, 1);
-        this.skyGfx.fillRect(0, 0, 400, GROUND_Y);
+        this.skyGfx.fillRect(0, 0, GAME_W, GROUND_Y);
     }
 
     _drawMoon() {
@@ -182,7 +227,7 @@ class GameScene extends Phaser.Scene {
         this.starObjects = [];
         for (let i = 0; i < 70; i++) {
             const star = this.add.image(
-                Phaser.Math.Between(0, 400),
+                Phaser.Math.Between(0, GAME_W),
                 Phaser.Math.Between(0, Math.floor(GROUND_Y * 0.65)),
                 'star'
             )
@@ -220,9 +265,9 @@ class GameScene extends Phaser.Scene {
         const hLine = lerpColor(pA.horizonLine, pB.horizonLine, t);
         this.groundGfx.clear();
         this.groundGfx.fillGradientStyle(gTop, gTop, gBot, gBot, 1);
-        this.groundGfx.fillRect(0, GROUND_Y, 400, 400 - GROUND_Y);
+        this.groundGfx.fillRect(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y);
         this.groundGfx.lineStyle(1, hLine, 0.35);
-        this.groundGfx.lineBetween(0, GROUND_Y, 400, GROUND_Y);
+        this.groundGfx.lineBetween(0, GROUND_Y, GAME_W, GROUND_Y);
     }
 
     // ── World (buildings + lampposts + puddles, tiled, redrawn each frame) ─
@@ -357,15 +402,17 @@ class GameScene extends Phaser.Scene {
 
     // ── Boy ───────────────────────────────────────────────────────────────
     _addBoy() {
-        const runFrames = Array.from({ length: TOTAL_FRAMES }, (_, i) => ({
+        const fc = this.frameCounts || { run: TOTAL_FRAMES, runFps: 15, idle: 21, idleFps: 12 };
+
+        const runFrames = Array.from({ length: fc.run }, (_, i) => ({
             key: `run_${String(i).padStart(2,'0')}`,
         }));
-        this.anims.create({ key: 'run', frames: runFrames, frameRate: 15, repeat: -1 });
+        this.anims.create({ key: 'run', frames: runFrames, frameRate: fc.runFps, repeat: -1 });
 
-        const idleFrames = Array.from({ length: 21 }, (_, i) => ({
+        const idleFrames = Array.from({ length: fc.idle }, (_, i) => ({
             key: `idle_${String(i).padStart(2,'0')}`,
         }));
-        this.anims.create({ key: 'idle', frames: idleFrames, frameRate: 12, repeat: -1 });
+        this.anims.create({ key: 'idle', frames: idleFrames, frameRate: fc.idleFps, repeat: -1 });
 
         this.boy = this.add.sprite(BOY_SCREEN_X, GROUND_Y, 'run_00')
             .setOrigin(0.5, 1)
@@ -374,10 +421,61 @@ class GameScene extends Phaser.Scene {
             .setDepth(20)
             .play('run');
 
+        // True resting scale. The squash/stretch tweens must always restore to
+        // this rather than to whatever the scale happened to be when they
+        // started, or overlapping tweens compound and the boy drifts wider.
+        this.boyBaseScaleX = this.boy.scaleX;
+        this.boyBaseScaleY = this.boy.scaleY;
+
         this.boyState = 'running'; // 'running' | 'jumping' | 'hit' | 'dazed'
         this.boyVelX  = 0;
         this.boyVelY  = 0;
         this.boyAngle = 0;
+
+        // ── Optional rig character ────────────────────────────────────────
+        // The sprite above stays authoritative for physics, collision and
+        // trails; the rig is purely visual and follows it.
+        this.character = this._readCharacter();
+        this.rig = null;
+        if (this.character === 'kolu-rig' && typeof KoluRig !== 'undefined') {
+            this.rig = new KoluRig(this, BOY_SCREEN_X, GROUND_Y - KoluRig.hipToFoot(), 20);
+            this.boy.setVisible(false);
+        }
+    }
+
+    // Tiled backdrop for themes that ship their own art. Both layers are
+    // tileSprites so scrolling is a texture offset rather than redrawn
+    // geometry — cheaper than the procedural sky and it parallaxes for free.
+    _drawThemeBackground() {
+        const bg = this.themeBg;
+
+        this.bgSky = this.add.tileSprite(0, 0, GAME_W, GROUND_Y, 'theme_sky')
+            .setOrigin(0, 0).setScrollFactor(0).setDepth(0);
+        this.bgSky.setTileScale(bg.skyScale || 1, bg.skyScale || 1);
+
+        this.bgGround = this.add.tileSprite(0, GROUND_Y, GAME_W, GAME_H - GROUND_Y, 'theme_ground')
+            .setOrigin(0, 0).setScrollFactor(0).setDepth(12);
+        this.bgGround.setTileScale(0.55, 0.55);
+    }
+
+    _updateThemeBackground() {
+        if (!this.bgSky) return;
+        const camX = this.cameras.main.scrollX;
+        this.bgSky.tilePositionX    = camX * (this.themeBg.parallax || 0.35);
+        this.bgGround.tilePositionX = camX / (this.bgGround.tileScaleX || 1);
+    }
+
+    _readCharacter() {
+        try { return localStorage.getItem('runningboy_character') || 'skeleton'; }
+        catch (_) { return 'skeleton'; }
+    }
+
+    // Keep the rig glued to the boy sprite each frame.
+    _syncRig(delta) {
+        if (!this.rig) return;
+        this.rig.setPosition(this.boy.x, this.boy.y - KoluRig.hipToFoot(this.rig.cfg));
+        // Freeze the cycle when not running so he doesn't jog in mid-air.
+        this.rig.update(this.boyState === 'running' ? delta : 0);
     }
 
     // ── Boy jump effects ──────────────────────────────────────────────────
@@ -439,11 +537,11 @@ class GameScene extends Phaser.Scene {
 
         const btnGfx = this.add.graphics().setScrollFactor(0).setDepth(50);
         btnGfx.fillStyle(0x112244, 0.85);
-        btnGfx.fillRoundedRect(282, 368, 96, 24, 7);
+        btnGfx.fillRoundedRect(GAME_W - 118, 368, 96, 24, 7);
         btnGfx.lineStyle(1.5, 0x4488ff, 0.8);
-        btnGfx.strokeRoundedRect(282, 368, 96, 24, 7);
+        btnGfx.strokeRoundedRect(GAME_W - 118, 368, 96, 24, 7);
 
-        this.add.text(330, 380, 'JUMP', {
+        this.add.text(GAME_W - 70, GAME_H - 20, 'JUMP', {
             fontSize: '13px', color: '#88bbff',
             fontFamily: 'monospace', fontStyle: 'bold',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(51);
@@ -482,7 +580,7 @@ class GameScene extends Phaser.Scene {
     }
 
     _addLivesDisplay() {
-        this.livesText = this.add.text(390, 10, '', {
+        this.livesText = this.add.text(GAME_W - 10, 10, '', {
             fontSize: '13px', color: '#cc3355', fontFamily: 'monospace',
         }).setScrollFactor(0).setDepth(50).setOrigin(1, 0);
         this._updateLivesDisplay();
@@ -538,14 +636,14 @@ class GameScene extends Phaser.Scene {
     _showSkubuSplash() {
         const bg = this.add.graphics().setScrollFactor(0).setDepth(80);
         bg.fillStyle(0x000000, 0.55);
-        bg.fillRect(0, 145, 400, 80);
+        bg.fillRect(0, 145, GAME_W, 80);
 
-        const title = this.add.text(200, 165, '✦  SKUBU!  ✦', {
+        const title = this.add.text(GAME_W / 2, 165, '✦  SKUBU!  ✦', {
             fontSize: '28px', color: '#ffcc22', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#442200', strokeThickness: 4,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(81);
 
-        const sub = this.add.text(200, 200, 'keep going!', {
+        const sub = this.add.text(GAME_W / 2, 200, 'keep going!', {
             fontSize: '11px', color: '#aa8844', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(81);
 
@@ -585,7 +683,9 @@ class GameScene extends Phaser.Scene {
         this.jumpDust.explode(Math.round(8 + t * 10));
 
         // Stretch upward on launch (squish horizontally)
-        const sx = this.boy.scaleX, sy = this.boy.scaleY;
+        const sx = this.boyBaseScaleX, sy = this.boyBaseScaleY;
+        this.tweens.killTweensOf(this.boy);
+        this.boy.setScale(sx, sy);
         this.tweens.add({
             targets: this.boy,
             scaleX: sx * 0.68,
@@ -593,7 +693,7 @@ class GameScene extends Phaser.Scene {
             duration: 70,
             yoyo: true,
             ease: 'Power2',
-            onComplete: () => { this.boy.scaleX = sx; this.boy.scaleY = sy; },
+            onComplete: () => { this.boy.setScale(sx, sy); },
         });
     }
 
@@ -640,9 +740,13 @@ class GameScene extends Phaser.Scene {
         this.boy.play('run');
         this.trailHistory = [];
 
-        this.godzilla.x         = this.cameras.main.scrollX + 600;
-        this.godzilla.state     = 'walking';
-        this.godzilla.stateTime = 3000;
+        if (this.godzilla) {
+            this.godzilla.x         = this.cameras.main.scrollX + GAME_W + 200;
+            this.godzilla.state     = 'walking';
+            this.godzilla.stateTime = 3000;
+        } else if (this.spawner) {
+            this.spawner.reset();   // clear the screen so the revive is fair
+        }
 
         this.pterodactyls.forEach(pt => pt.destroy());
         this.pterodactyls     = [];
@@ -667,32 +771,32 @@ class GameScene extends Phaser.Scene {
         const modalH = this.continueCount >= 2 ? 210 : 185;
         const bg = add(this.add.graphics().setScrollFactor(0).setDepth(90));
         bg.fillStyle(0x000000, 0.85);
-        bg.fillRoundedRect(45, 108, 310, modalH, 10);
+        bg.fillRoundedRect(GAME_W / 2 - 155, 108, 310, modalH, 10);
         bg.lineStyle(1.5, 0x886600, 0.8);
-        bg.strokeRoundedRect(45, 108, 310, modalH, 10);
+        bg.strokeRoundedRect(GAME_W / 2 - 155, 108, 310, modalH, 10);
 
-        add(this.add.text(200, 126, 'OUT OF LIVES', {
+        add(this.add.text(GAME_W / 2, 126, 'OUT OF LIVES', {
             fontSize: '18px', color: '#ff4444',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 3,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
         // Score + next SKUBU distance
-        add(this.add.text(200, 151, `Score: ${this.score}`, {
+        add(this.add.text(GAME_W / 2, 151, `Score: ${this.score}`, {
             fontSize: '20px', color: '#ffffff',
             fontFamily: 'monospace', fontStyle: 'bold',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
         const skubuDist = this.nextSkubuAt - this.score;
-        add(this.add.text(200, 174, `next ✦ in ${skubuDist} pts`, {
+        add(this.add.text(GAME_W / 2, 174, `next ✦ in ${skubuDist} pts`, {
             fontSize: '10px', color: '#886622', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
-        add(this.add.text(200, 193, `spend 1 skubu (have ${this.skubuCount}) to continue`, {
+        add(this.add.text(GAME_W / 2, 193, `spend 1 skubu (have ${this.skubuCount}) to continue`, {
             fontSize: '10px', color: '#ccaa44', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91));
 
-        add(this.add.text(200, 226, '[ CONTINUE — 1 ✦ ]', {
+        add(this.add.text(GAME_W / 2, 226, '[ CONTINUE — 1 ✦ ]', {
             fontSize: '14px', color: '#ffcc22',
             fontFamily: 'monospace', fontStyle: 'bold',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91)
@@ -701,7 +805,7 @@ class GameScene extends Phaser.Scene {
           .on('pointerout',  function() { this.setColor('#ffcc22'); })
           .on('pointerdown', () => this._doContinue(objs)));
 
-        add(this.add.text(200, 254, '[ GIVE UP ]', {
+        add(this.add.text(GAME_W / 2, 254, '[ GIVE UP ]', {
             fontSize: '11px', color: '#446688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(91)
           .setInteractive({ useHandCursor: true })
@@ -711,7 +815,7 @@ class GameScene extends Phaser.Scene {
 
         // Show shop link on 2nd+ continue prompt
         if (this.continueCount >= 2) {
-            add(this.add.text(200, 295, '→ Need more skubu? Get a pack', {
+            add(this.add.text(GAME_W / 2, 295, '→ Need more skubu? Get a pack', {
                 fontSize: '10px', color: '#44aa66', fontFamily: 'monospace',
             }).setScrollFactor(0).setOrigin(0.5).setDepth(91)
               .setInteractive({ useHandCursor: true })
@@ -752,13 +856,13 @@ class GameScene extends Phaser.Scene {
         const objs = [];
         objs.push(this.add.graphics().setScrollFactor(0).setDepth(78)
             .fillStyle(0x002244, 0.75)
-            .fillRoundedRect(80, 136, 240, 48, 8));
-        objs.push(this.add.text(200, 152, `✦  STREAK  ×1.5  +${pts}`, {
+            .fillRoundedRect(GAME_W / 2 - 120, 136, 240, 48, 8));
+        objs.push(this.add.text(GAME_W / 2, 152, `✦  STREAK  ×1.5  +${pts}`, {
             fontSize: '18px', color: '#44ddff',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#001122', strokeThickness: 3,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(79));
-        objs.push(this.add.text(200, 174, '3 dodges in a row!', {
+        objs.push(this.add.text(GAME_W / 2, 174, '3 dodges in a row!', {
             fontSize: '10px', color: '#226688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(79));
         objs.forEach(o => o.setAlpha(0));
@@ -776,16 +880,16 @@ class GameScene extends Phaser.Scene {
         const objs = [];
         const bg = this.add.graphics().setScrollFactor(0).setDepth(75);
         bg.fillStyle(0x330000, 0.82);
-        bg.fillRoundedRect(40, 128, 320, 58, 8);
+        bg.fillRoundedRect(GAME_W / 2 - 160, 128, 320, 58, 8);
         bg.lineStyle(1.5, 0x880000, 0.9);
-        bg.strokeRoundedRect(40, 128, 320, 58, 8);
+        bg.strokeRoundedRect(GAME_W / 2 - 160, 128, 320, 58, 8);
         objs.push(bg);
-        objs.push(this.add.text(200, 147, '⚠  BOSS APPROACHING  ⚠', {
+        objs.push(this.add.text(GAME_W / 2, 147, '⚠  BOSS APPROACHING  ⚠', {
             fontSize: '17px', color: '#ff4422',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 3,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(76));
-        objs.push(this.add.text(200, 170, 'the purple titan is near — stay sharp', {
+        objs.push(this.add.text(GAME_W / 2, 170, 'the purple titan is near — stay sharp', {
             fontSize: '10px', color: '#882222', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(76));
         objs.forEach(o => o.setAlpha(0));
@@ -803,9 +907,9 @@ class GameScene extends Phaser.Scene {
         const objs = [];
         objs.push(this.add.graphics().setScrollFactor(0).setDepth(75)
             .fillStyle(0x001a00, 0.76)
-            .fillRoundedRect(100, 100, 200, 38, 7));
+            .fillRoundedRect(GAME_W / 2 - 100, 100, 200, 38, 7));
         const mult = (this.scrollSpeed / SCROLL_SPEED).toFixed(1);
-        objs.push(this.add.text(200, 119, `▶▶  SPEED  ×${mult}`, {
+        objs.push(this.add.text(GAME_W / 2, 119, `▶▶  SPEED  ×${mult}`, {
             fontSize: '16px', color: '#44ff88',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 3,
@@ -890,31 +994,31 @@ class GameScene extends Phaser.Scene {
 
         const ol = this.add.graphics().setScrollFactor(0).setDepth(100);
         ol.fillStyle(0x000000, 0.75);
-        ol.fillRect(0, 0, 400, 400);
+        ol.fillRect(0, 0, GAME_W, GAME_H);
 
-        this.add.text(200, 120, 'GAME OVER', {
+        this.add.text(GAME_W / 2, 120, 'GAME OVER', {
             fontSize: '30px', color: '#ff4444',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 4,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 172, `Score: ${this.score}`, {
+        this.add.text(GAME_W / 2, 172, `Score: ${this.score}`, {
             fontSize: '22px', color: '#ffffff', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
         if (dailyRewardGiven) {
-            this.add.text(200, 215, '✦ DAILY REWARD: +1 SKUBU  (3 runs today)', {
+            this.add.text(GAME_W / 2, 215, '✦ DAILY REWARD: +1 SKUBU  (3 runs today)', {
                 fontSize: '11px', color: '#44cc88',
                 fontFamily: 'monospace', fontStyle: 'bold',
                 stroke: '#001a08', strokeThickness: 2,
             }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
         }
 
-        this.add.text(200, 240, 'Click or SPACE to restart', {
+        this.add.text(GAME_W / 2, 240, 'Click or SPACE to restart', {
             fontSize: '12px', color: '#888888', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 290, '[ MENU ]', {
+        this.add.text(GAME_W / 2, 290, '[ MENU ]', {
             fontSize: '12px', color: '#446688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
           .setInteractive({ useHandCursor: true })
@@ -953,7 +1057,7 @@ class GameScene extends Phaser.Scene {
         this.godzilla.s           = newTier.sizeScale;
         this.godzilla.speed       = newTier.speed;
         this.godzilla.dangerRight = 90 * newTier.sizeScale;
-        this.godzilla.x           = this.cameras.main.scrollX + 530;
+        this.godzilla.x           = this.cameras.main.scrollX + GAME_W + 130;
         this.godzilla.state       = 'walking';
         this.godzilla.stateTime   = Phaser.Math.Between(3000, 5000);
         this.godzilla.fireEmitter?.stop();
@@ -1064,15 +1168,15 @@ class GameScene extends Phaser.Scene {
     _showSpendSkubuToPlayScreen(skubuCount, resetAt) {
         const bg = this.add.graphics().setScrollFactor(0).setDepth(100);
         bg.fillGradientStyle(0x000005, 0x000005, 0x06080f, 0x06080f, 1);
-        bg.fillRect(0, 0, 400, 400);
+        bg.fillRect(0, 0, GAME_W, GAME_H);
 
-        this.add.text(200, 80, 'OUT OF PLAYS', {
+        this.add.text(GAME_W / 2, 80, 'OUT OF PLAYS', {
             fontSize: '24px', color: '#ff4444',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 4,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 126, 'No free plays remaining.', {
+        this.add.text(GAME_W / 2, 126, 'No free plays remaining.', {
             fontSize: '12px', color: '#667788', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
@@ -1080,19 +1184,19 @@ class GameScene extends Phaser.Scene {
         const msLeft = Math.max(0, resetAt - Date.now());
         const rh = Math.floor(msLeft / 3600000);
         const rm = Math.floor((msLeft % 3600000) / 60000);
-        this.add.text(200, 148, `Resets in ${rh}h ${String(rm).padStart(2,'0')}m`, {
+        this.add.text(GAME_W / 2, 148, `Resets in ${rh}h ${String(rm).padStart(2,'0')}m`, {
             fontSize: '10px', color: '#445566', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
         const div = this.add.graphics().setScrollFactor(0).setDepth(101);
         div.lineStyle(1, 0x334455, 0.6);
-        div.lineBetween(60, 172, 340, 172);
+        div.lineBetween(GAME_W / 2 - 140, 172, GAME_W / 2 + 140, 172);
 
         // Free daily bypass
         const _today2 = new Date().toISOString().slice(0, 10);
         const _bypassUsed2 = localStorage.getItem('runningboy_free_bypass') === _today2;
         if (!_bypassUsed2) {
-            this.add.text(200, 190, '[ FREE BYPASS — 1 available today ]', {
+            this.add.text(GAME_W / 2, 190, '[ FREE BYPASS — 1 available today ]', {
                 fontSize: '12px', color: '#44cc88',
                 fontFamily: 'monospace', fontStyle: 'bold',
             }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
@@ -1107,15 +1211,15 @@ class GameScene extends Phaser.Scene {
               });
         }
 
-        this.add.text(200, 195, 'Spend 1 ✦ skubu to play now?', {
+        this.add.text(GAME_W / 2, 195, 'Spend 1 ✦ skubu to play now?', {
             fontSize: '13px', color: '#ccaa44', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 218, `You have: ${skubuCount} skubu`, {
+        this.add.text(GAME_W / 2, 218, `You have: ${skubuCount} skubu`, {
             fontSize: '11px', color: '#aa8844', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 262, '[ PLAY ]', {
+        this.add.text(GAME_W / 2, 262, '[ PLAY ]', {
             fontSize: '16px', color: '#ffcc22',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#442200', strokeThickness: 2,
@@ -1131,7 +1235,7 @@ class GameScene extends Phaser.Scene {
               this.scene.restart();
           });
 
-        this.add.text(200, 306, '[ MARKET ]', {
+        this.add.text(GAME_W / 2, 306, '[ MARKET ]', {
             fontSize: '12px', color: '#44aa66', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
           .setInteractive({ useHandCursor: true })
@@ -1139,7 +1243,7 @@ class GameScene extends Phaser.Scene {
           .on('pointerout',  function() { this.setColor('#44aa66'); })
           .on('pointerdown', () => { window.location.href = 'index.html#market'; });
 
-        this.add.text(200, 334, '[ MENU ]', {
+        this.add.text(GAME_W / 2, 334, '[ MENU ]', {
             fontSize: '12px', color: '#446688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
           .setInteractive({ useHandCursor: true })
@@ -1151,19 +1255,19 @@ class GameScene extends Phaser.Scene {
     _showCooldownScreen(resetAt) {
         const bg = this.add.graphics().setScrollFactor(0).setDepth(100);
         bg.fillGradientStyle(0x000005, 0x000005, 0x06080f, 0x06080f, 1);
-        bg.fillRect(0, 0, 400, 400);
+        bg.fillRect(0, 0, GAME_W, GAME_H);
 
-        this.add.text(200, 70, 'GAME LIMIT REACHED', {
+        this.add.text(GAME_W / 2, 70, 'GAME LIMIT REACHED', {
             fontSize: '22px', color: '#ff4444',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000', strokeThickness: 4,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 112, "You've lost 5 times without skubu.", {
+        this.add.text(GAME_W / 2, 112, "You've lost 5 times without skubu.", {
             fontSize: '11px', color: '#667788', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-        this.add.text(200, 148, 'Come back in:', {
+        this.add.text(GAME_W / 2, 148, 'Come back in:', {
             fontSize: '12px', color: '#557799', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
@@ -1175,7 +1279,7 @@ class GameScene extends Phaser.Scene {
             return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
         };
 
-        const timeText = this.add.text(200, 190, fmtTime(), {
+        const timeText = this.add.text(GAME_W / 2, 190, fmtTime(), {
             fontSize: '32px', color: '#ffcc44',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#442200', strokeThickness: 3,
@@ -1189,13 +1293,13 @@ class GameScene extends Phaser.Scene {
 
         const div = this.add.graphics().setScrollFactor(0).setDepth(101);
         div.lineStyle(1, 0x334455, 0.6);
-        div.lineBetween(60, 238, 340, 238);
+        div.lineBetween(GAME_W / 2 - 140, 238, GAME_W / 2 + 140, 238);
 
         // Free daily bypass
         const _today = new Date().toISOString().slice(0, 10);
         const _bypassUsed = localStorage.getItem('runningboy_free_bypass') === _today;
         if (!_bypassUsed) {
-            this.add.text(200, 258, '[ FREE BYPASS — 1 available today ]', {
+            this.add.text(GAME_W / 2, 258, '[ FREE BYPASS — 1 available today ]', {
                 fontSize: '12px', color: '#44cc88',
                 fontFamily: 'monospace', fontStyle: 'bold',
             }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
@@ -1209,20 +1313,20 @@ class GameScene extends Phaser.Scene {
                   this.scene.restart();
               });
 
-            this.add.text(200, 276, 'resets once per day — no skubu needed', {
+            this.add.text(GAME_W / 2, 276, 'resets once per day — no skubu needed', {
                 fontSize: '10px', color: '#336644', fontFamily: 'monospace',
             }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
         } else {
-            this.add.text(200, 258, 'Earn ✦ skubu while playing — spending one', {
+            this.add.text(GAME_W / 2, 258, 'Earn ✦ skubu while playing — spending one', {
                 fontSize: '10px', color: '#445566', fontFamily: 'monospace',
             }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
 
-            this.add.text(200, 272, 'resets the limit, or buy more in the market.', {
+            this.add.text(GAME_W / 2, 272, 'resets the limit, or buy more in the market.', {
                 fontSize: '10px', color: '#445566', fontFamily: 'monospace',
             }).setScrollFactor(0).setOrigin(0.5).setDepth(101);
         }
 
-        this.add.text(200, 316, '[ MARKET ]', {
+        this.add.text(GAME_W / 2, 316, '[ MARKET ]', {
             fontSize: '14px', color: '#44aa66', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
           .setInteractive({ useHandCursor: true })
@@ -1230,7 +1334,7 @@ class GameScene extends Phaser.Scene {
           .on('pointerout',  function() { this.setColor('#44aa66'); })
           .on('pointerdown', () => { window.location.href = 'index.html#market'; });
 
-        this.add.text(200, 348, '[ MENU ]', {
+        this.add.text(GAME_W / 2, 348, '[ MENU ]', {
             fontSize: '12px', color: '#446688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(101)
           .setInteractive({ useHandCursor: true })
@@ -1247,7 +1351,7 @@ class GameScene extends Phaser.Scene {
         gfx.lineStyle(1.5, 0x4488ff, 0.8);
         gfx.strokeRoundedRect(10, 368, 60, 24, 7);
 
-        this.pauseBtn = this.add.text(40, 380, '❚❚ PAUSE', {
+        this.pauseBtn = this.add.text(40, GAME_H - 20, '❚❚ PAUSE', {
             fontSize: '9px', color: '#88bbff', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(51)
           .setInteractive({ useHandCursor: true })
@@ -1268,16 +1372,16 @@ class GameScene extends Phaser.Scene {
         const objs = [];
         const bg = this.add.graphics().setScrollFactor(0).setDepth(95);
         bg.fillStyle(0x000000, 0.72);
-        bg.fillRect(0, 0, 400, 400);
+        bg.fillRect(0, 0, GAME_W, GAME_H);
         objs.push(bg);
 
-        objs.push(this.add.text(200, 155, 'PAUSED', {
+        objs.push(this.add.text(GAME_W / 2, 155, 'PAUSED', {
             fontSize: '36px', color: '#ffffff',
             fontFamily: 'monospace', fontStyle: 'bold',
             stroke: '#000000', strokeThickness: 5,
         }).setScrollFactor(0).setOrigin(0.5).setDepth(96));
 
-        objs.push(this.add.text(200, 225, '[ START ]', {
+        objs.push(this.add.text(GAME_W / 2, 225, '[ START ]', {
             fontSize: '18px', color: '#88bbff',
             fontFamily: 'monospace', fontStyle: 'bold',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(96)
@@ -1286,7 +1390,7 @@ class GameScene extends Phaser.Scene {
           .on('pointerout',  function() { this.setColor('#88bbff'); })
           .on('pointerdown', () => this._resume()));
 
-        objs.push(this.add.text(200, 267, '[ MENU ]', {
+        objs.push(this.add.text(GAME_W / 2, 267, '[ MENU ]', {
             fontSize: '12px', color: '#446688', fontFamily: 'monospace',
         }).setScrollFactor(0).setOrigin(0.5).setDepth(96)
           .setInteractive({ useHandCursor: true })
@@ -1313,6 +1417,8 @@ class GameScene extends Phaser.Scene {
         if (this.isBlocked) return;
         this.trailHistory = [];
         this.godzilla = null;
+        if (this.rig) { this.rig.destroy(); this.rig = null; }
+        if (this.spawner) { this.spawner.shutdown(); this.spawner = null; }
         if (this.pterodactyls) {
             this.pterodactyls.forEach(pt => pt.destroy());
             this.pterodactyls = [];
@@ -1337,18 +1443,26 @@ class GameScene extends Phaser.Scene {
         }
         const speedMult = this.scrollSpeed / SCROLL_SPEED;
 
-        // Scale Godzilla speed with world speed
-        this.godzilla.speed = this.godzilla.tierConfig.speed * speedMult;
+        // Scale Godzilla speed with world speed (classic theme only)
+        if (this.godzilla) {
+            this.godzilla.speed = this.godzilla.tierConfig.speed * speedMult;
+        }
 
         // Scroll the world left (camera moves right)
         this.cameras.main.scrollX += this.scrollSpeed;
 
-        // Phase transitions and background interpolation (run even during game over)
-        this._updatePhase();
-        this._updateBackground();
+        if (this.themeBg) {
+            // Themed backdrop: scroll the tiles, skip the day/night system
+            // and the procedural city entirely.
+            this._updateThemeBackground();
+        } else {
+            // Phase transitions and background interpolation (run even during game over)
+            this._updatePhase();
+            this._updateBackground();
 
-        // Always redraw the tiled world
-        this._updateWorld(camX);
+            // Always redraw the tiled world
+            this._updateWorld(camX);
+        }
 
         // ── Hit arc continues even after game over ───────────────────────
         if (this.boyState === 'hit') {
@@ -1361,8 +1475,12 @@ class GameScene extends Phaser.Scene {
         }
 
         if (this.isGameOver) {
-            this.godzilla.update(delta, this.cameras.main.scrollX);
-            this._updatePterodactyls(delta, this.cameras.main.scrollX);
+            if (this.useClassic) {
+                this.godzilla.update(delta, this.cameras.main.scrollX);
+                this._updatePterodactyls(delta, this.cameras.main.scrollX);
+            } else if (this.spawner) {
+                this.spawner.update(delta, this.cameras.main.scrollX);
+            }
             return;
         }
 
@@ -1387,7 +1505,9 @@ class GameScene extends Phaser.Scene {
                 this.jumpDust.explode(8);
 
                 // Squash on impact
-                const sx = this.boy.scaleX, sy = this.boy.scaleY;
+                const sx = this.boyBaseScaleX, sy = this.boyBaseScaleY;
+                this.tweens.killTweensOf(this.boy);
+                this.boy.setScale(sx, sy);
                 this.tweens.add({
                     targets: this.boy,
                     scaleX: sx * 1.45,
@@ -1395,7 +1515,7 @@ class GameScene extends Phaser.Scene {
                     duration: 55,
                     yoyo: true,
                     ease: 'Power2',
-                    onComplete: () => { this.boy.scaleX = sx; this.boy.scaleY = sy; },
+                    onComplete: () => { this.boy.setScale(sx, sy); },
                 });
                 this.cameras.main.shake(80, 0.004);
             }
@@ -1414,9 +1534,9 @@ class GameScene extends Phaser.Scene {
         if (this.isCharging) {
             const t = Math.min((this.time.now - this.chargeStartTime) / 700, 1);
             this.chargeBar.fillStyle(0x112244, 0.85);
-            this.chargeBar.fillRoundedRect(282, 350, 96, 14, 4);
+            this.chargeBar.fillRoundedRect(GAME_W - 118, 350, 96, 14, 4);
             this.chargeBar.fillStyle(t > 0.7 ? 0xff4433 : 0x44aaff, 0.95);
-            this.chargeBar.fillRoundedRect(282, 350, Math.round(96 * t), 14, 4);
+            this.chargeBar.fillRoundedRect(GAME_W - 118, 350, Math.round(96 * t), 14, 4);
         }
 
         // ── Charge glow + airborne aura ──────────────────────────────────
@@ -1437,6 +1557,9 @@ class GameScene extends Phaser.Scene {
             });
         }
 
+        // ── Rig character follows the (hidden) boy sprite ─────────────────
+        this._syncRig(delta);
+
         // ── Motion trail while airborne ──────────────────────────────────
         const frameKey = this.boy.anims.currentFrame?.textureKey ?? 'idle_00';
         if (this.boyState === 'jumping') {
@@ -1454,6 +1577,12 @@ class GameScene extends Phaser.Scene {
                 ts.setAlpha(0);
             }
         });
+
+        // ── Themed obstacles (non-classic characters) ────────────────────
+        if (!this.useClassic) {
+            if (this.spawner) this.spawner.update(delta, this.cameras.main.scrollX);
+            return;
+        }
 
         // ── Godzilla (world space) ────────────────────────────────────────
         this.godzilla.update(delta, this.cameras.main.scrollX);
