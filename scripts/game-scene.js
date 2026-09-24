@@ -661,8 +661,18 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── Jump ──────────────────────────────────────────────────────────────
+    // Pressing jump slightly before landing should still jump — without this
+    // a mistimed press by a few frames is silently swallowed and reads as the
+    // controls ignoring you.
+    static get JUMP_BUFFER_MS() { return 140; }
+
     _startJumpCharge() {
-        if (this.isGameOver || this.isPaused || this.boyState !== 'running' || this.isCharging) return;
+        if (this.isGameOver || this.isPaused) return;
+        if (this.boyState === 'jumping') {   // buffer it for the landing
+            this.bufferedJumpAt = this.time.now;
+            return;
+        }
+        if (this.boyState !== 'running' || this.isCharging) return;
         this.isCharging      = true;
         this.chargeStartTime = this.time.now;
     }
@@ -672,7 +682,7 @@ class GameScene extends Phaser.Scene {
         this.isCharging = false;
         if (this.boyState !== 'running' || this.isGameOver) return;
         const t       = Math.min((this.time.now - this.chargeStartTime) / 700, 1);
-        this.boyVelY  = Phaser.Math.Linear(-220, -530, t);
+        this.boyVelY  = Phaser.Math.Linear(-330, -540, t);
         this.boyState = 'jumping';
         this.boy.play('idle');
         this.chargeBar.clear();
@@ -1499,6 +1509,18 @@ class GameScene extends Phaser.Scene {
                 this.boy.play('run');
                 this.trailHistory = [];
                 this.sound.play('snd_land', { volume: 0.4 });
+
+                // Honour a jump pressed just before touchdown.
+                if (this.bufferedJumpAt &&
+                    this.time.now - this.bufferedJumpAt < GameScene.JUMP_BUFFER_MS) {
+                    this.bufferedJumpAt = 0;
+                    this.boyVelY  = -330;          // a buffered press is a tap
+                    this.boyState = 'jumping';
+                    this.boy.play('idle');
+                    this.sound.play('snd_jump', { volume: 0.5 });
+                } else {
+                    this.bufferedJumpAt = 0;
+                }
 
                 // Landing dust burst
                 this.jumpDust.setPosition(BOY_SCREEN_X, GROUND_Y);

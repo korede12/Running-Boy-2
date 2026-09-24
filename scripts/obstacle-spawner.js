@@ -9,7 +9,8 @@
 
 const PLAYER_H   = 50;   // display height of the player sprite
 // spawn just off the right edge, whatever the canvas width
-const AIR_Y       = 255; // head height for 'air' lane obstacles
+const AIR_Y      = 255;  // head height for 'air' lane obstacles
+const GRACE_Y    = 5;    // px shaved off an obstacle's top edge
 
 class ObstacleSpawner {
 
@@ -125,13 +126,16 @@ class ObstacleSpawner {
             // height and must be run under, while a ground hazard must be
             // jumped. Comparing the two vertical bands handles both without
             // caring which state the player is in.
+            // Forgiving hitboxes: the collision box is inset from the art on
+            // both axes, so a near-miss reads as a miss. Standard platformer
+            // practice — without it the game feels like it cheats.
             const dx = sx - BOY_SCREEN_X;
-            const reach = 10 + o.w * 0.5;
-            const overlapX = dx > -reach && dx < reach + 16;
+            const reach = 6 + o.w * 0.40;
+            const overlapX = dx > -reach && dx < reach + 12;
 
             // boy origin is (0.5, 1), so boy.y is his feet
-            const boyTop = sc.boy.y - PLAYER_H;
-            const obsTop = o.y - o.h;
+            const boyTop = sc.boy.y - PLAYER_H * 0.82;   // ignore the head
+            const obsTop = o.y - o.h + GRACE_Y;          // shave the top edge
             const overlapY = boyTop < o.y && sc.boy.y > obsTop;
 
             if (!o.dodgeWindow && overlapX) o.dodgeWindow = true;

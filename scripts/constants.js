@@ -6,7 +6,8 @@ const GAME_H       = 400;
 
 const GROUND_Y     = 330;
 const TOTAL_FRAMES = 25;
-const SCROLL_SPEED = 2;      // world scrolls left at this speed (px/frame)
+const SCROLL_SPEED = 4;      // px/frame. Doubled with GAME_W so the world
+                             // passes at the same visual rate as the 400px build.
 const BOY_SCREEN_X = 110;    // boy's fixed screen x
 const RAIN_ANGLE   = 0.25;
 const TILE_W       = 411;    // building tile width (buildings span x=-5..406 = 411px)
