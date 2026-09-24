@@ -14,7 +14,7 @@ body { margin: 0; background: #000; overflow: hidden; }
    devices held upright we cover the game and ask for a rotation. */
 #rotate-gate { display: none; }
 
-@media (orientation: portrait) and (pointer: coarse) {
+@media (orientation: portrait) {
     #rotate-gate {
         display: flex;
         position: fixed;
