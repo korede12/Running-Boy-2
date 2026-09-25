@@ -88,6 +88,8 @@ class GameScene extends Phaser.Scene {
         })();
         this.nextSkubuAt     = SKUBU_INTERVAL;
         this.floatUntil      = 0;   // wings: expiry timestamp, 0 = not flying
+        this.floatDescending = false;
+        this.landGraceUntil  = 0;
         this.dodgeWindow     = false;
         this.dodgedInWindow  = false;
         this.isCharging      = false;
@@ -685,6 +687,7 @@ class GameScene extends Phaser.Scene {
     static get FLOAT_MS()      { return 10000; }  // how long a float lasts
     static get FLOAT_Y()       { return 200; }    // cruise ABOVE the air lane
     static get FLOAT_WARN_MS() { return 2500; }   // flicker before burnout
+    static get FLOAT_LAND_GRACE_MS() { return 400; }  // invulnerable on touchdown
 
     /// Jumped into a pickup. Only 'float' exists so far.
     _collectPickup(kind) {
@@ -702,12 +705,10 @@ class GameScene extends Phaser.Scene {
     /// Float physics: ease to cruising height, bob, and fall out when spent.
     _updateFloat(delta) {
         const remaining = this.floatUntil - this.time.now;
-        if (remaining <= 0) {
-            // Burned out — drop back into a normal fall.
-            this.boyState = 'jumping';
-            this.boyVelY  = 0;
-            this.boy.setAlpha(1);
-            this.boy.play('idle');
+
+        // Burning out, or the player chose to come down.
+        if (remaining <= 0 || this.floatDescending) {
+            this._endFloat();
             return;
         }
 
@@ -716,14 +717,34 @@ class GameScene extends Phaser.Scene {
         this.boy.y += (target - this.boy.y) * Math.min(1, delta / 160);
         this.boy.x  = BOY_SCREEN_X;
 
-        // Flicker as it runs out so the end is never a surprise.
+        // Flicker as it runs out so the end is never a surprise — and so the
+        // player knows to start looking for a gap to land in.
         this.boy.setAlpha(remaining < GameScene.FLOAT_WARN_MS
             ? (Math.floor(this.time.now / 110) % 2 ? 0.45 : 1)
             : 1);
     }
 
+    /// Leave the float and fall. A short grace on touchdown means a burnout
+    /// directly above a hazard is never an unavoidable hit — the player can
+    /// influence where they come down, but is not punished for a near miss.
+    _endFloat() {
+        this.boyState      = 'jumping';
+        this.boyVelY       = 0;
+        this.floatUntil    = 0;
+        this.floatDescending = false;
+        // Cover the descent itself plus a moment after touchdown: falling
+        // 130px from the cruise line under gravity 900 takes ~540ms.
+        this.landGraceUntil = this.time.now + 540 + GameScene.FLOAT_LAND_GRACE_MS;
+        this.boy.setAlpha(1);
+        this.boy.play('idle');
+    }
+
     _startJumpCharge() {
         if (this.isGameOver || this.isPaused) return;
+        if (this.boyState === 'floating') {  // come down deliberately
+            this.floatDescending = true;
+            return;
+        }
         if (this.boyState === 'jumping') {   // buffer it for the landing
             this.bufferedJumpAt = this.time.now;
             return;

@@ -198,9 +198,12 @@ class ObstacleSpawner {
             // Any state except already-reeling can take a hit — a ground
             // hazard catches you running, an air one catches you mid-jump,
             // and a float keeps you level with the air lane.
-            const vulnerable = sc.boyState === 'running' ||
+            // A float landing is graced, so burning out directly above a
+            // hazard is never an unavoidable hit.
+            const graced = (sc.landGraceUntil || 0) > sc.time.now;
+            const vulnerable = !graced && (sc.boyState === 'running' ||
                                sc.boyState === 'jumping' ||
-                               sc.boyState === 'floating';
+                               sc.boyState === 'floating');
             if (overlapX && overlapY && vulnerable && !o.hit) {
                 o.hit = true;
                 sc._hitBoy();
