@@ -48,8 +48,12 @@ class ObstacleSpawner {
             return this.set[this.set.length - 1];
         };
 
+        const score = this.scene.score || 0;
+
         for (let attempt = 0; attempt < 6; attempt++) {
             const d = roll();
+            // some entries are earned, not handed out at the start
+            if (d.minScore !== undefined && score < d.minScore) continue;
             // never two pickups close together
             if (d.pickup &&
                 (this.sinceLastPickup || 0) < ObstacleSpawner.PICKUP_COOLDOWN) continue;
@@ -57,8 +61,9 @@ class ObstacleSpawner {
             if (d.key === this.lastKey) continue;
             return d;
         }
-        // fall back to any non-pickup so a bad streak cannot stall the spawner
-        return this.set.find(d => !d.pickup) || this.set[0];
+        // fall back to something always available so a bad streak cannot stall
+        return this.set.find(d => !d.pickup && d.minScore === undefined)
+            || this.set[0];
     }
 
     _spawn(camX) {

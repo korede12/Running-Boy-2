@@ -94,6 +94,7 @@ const THEMES = {
 // ground: sits on the floor and must be jumped.
 // air:    flies at head height and must be ducked under or jumped between.
 // height is a rough share of the player's height, used for the collision box.
+// minScore gates an entry until the player has earned it.
 
 const OBSTACLE_SETS = {
 
@@ -124,7 +125,7 @@ const OBSTACLE_SETS = {
         // ── Pickup ────────────────────────────────────────────────────
         // Not a hazard. Jump into it to earn a float.
         { key: 'wings', frames: [], lane: 'air', height: 0.34, weight: 1,
-          pickup: 'float', shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
+          pickup: 'float', minScore: 20, shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
     ],
 
     // Lagos street chase. Drawn as flat shapes until the art exists — each
@@ -154,7 +155,7 @@ const OBSTACLE_SETS = {
         // ── Pickup ────────────────────────────────────────────────────
         // Not a hazard. Jump into it to earn a float.
         { key: 'wings', frames: [], lane: 'air', height: 0.34, weight: 1,
-          pickup: 'float', shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
+          pickup: 'float', minScore: 20, shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
     ],
 };
 
