@@ -35,13 +35,30 @@ class ObstacleSpawner {
         return Math.max(150, base) + Phaser.Math.Between(0, 90);
     }
 
+    // Minimum hazards between two pickups, so wings never chain.
+    static get PICKUP_COOLDOWN() { return 6; }
+
     _pick() {
-        let r = Math.random() * this.totalWeight;
-        for (const o of this.set) {
-            r -= (o.weight || 1);
-            if (r <= 0) return o;
+        const roll = () => {
+            let r = Math.random() * this.totalWeight;
+            for (const o of this.set) {
+                r -= (o.weight || 1);
+                if (r <= 0) return o;
+            }
+            return this.set[this.set.length - 1];
+        };
+
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const d = roll();
+            // never two pickups close together
+            if (d.pickup &&
+                (this.sinceLastPickup || 0) < ObstacleSpawner.PICKUP_COOLDOWN) continue;
+            // and never the same thing twice in a row
+            if (d.key === this.lastKey) continue;
+            return d;
         }
-        return this.set[this.set.length - 1];
+        // fall back to any non-pickup so a bad streak cannot stall the spawner
+        return this.set.find(d => !d.pickup) || this.set[0];
     }
 
     _spawn(camX) {
@@ -68,15 +85,34 @@ class ObstacleSpawner {
             spr.setDisplaySize(h, h);   // Kenney art is square
         }
 
+        // Pickups must never be mistaken for a hazard: gold, outlined,
+        // pulsing, and labelled.
+        let label = null;
+        if (def.pickup) {
+            spr.setDepth(19);
+            label = this.scene.add.text(0, y - h - 6, def.key.toUpperCase(), {
+                fontSize: '11px', color: '#fff3b0',
+                fontFamily: 'monospace', fontStyle: 'bold',
+                stroke: '#6b5410', strokeThickness: 3,
+            }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(19);
+        }
+
         this.live.push({
-            def, spr, x, y, h, w,
+            def, spr, label, x, y, h, w,
             frame: 0, frameTimer: 0,
             dodgeWindow: false, hit: false,
         });
+        this.sinceLastPickup = def.pickup ? 0 : (this.sinceLastPickup || 0) + 1;
+        this.lastKey = def.key;
+    }
+
+    _destroy(o) {
+        o.spr.destroy();
+        if (o.label) o.label.destroy();
     }
 
     reset() {
-        this.live.forEach(o => o.spr.destroy());
+        this.live.forEach(o => this._destroy(o));
         this.live = [];
         this.nextGap = 0;
     }
@@ -101,9 +137,15 @@ class ObstacleSpawner {
             const sx = o.x - camX;
 
             // off the left edge — retire it
-            if (sx < -80) { o.spr.destroy(); this.live.splice(i, 1); continue; }
+            if (sx < -80) { this._destroy(o); this.live.splice(i, 1); continue; }
 
             o.spr.x = sx;
+            if (o.label) {
+                // gentle pulse so a pickup reads as collectable, not solid
+                o.label.x = sx;
+                const pulse = 1 + Math.sin(sc.time.now / 180) * 0.10;
+                o.spr.setScale(pulse, pulse);
+            }
 
             // frame animation
             if (!o.def.shape && o.def.fps > 0 && o.def.frames.length > 1) {
@@ -116,7 +158,9 @@ class ObstacleSpawner {
                 }
             }
             if (o.def.lane === 'air') {
-                o.spr.y = o.y + Math.sin((sc.time.now + o.x) / 260) * 6;
+                const bob = Math.sin((sc.time.now + o.x) / 260) * 6;
+                o.spr.y = o.y + bob;
+                if (o.label) o.label.y = o.y - o.h - 6 + bob;
             }
 
             if (sc.isGameOver) continue;
@@ -142,7 +186,7 @@ class ObstacleSpawner {
             if (o.def.pickup) {
                 if (overlapX && overlapY && !o.taken) {
                     o.taken = true;
-                    o.spr.destroy();
+                    this._destroy(o);
                     this.live.splice(i, 1);
                     sc._collectPickup(o.def.pickup);
                 }

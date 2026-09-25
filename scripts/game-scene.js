@@ -682,9 +682,9 @@ class GameScene extends Phaser.Scene {
     static get JUMP_BUFFER_MS() { return 140; }
 
     // ── Wings ─────────────────────────────────────────────────────────────
-    static get FLOAT_MS()      { return 30000; }  // how long a float lasts
+    static get FLOAT_MS()      { return 10000; }  // how long a float lasts
     static get FLOAT_Y()       { return 200; }    // cruise ABOVE the air lane
-    static get FLOAT_WARN_MS() { return 5000; }   // flicker before burnout
+    static get FLOAT_WARN_MS() { return 2500; }   // flicker before burnout
 
     /// Jumped into a pickup. Only 'float' exists so far.
     _collectPickup(kind) {
