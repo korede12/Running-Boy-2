@@ -121,6 +121,10 @@ const OBSTACLE_SETS = {
 
         { key: 'frog',   frames: ['assets/kenney/obstacles/frog_idle.png'],
           fps: 0,  lane: 'ground', height: 0.45, weight: 1 },
+        // ── Pickup ────────────────────────────────────────────────────
+        // Not a hazard. Jump into it to earn a float.
+        { key: 'wings', frames: [], lane: 'air', height: 0.34, weight: 1,
+          pickup: 'float', shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
     ],
 
     // Lagos street chase. Drawn as flat shapes until the art exists — each
@@ -147,6 +151,10 @@ const OBSTACLE_SETS = {
 
         { key: 'wire',    frames: [], lane: 'air',    weight: 2,
           shape: { w: 1.10, h: 0.16, color: 0x555560, stroke: 0x2a2a30 } },
+        // ── Pickup ────────────────────────────────────────────────────
+        // Not a hazard. Jump into it to earn a float.
+        { key: 'wings', frames: [], lane: 'air', height: 0.34, weight: 1,
+          pickup: 'float', shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
     ],
 };
 

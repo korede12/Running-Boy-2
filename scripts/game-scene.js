@@ -87,6 +87,7 @@ class GameScene extends Phaser.Scene {
             catch { return 0; }
         })();
         this.nextSkubuAt     = SKUBU_INTERVAL;
+        this.floatUntil      = 0;   // wings: expiry timestamp, 0 = not flying
         this.dodgeWindow     = false;
         this.dodgedInWindow  = false;
         this.isCharging      = false;
@@ -602,6 +603,20 @@ class GameScene extends Phaser.Scene {
         this.skubuBarGfx.fillRoundedRect(10, 56, Math.round(80 * t), 6, 3);
         this.skubuBarGfx.lineStyle(0.5, 0x886600, 0.5);
         this.skubuBarGfx.strokeRoundedRect(10, 56, 80, 6, 3);
+
+        // ── Float timer ───────────────────────────────────────────────────
+        // Only visible while airborne on wings; drains left to right.
+        const left = (this.floatUntil || 0) - this.time.now;
+        if (left > 0) {
+            const f = left / GameScene.FLOAT_MS;
+            this.skubuBarGfx.fillStyle(0x1a1a05, 0.85);
+            this.skubuBarGfx.fillRoundedRect(10, 68, 80, 6, 3);
+            this.skubuBarGfx.fillStyle(
+                left < GameScene.FLOAT_WARN_MS ? 0xff7744 : 0xf3e29a, 0.95);
+            this.skubuBarGfx.fillRoundedRect(10, 68, Math.round(80 * f), 6, 3);
+            this.skubuBarGfx.lineStyle(0.5, 0xb99b3a, 0.6);
+            this.skubuBarGfx.strokeRoundedRect(10, 68, 80, 6, 3);
+        }
     }
 
     // ── Score helper ──────────────────────────────────────────────────────
@@ -666,6 +681,47 @@ class GameScene extends Phaser.Scene {
     // controls ignoring you.
     static get JUMP_BUFFER_MS() { return 140; }
 
+    // ── Wings ─────────────────────────────────────────────────────────────
+    static get FLOAT_MS()      { return 30000; }  // how long a float lasts
+    static get FLOAT_Y()       { return 200; }    // cruise ABOVE the air lane
+    static get FLOAT_WARN_MS() { return 5000; }   // flicker before burnout
+
+    /// Jumped into a pickup. Only 'float' exists so far.
+    _collectPickup(kind) {
+        if (kind !== 'float') return;
+        this.boyState   = 'floating';
+        this.floatUntil = this.time.now + GameScene.FLOAT_MS;
+        this.boyVelY    = 0;
+        this.boy.setAngle(0);
+        this.boy.play('idle');
+        this.sound.play('snd_skubu', { volume: 0.5 });
+        this.cameras.main.flash(180, 240, 226, 154);
+        this._showScorePopup('WINGS!');
+    }
+
+    /// Float physics: ease to cruising height, bob, and fall out when spent.
+    _updateFloat(delta) {
+        const remaining = this.floatUntil - this.time.now;
+        if (remaining <= 0) {
+            // Burned out — drop back into a normal fall.
+            this.boyState = 'jumping';
+            this.boyVelY  = 0;
+            this.boy.setAlpha(1);
+            this.boy.play('idle');
+            return;
+        }
+
+        // Ease toward the cruise line, with a slow bob so it reads as flight.
+        const target = GameScene.FLOAT_Y + Math.sin(this.time.now / 420) * 7;
+        this.boy.y += (target - this.boy.y) * Math.min(1, delta / 160);
+        this.boy.x  = BOY_SCREEN_X;
+
+        // Flicker as it runs out so the end is never a surprise.
+        this.boy.setAlpha(remaining < GameScene.FLOAT_WARN_MS
+            ? (Math.floor(this.time.now / 110) % 2 ? 0.45 : 1)
+            : 1);
+    }
+
     _startJumpCharge() {
         if (this.isGameOver || this.isPaused) return;
         if (this.boyState === 'jumping') {   // buffer it for the landing
@@ -713,6 +769,8 @@ class GameScene extends Phaser.Scene {
         this.isGameOver = true;
         this.isCharging = false;
         this.boyState   = 'hit';
+        this.floatUntil = 0;
+        this.boy.setAlpha(1);
         this.streakCount = 0;
         this.boyVelX    = -260;
         this.boyVelY    = -480;
@@ -1497,6 +1555,9 @@ class GameScene extends Phaser.Scene {
         // ── Boy movement (screen space, scrollFactor=0) ──────────────────
         if (this.boyState === 'running') {
             this.boy.x = BOY_SCREEN_X;
+
+        } else if (this.boyState === 'floating') {
+            this._updateFloat(delta);
 
         } else if (this.boyState === 'jumping') {
             this.boyVelY += 900 * dt;

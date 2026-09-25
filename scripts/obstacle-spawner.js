@@ -138,11 +138,25 @@ class ObstacleSpawner {
             const obsTop = o.y - o.h + GRACE_Y;          // shave the top edge
             const overlapY = boyTop < o.y && sc.boy.y > obsTop;
 
+            // ── Pickups are collected, not dodged ────────────────────────
+            if (o.def.pickup) {
+                if (overlapX && overlapY && !o.taken) {
+                    o.taken = true;
+                    o.spr.destroy();
+                    this.live.splice(i, 1);
+                    sc._collectPickup(o.def.pickup);
+                }
+                continue;
+            }
+
             if (!o.dodgeWindow && overlapX) o.dodgeWindow = true;
 
             // Any state except already-reeling can take a hit — a ground
-            // hazard catches you running, an air one catches you mid-jump.
-            const vulnerable = sc.boyState === 'running' || sc.boyState === 'jumping';
+            // hazard catches you running, an air one catches you mid-jump,
+            // and a float keeps you level with the air lane.
+            const vulnerable = sc.boyState === 'running' ||
+                               sc.boyState === 'jumping' ||
+                               sc.boyState === 'floating';
             if (overlapX && overlapY && vulnerable && !o.hit) {
                 o.hit = true;
                 sc._hitBoy();
