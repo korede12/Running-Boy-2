@@ -9,7 +9,15 @@ class GameScene extends Phaser.Scene {
         this.theme       = (typeof getTheme === 'function') ? getTheme(id) : null;
         this.useClassic  = !this.theme || this.theme.obstacles === 'classic';
 
-        const f = this.theme && this.theme.frames;
+        // Punch only exists where something can actually be broken —
+        // offering the verb where nothing responds to it is worse than
+        // not offering it.
+        this.canPunch = !this.useClassic &&
+            getObstacles(id).some(o => o.breakable);
+
+        // A procedural theme draws itself; the sprite below still runs the
+        // physics, it is just never shown.
+        const f = (this.theme && !this.theme.procedural) ? this.theme.frames : null;
         if (f && f.type === 'pair') {
             // two-frame walk packs (Kenney and similar)
             this.load.image('run_00',  f.run.a);
@@ -87,6 +95,9 @@ class GameScene extends Phaser.Scene {
             catch { return 0; }
         })();
         this.nextSkubuAt     = SKUBU_INTERVAL;
+        this.attackUntil     = 0;   // punch: end timestamp, 0 = not striking
+        this.attackReadyAt   = 0;   // cooldown
+        this.struckThisSwing = false;
         this.floatUntil      = 0;   // wings: expiry timestamp, 0 = not flying
         this.floatDescending = false;
         this.landGraceUntil  = 0;
@@ -440,6 +451,12 @@ class GameScene extends Phaser.Scene {
         // trails; the rig is purely visual and follows it.
         this.character = this._readCharacter();
         this.rig = null;
+        if (this.theme && this.theme.procedural && typeof StickFigure !== 'undefined') {
+            this.stick = new StickFigure(
+                this.add.graphics().setScrollFactor(0).setDepth(20), 52);
+            this.boy.setVisible(false);
+        }
+
         if (this.character === 'kolu-rig' && typeof KoluRig !== 'undefined') {
             this.rig = new KoluRig(this, BOY_SCREEN_X, GROUND_Y - KoluRig.hipToFoot(), 20);
             this.boy.setVisible(false);
@@ -474,6 +491,38 @@ class GameScene extends Phaser.Scene {
     }
 
     // Keep the rig glued to the boy sprite each frame.
+    // Pose the stick figure from whatever the player is doing. The sprite
+    // owns position and state; this only decides which pose to draw.
+    _syncStick(delta) {
+        if (!this.stick) return;
+        this.stickPhase = (this.stickPhase || 0) +
+            (delta / 1000) * (this.scrollSpeed / SCROLL_SPEED) * 1.9;
+
+        let pose;
+        switch (this.boyState) {
+            case 'attacking': {
+                const t = 1 - (this.attackUntil - this.time.now) / GameScene.ATTACK_MS;
+                pose = StickFigure.cycle('attack',
+                    Math.min(0.999, Math.max(0, t)) * 0.999);
+                break;
+            }
+            case 'jumping':
+            case 'floating':
+                pose = StickFigure.cycle('jump', 0);
+                break;
+            case 'hit':
+            case 'dazed':
+                pose = StickFigure.cycle('hurt', 0);
+                break;
+            case 'running':
+                pose = StickFigure.cycle('run', this.stickPhase);
+                break;
+            default:
+                pose = StickFigure.cycle('idle', this.time.now / 900);
+        }
+        this.stick.draw(this.boy.x, this.boy.y, pose);
+    }
+
     _syncRig(delta) {
         if (!this.rig) return;
         this.rig.setPosition(this.boy.x, this.boy.y - KoluRig.hipToFoot(this.rig.cfg));
@@ -555,12 +604,21 @@ class GameScene extends Phaser.Scene {
 
         this.chargeBar = this.add.graphics().setScrollFactor(0).setDepth(52);
 
-        this.input.on('pointerdown', () => this._startJumpCharge());
+        this.input.on('pointerdown', (p) => {
+            if (this._inPunchButton(p)) { this._startAttack(); return; }
+            this._startJumpCharge();
+        });
         this.input.on('pointerup',   () => this._releaseJump());
 
         const spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         spaceKey.on('down', () => this._startJumpCharge());
         spaceKey.on('up',   () => this._releaseJump());
+
+        // Punch is a separate verb, so it gets its own keys rather than a
+        // modifier on jump.
+        [Phaser.Input.Keyboard.KeyCodes.X, Phaser.Input.Keyboard.KeyCodes.DOWN]
+            .forEach(code => this.input.keyboard.addKey(code)
+                .on('down', () => this._startAttack()));
 
         const escKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
         escKey.on('down', () => {
@@ -571,6 +629,7 @@ class GameScene extends Phaser.Scene {
         this._addSkubuBar();
         this._addLivesDisplay();
         this._addPauseButton();
+        if (this.canPunch) this._addPunchButton();
     }
 
     // ── Skubu bar ─────────────────────────────────────────────────────────
@@ -682,6 +741,57 @@ class GameScene extends Phaser.Scene {
     // a mistimed press by a few frames is silently swallowed and reads as the
     // controls ignoring you.
     static get JUMP_BUFFER_MS() { return 140; }
+
+    // ── Punch ─────────────────────────────────────────────────────────────
+    // The second verb. Breakable hazards are destroyed by a strike, the rest
+    // must still be jumped, so every obstacle asks which one to use.
+    static get ATTACK_MS()       { return 320; }   // full four-pose swing
+    static get ATTACK_COOLDOWN() { return 420; }
+    static get STRIKE_FROM()     { return 0.42; }  // when the fist lands,
+    static get STRIKE_TO()       { return 0.70; }  // as a share of the swing
+    static get STRIKE_REACH()    { return 46; }    // px in front of the player
+
+    _startAttack() {
+        if (this.isGameOver || this.isPaused) return;
+        if (this.time.now < this.attackReadyAt) return;
+        // Grounded only: a punch is a commitment, not an air option.
+        if (this.boyState !== 'running') return;
+
+        this.boyState        = 'attacking';
+        this.attackUntil     = this.time.now + GameScene.ATTACK_MS;
+        this.attackReadyAt   = this.attackUntil + GameScene.ATTACK_COOLDOWN;
+        this.struckThisSwing = false;
+        this.sound.play('snd_stomp', { volume: 0.35 });
+    }
+
+    _updateAttack() {
+        const left = this.attackUntil - this.time.now;
+        if (left <= 0) {
+            this.boyState = 'running';
+            if (this.boy.anims) this.boy.play('run');
+            return;
+        }
+
+        // The fist only connects during the middle of the swing, so timing
+        // matters rather than the button being a blanket shield.
+        const t = 1 - left / GameScene.ATTACK_MS;
+        if (!this.struckThisSwing &&
+            t >= GameScene.STRIKE_FROM && t <= GameScene.STRIKE_TO) {
+            this.struckThisSwing = true;
+            this._resolveStrike();
+        }
+    }
+
+    _resolveStrike() {
+        if (!this.spawner) return;
+        const camX = this.cameras.main.scrollX;
+        const broken = this.spawner.breakInZone(
+            camX, BOY_SCREEN_X - 8, BOY_SCREEN_X + GameScene.STRIKE_REACH);
+        if (broken > 0) {
+            this._onDodge(broken);          // scores and feeds the streak
+            this.cameras.main.shake(90, 0.005);
+        }
+    }
 
     // ── Wings ─────────────────────────────────────────────────────────────
     static get FLOAT_MS()      { return 10000; }  // how long a float lasts
@@ -1433,6 +1543,26 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── Pause / Resume ────────────────────────────────────────────────────
+    // Only themes with breakable hazards get a punch button; showing it
+    // where nothing can be broken would promise a verb that does nothing.
+    _addPunchButton() {
+        const w = 84, h = 24, x = GAME_W / 2 - w / 2, y = 368;
+        this.punchRect = { x, y, w, h };
+        const g = this.add.graphics().setScrollFactor(0).setDepth(50);
+        g.fillStyle(0x2a1030, 0.85).fillRoundedRect(x, y, w, h, 7);
+        g.lineStyle(1.2, 0xcc66ff, 0.8).strokeRoundedRect(x, y, w, h, 7);
+        this.add.text(x + w / 2, y + h / 2, 'PUNCH', {
+            fontSize: '12px', color: '#dd99ff',
+            fontFamily: 'monospace', fontStyle: 'bold',
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(51);
+    }
+
+    _inPunchButton(p) {
+        const r = this.punchRect;
+        if (!r || !p) return false;
+        return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    }
+
     _addPauseButton() {
         const gfx = this.add.graphics().setScrollFactor(0).setDepth(50);
         gfx.fillStyle(0x112244, 0.85);
@@ -1577,6 +1707,11 @@ class GameScene extends Phaser.Scene {
         if (this.boyState === 'running') {
             this.boy.x = BOY_SCREEN_X;
 
+        } else if (this.boyState === 'attacking') {
+            this.boy.x = BOY_SCREEN_X;
+            this.boy.y = GROUND_Y;
+            this._updateAttack();
+
         } else if (this.boyState === 'floating') {
             this._updateFloat(delta);
 
@@ -1663,6 +1798,7 @@ class GameScene extends Phaser.Scene {
 
         // ── Rig character follows the (hidden) boy sprite ─────────────────
         this._syncRig(delta);
+        this._syncStick(delta);
 
         // ── Motion trail while airborne ──────────────────────────────────
         const frameKey = this.boy.anims.currentFrame?.textureKey ?? 'idle_00';

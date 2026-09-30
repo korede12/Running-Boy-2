@@ -1154,3 +1154,12 @@ body {
     margin-top: 10px;
     min-height: 12px;
 }
+
+/* A procedurally-drawn character has no preview image */
+.char-proc {
+    height: 96px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+}

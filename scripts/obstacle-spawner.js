@@ -116,6 +116,57 @@ class ObstacleSpawner {
         if (o.label) o.label.destroy();
     }
 
+    /// Destroy breakable obstacles whose box overlaps [x0, x1] in screen
+    /// space. Returns how many were broken, so the caller can score them.
+    /// Anything not marked breakable is unaffected — that split is what
+    /// makes each hazard a choice between punching and jumping.
+    breakInZone(camX, x0, x1) {
+        let broken = 0;
+        for (let i = this.live.length - 1; i >= 0; i--) {
+            const o = this.live[i];
+            if (!o.def.breakable || o.broken) continue;
+            const sx = o.x - camX;
+            const left = sx - o.w / 2, right = sx + o.w / 2;
+            if (right < x0 || left > x1) continue;
+            o.broken = true;
+            this._shatter(sx, o);
+            this._destroy(o);
+            this.live.splice(i, 1);
+            broken++;
+        }
+        return broken;
+    }
+
+    /// A brief burst where the obstacle was, so a hit reads as a hit.
+    _shatter(sx, o) {
+        const g = this.scene.add.graphics().setScrollFactor(0).setDepth(19);
+        const col = (o.def.shape && o.def.shape.color) || 0xffffff;
+        const bits = [];
+        for (let n = 0; n < 7; n++) {
+            bits.push({
+                x: sx, y: o.y - o.h * 0.5,
+                vx: (Math.random() - 0.35) * 150,
+                vy: -60 - Math.random() * 130,
+                r: 2 + Math.random() * 3,
+            });
+        }
+        const ev = this.scene.time.addEvent({
+            delay: 16, repeat: 26,
+            callback: () => {
+                g.clear();
+                const t = ev.getOverallProgress();
+                g.fillStyle(col, 1 - t);
+                bits.forEach(b => {
+                    b.x += b.vx * 0.016;
+                    b.y += b.vy * 0.016;
+                    b.vy += 520 * 0.016;
+                    g.fillCircle(b.x, b.y, b.r);
+                });
+                if (t >= 1) g.destroy();
+            },
+        });
+    }
+
     reset() {
         this.live.forEach(o => this._destroy(o));
         this.live = [];
@@ -208,7 +259,8 @@ class ObstacleSpawner {
             const graced = (sc.landGraceUntil || 0) > sc.time.now;
             const vulnerable = !graced && (sc.boyState === 'running' ||
                                sc.boyState === 'jumping' ||
-                               sc.boyState === 'floating');
+                               sc.boyState === 'floating' ||
+                               sc.boyState === 'attacking');
             if (overlapX && overlapY && vulnerable && !o.hit) {
                 o.hit = true;
                 sc._hitBoy();

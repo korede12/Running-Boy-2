@@ -88,6 +88,14 @@ const THEMES = {
         },
         obstacles: 'platformer',
     },
+
+    stick: {
+        label: 'Stick',
+        preview: null,             // drawn procedurally, no art file
+        credit: null,
+        procedural: true,          // StickFigure renders it from joint angles
+        obstacles: 'stickfight',
+    },
 };
 
 // ── Obstacle sets ─────────────────────────────────────────────────────────
@@ -156,6 +164,33 @@ const OBSTACLE_SETS = {
         // Not a hazard. Jump into it to earn a float.
         { key: 'wings', frames: [], lane: 'air', height: 0.34, weight: 1,
           pickup: 'float', minScore: 20, shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
+    ],
+
+    // Stick-fight mode. `breakable` obstacles are destroyed by a punch;
+    // everything else must still be jumped. That split is the whole mode:
+    // every hazard is a question of which verb to use.
+    stickfight: [
+        { key: 'crate',   frames: [], lane: 'ground', weight: 3, breakable: true,
+          shape: { w: 0.62, h: 0.58, color: 0xa87f46, stroke: 0x5c4423 } },
+
+        { key: 'barrel',  frames: [], lane: 'ground', weight: 3, breakable: true,
+          shape: { w: 0.52, h: 0.66, color: 0x9a5a2a, stroke: 0x4e2c12 } },
+
+        { key: 'bottles', frames: [], lane: 'ground', weight: 2, breakable: true,
+          shape: { w: 0.55, h: 0.26, color: 0x2f7d4f, stroke: 0x17422a } },
+
+        { key: 'spikes',  frames: [], lane: 'ground', weight: 3,
+          shape: { w: 0.60, h: 0.30, color: 0x8c8c96, stroke: 0x3a3a44 } },
+
+        { key: 'fire',    frames: [], lane: 'ground', weight: 2,
+          shape: { w: 0.60, h: 0.62, color: 0xe8632a, stroke: 0x7d2f0e } },
+
+        { key: 'wire',    frames: [], lane: 'air',    weight: 2,
+          shape: { w: 1.10, h: 0.16, color: 0x555560, stroke: 0x2a2a30 } },
+
+        { key: 'wings',   frames: [], lane: 'air',    weight: 1,
+          pickup: 'float', minScore: 20,
+          shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
     ],
 };
 

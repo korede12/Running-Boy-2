@@ -812,6 +812,15 @@ document.addEventListener('keydown', e => {
     }
 });
 
+// A character drawn in code has no preview image, so the picker shows an
+// inline mark instead of a broken <img>.
+const STICK_ICON = '<svg viewBox="0 0 40 64" width="100%" height="96">' +
+    '<g stroke="#4444ee" stroke-width="3" fill="none" stroke-linecap="round">' +
+    '<circle cx="20" cy="10" r="7"/><line x1="20" y1="17" x2="20" y2="38"/>' +
+    '<polyline points="20,22 10,30 13,39"/><polyline points="20,22 31,29 28,38"/>' +
+    '<polyline points="20,38 12,50 15,60"/><polyline points="20,38 29,49 27,60"/>' +
+    '</g></svg>';
+
 // ── Character selection ───────────────────────────────────────────────────
 const LS_CHARACTER = 'runningboy_character';
 
@@ -836,7 +845,9 @@ function refreshCharacterCards() {
             ? OBSTACLE_SETS[t.obstacles].length + ' hazards'
             : 'classic';
         return `<div class="char-card${sel}" data-char="${id}" onclick="selectCharacter('${id}')">` +
-               `<img src="${t.preview}" alt="${t.label}">` +
+               (t.preview
+                   ? `<img src="${t.preview}" alt="${t.label}">`
+                   : `<div class="char-proc">${STICK_ICON}</div>`) +
                `<div class="char-name">${t.label}</div>` +
                `<div class="char-obs">${obs}</div></div>`;
     }).join('');
