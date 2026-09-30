@@ -1817,6 +1817,9 @@ class GameScene extends Phaser.Scene {
             if (this.trailHistory.length > 25) this.trailHistory.shift();
         }
         this.trailSprites.forEach((ts, i) => {
+            // A procedural character has no sprite to trail — the fallback
+            // art would otherwise show through as a ghost.
+            if (this.stick) { ts.setAlpha(0); return; }
             const histIdx = this.trailHistory.length - 2 - i * 4;
             if (this.boyState === 'jumping' && histIdx >= 0) {
                 const h = this.trailHistory[histIdx];

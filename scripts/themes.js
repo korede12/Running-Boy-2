@@ -181,7 +181,7 @@ const OBSTACLE_SETS = {
           shape: { w: 0.66, h: 0.70 } },
 
         { key: 'pillar',    frames: [], lane: 'ground', weight: 3, sketch: true,
-          breakable: true, shape: { w: 0.56, h: 1.90 } },
+          breakable: true, shape: { w: 0.56, h: 1.10 } },
 
         { key: 'dart',      frames: [], lane: 'ground', weight: 3, sketch: true,
           breakable: true, shape: { w: 0.92, h: 0.28, yOffset: 30 } },
