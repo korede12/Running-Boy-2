@@ -69,10 +69,18 @@ class ObstacleSpawner {
     _spawn(camX) {
         const def = this._pick();
         const x   = camX + GAME_W + 30;
-        const y   = def.lane === 'air' ? AIR_Y : GROUND_Y;
+        const lift = (def.shape && def.shape.yOffset) || 0;
+        const y   = (def.lane === 'air' ? AIR_Y : GROUND_Y) - lift;
 
         let spr, h, w;
-        if (def.shape) {
+        if (def.sketch && typeof Doodle !== 'undefined') {
+            // drawn once into its own graphics, then moved each frame
+            h = PLAYER_H * def.shape.h;
+            w = PLAYER_H * def.shape.w;
+            spr = this.scene.add.graphics().setScrollFactor(0).setDepth(18);
+            Doodle.shape(spr, def.key, 0, 0, w, h, (Math.random() * 97) | 0);
+            spr.y = y;
+        } else if (def.shape) {
             // placeholder geometry — reads clearly and needs no art
             h = PLAYER_H * def.shape.h;
             w = PLAYER_H * def.shape.w;

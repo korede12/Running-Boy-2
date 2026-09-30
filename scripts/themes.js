@@ -94,6 +94,7 @@ const THEMES = {
         preview: null,             // drawn procedurally, no art file
         credit: null,
         procedural: true,          // StickFigure renders it from joint angles
+        background: { kind: 'notebook' },   // ruled paper, red margin as the floor
         obstacles: 'stickfight',
     },
 };
@@ -169,28 +170,24 @@ const OBSTACLE_SETS = {
     // Stick-fight mode. `breakable` obstacles are destroyed by a punch;
     // everything else must still be jumped. That split is the whole mode:
     // every hazard is a question of which verb to use.
+    // Sketched on notebook paper. The split is the mode: two you clear,
+    // two you have to break — and the pillar is deliberately too tall to
+    // jump, so the punch is required rather than optional.
     stickfight: [
-        { key: 'crate',   frames: [], lane: 'ground', weight: 3, breakable: true,
-          shape: { w: 0.62, h: 0.58, color: 0xa87f46, stroke: 0x5c4423 } },
+        { key: 'hurdle',    frames: [], lane: 'ground', weight: 4, sketch: true,
+          shape: { w: 0.68, h: 0.52 } },
 
-        { key: 'barrel',  frames: [], lane: 'ground', weight: 3, breakable: true,
-          shape: { w: 0.52, h: 0.66, color: 0x9a5a2a, stroke: 0x4e2c12 } },
+        { key: 'spikeball', frames: [], lane: 'ground', weight: 3, sketch: true,
+          shape: { w: 0.66, h: 0.70 } },
 
-        { key: 'bottles', frames: [], lane: 'ground', weight: 2, breakable: true,
-          shape: { w: 0.55, h: 0.26, color: 0x2f7d4f, stroke: 0x17422a } },
+        { key: 'pillar',    frames: [], lane: 'ground', weight: 3, sketch: true,
+          breakable: true, shape: { w: 0.56, h: 1.90 } },
 
-        { key: 'spikes',  frames: [], lane: 'ground', weight: 3,
-          shape: { w: 0.60, h: 0.30, color: 0x8c8c96, stroke: 0x3a3a44 } },
+        { key: 'dart',      frames: [], lane: 'ground', weight: 3, sketch: true,
+          breakable: true, shape: { w: 0.92, h: 0.28, yOffset: 30 } },
 
-        { key: 'fire',    frames: [], lane: 'ground', weight: 2,
-          shape: { w: 0.60, h: 0.62, color: 0xe8632a, stroke: 0x7d2f0e } },
-
-        { key: 'wire',    frames: [], lane: 'air',    weight: 2,
-          shape: { w: 1.10, h: 0.16, color: 0x555560, stroke: 0x2a2a30 } },
-
-        { key: 'wings',   frames: [], lane: 'air',    weight: 1,
-          pickup: 'float', minScore: 20,
-          shape: { w: 0.80, h: 0.34, color: 0xf3e29a, stroke: 0xb99b3a } },
+        { key: 'wings',     frames: [], lane: 'air',    weight: 1, sketch: true,
+          pickup: 'float', minScore: 20, shape: { w: 0.80, h: 0.34 } },
     ],
 };
 

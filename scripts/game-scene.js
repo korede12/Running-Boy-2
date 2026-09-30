@@ -48,7 +48,9 @@ class GameScene extends Phaser.Scene {
         // the theme falls back to the procedural sky rather than loading 404s.
         const bg = this.theme && this.theme.background;
         this.themeBg = (bg && !bg.pending) ? bg : null;
-        if (this.themeBg) {
+        // A notebook page is drawn rather than loaded, so it needs no images.
+        this.notebook = !!(this.themeBg && this.themeBg.kind === 'notebook');
+        if (this.themeBg && !this.notebook) {
             this.load.image('theme_sky',    this.themeBg.sky);
             this.load.image('theme_ground', this.themeBg.ground);
         }
@@ -125,7 +127,8 @@ class GameScene extends Phaser.Scene {
 
         // ── Background: themed tiles, or the original procedural sky ──────
         if (this.themeBg) {
-            this._drawThemeBackground();
+            if (this.notebook) this._drawNotebook();
+            else this._drawThemeBackground();
         } else {
             this._drawSky();
             this._drawMoon();
@@ -466,6 +469,13 @@ class GameScene extends Phaser.Scene {
     // Tiled backdrop for themes that ship their own art. Both layers are
     // tileSprites so scrolling is a texture offset rather than redrawn
     // geometry — cheaper than the procedural sky and it parallaxes for free.
+    // Ruled paper with the red margin as the floor. Redrawn only when the
+    // canvas changes, since the ruling is horizontal and does not scroll.
+    _drawNotebook() {
+        this.paperGfx = this.add.graphics().setScrollFactor(0).setDepth(0);
+        Doodle.drawPage(this.paperGfx, GAME_W, GAME_H, GROUND_Y);
+    }
+
     _drawThemeBackground() {
         const bg = this.themeBg;
 
