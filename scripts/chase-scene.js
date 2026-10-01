@@ -14,9 +14,12 @@
 class ChaseScene extends Phaser.Scene {
 
     // ── Tuning ────────────────────────────────────────────────────────────
-    static SPEED_BASE   = 7400;    // world units per second
-    static SPEED_MAX    = 12200;  // capped by how far ahead a hazard is readable
-    static SPEED_RAMP   = 150;     // gained per second of clean running
+    static SPEED_BASE   = 6600;    // world units per second
+    static SPEED_MAX    = 12200;   // capped by how far ahead a hazard is readable
+    static SPEED_RAMP   = 90;      // gained per second, before the easing below
+    static SPEED_EASE   = 0.65;    // how much the ramp slackens as it nears the
+                                   // top — reaching it is roughly 100 seconds'
+                                   // work rather than half a minute
     static JUMP_V       = 2700;    // apex ≈ 470, airtime ≈ 0.70s
     static GRAV         = 7700;
     static SLIDE_MS     = 460;
@@ -234,8 +237,12 @@ class ChaseScene extends Phaser.Scene {
     _advance(dt) {
         const C = ChaseScene;
 
-        // Speed ramps while clean and is dragged down by a stumble.
-        this.speedTarget = Math.min(C.SPEED_MAX, this.speedTarget + C.SPEED_RAMP * dt);
+        // Speed ramps while clean and is dragged down by a stumble. The ramp
+        // slackens as it climbs, so the pace still changes noticeably early
+        // without the top of the range arriving before the run has settled.
+        const climbed = (this.speedTarget - C.SPEED_BASE) / (C.SPEED_MAX - C.SPEED_BASE);
+        const rate    = C.SPEED_RAMP * (1 - C.SPEED_EASE * climbed);
+        this.speedTarget = Math.min(C.SPEED_MAX, this.speedTarget + rate * dt);
         const want = this.time.now < this.stumbleTo
             ? this.speedTarget * C.STUMBLE_DRAG
             : this.speedTarget;
@@ -411,7 +418,9 @@ class ChaseScene extends Phaser.Scene {
         this.chaseGap    -= C.CHASE_HIT;
         this._hitPullback = C.PULLBACK_HIT;
         this._shake       = 14;
-        this.speedTarget  = Math.max(C.SPEED_BASE, this.speedTarget - 300);
+        // Scaled to the ramp: with a slower climb, 300 was several seconds of
+        // progress to lose on one trip.
+        this.speedTarget  = Math.max(C.SPEED_BASE, this.speedTarget - 180);
         this.sound.play('snd_hit', { volume: 0.5 });
 
         this.gFx.clear();
