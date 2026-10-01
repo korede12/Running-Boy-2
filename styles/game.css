@@ -11,10 +11,15 @@ body { margin: 0; background: #000; overflow: hidden; }
 
 /* ── Rotate-to-landscape gate ─────────────────────────────────────────── */
 /* Web cannot truly force orientation outside fullscreen, so on touch
-   devices held upright we cover the game and ask for a rotation. */
+   devices held upright we cover the game and ask for a rotation.
+   Not every mode wants landscape: chase mode sets .portrait-ok on <html>
+   and is left alone. */
 #rotate-gate { display: none; }
 
 @media (orientation: portrait) {
+    html.portrait-ok #rotate-gate { display: none; }
+    html.portrait-ok canvas { display: block !important; }
+
     #rotate-gate {
         display: flex;
         position: fixed;

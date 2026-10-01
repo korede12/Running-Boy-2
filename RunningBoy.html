@@ -4,21 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Running Boy</title>
+    <!-- These three decide the canvas's shape, so they run before the body
+         exists: the rotate gate must never flash at a mode that does not
+         need it. -->
+    <script src="scripts/themes.js"></script>
+    <script src="scripts/run-store.js"></script>
+    <script src="scripts/constants.js"></script>
+    <script>if (CHASE_MODE) document.documentElement.classList.add('portrait-ok');</script>
     <link rel="stylesheet" href="styles/game.css">
 </head>
 <body>
 <div id="rotate-gate">
     <div class="phone"></div>
     <div class="msg">ROTATE YOUR DEVICE</div>
-    <div class="sub">Running Boy plays in landscape</div>
+    <div class="sub">This runner plays in landscape</div>
 </div>
 <script src="scripts/config.js"></script>
 <script type="module" src="scripts/auth.js"></script>
 <script type="module" src="scripts/skubu-chain.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
-<script src="scripts/constants.js"></script>
-<script src="scripts/themes.js"></script>
-<script src="scripts/run-store.js"></script>
 <script src="scripts/obstacle-spawner.js"></script>
 <script src="scripts/doodle.js"></script>
 <script src="scripts/lagos.js"></script>

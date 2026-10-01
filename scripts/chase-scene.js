@@ -590,22 +590,25 @@ class ChaseScene extends Phaser.Scene {
         this.over = true;
         const panel = this._overlay();
 
-        panel.push(this.add.text(GAME_W / 2, 96, 'HE DON CATCH YOU!', {
+        panel.push(this.add.text(GAME_W / 2, this._y(0.24), 'HE DON CATCH YOU!', {
             fontSize: '24px', color: '#ff4444', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#000', strokeThickness: 4,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0));
 
-        panel.push(this.add.text(GAME_W / 2, 136,
-            `Spend 1 skubu to break away?   (you have ${this.skubuCount})`, {
+        panel.push(this.add.text(GAME_W / 2, this._y(0.34),
+            `Spend 1 skubu to break away?\n(you have ${this.skubuCount})`, {
             fontSize: '12px', color: '#cfd6e0', fontFamily: 'monospace',
+            align: 'center',
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0));
 
-        const spend = this.add.text(GAME_W / 2 - 90, 196, '[ SPEND 1 ✦ ]', {
+        // Stacked, not side by side: two buttons on one line do not fit a
+        // portrait canvas.
+        const spend = this.add.text(GAME_W / 2, this._y(0.47), '[ SPEND 1 ✦ ]', {
             fontSize: '16px', color: '#ffcc22', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#000', strokeThickness: 3,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0).setInteractive({ useHandCursor: true });
 
-        const quit = this.add.text(GAME_W / 2 + 90, 196, '[ GIVE UP ]', {
+        const quit = this.add.text(GAME_W / 2, this._y(0.56), '[ GIVE UP ]', {
             fontSize: '16px', color: '#889', fontFamily: 'monospace',
             stroke: '#000', strokeThickness: 3,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0).setInteractive({ useHandCursor: true });
@@ -650,26 +653,30 @@ class ChaseScene extends Phaser.Scene {
         if (blockedUntil) { this._showCooldown(blockedUntil); return; }
 
         this._overlay();
-        this.add.text(GAME_W / 2, 110, 'CAUGHT!', {
+        this.add.text(GAME_W / 2, this._y(0.275), 'CAUGHT!', {
             fontSize: '34px', color: '#ff4444', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#000', strokeThickness: 5,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
 
-        this.add.text(GAME_W / 2, 158,
+        this.add.text(GAME_W / 2, this._y(0.395),
             `Score ${this.score}   ·   ${Math.floor(this.metres)} m   ·   ${this.coinsTaken} ✦`, {
             fontSize: '14px', color: '#ffffff', fontFamily: 'monospace',
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
 
-        this.add.text(GAME_W / 2, 214, 'Click or SPACE to run again', {
+        this.add.text(GAME_W / 2, this._y(0.535), 'Click or SPACE to run again', {
             fontSize: '13px', color: '#aab', fontFamily: 'monospace',
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
 
-        this._menuLink(258);
+        this._menuLink(this._y(0.645));
         this.input.keyboard.once('keydown-SPACE', () => this._restart());
         this.input.once('pointerdown', () => this._restart());
     }
 
     _restart() { this.scene.restart(); }
+
+    /// End screens are laid out in fractions of the canvas, so the same
+    /// screen works on a tall portrait canvas and a wide landscape one.
+    _y(f) { return Math.round(GAME_H * f); }
 
     _overlay() {
         const ol = this.add.graphics().setDepth(100).setScrollFactor(0);
@@ -694,12 +701,12 @@ class ChaseScene extends Phaser.Scene {
         this.over = true;
         this._overlay();
 
-        this.add.text(GAME_W / 2, 100, 'OUT OF PLAYS', {
+        this.add.text(GAME_W / 2, this._y(0.25), 'OUT OF PLAYS', {
             fontSize: '24px', color: '#ff4444', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#000', strokeThickness: 4,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
 
-        const clock = this.add.text(GAME_W / 2, 150, '', {
+        const clock = this.add.text(GAME_W / 2, this._y(0.375), '', {
             fontSize: '28px', color: '#ffcc22', fontFamily: 'monospace',
             stroke: '#000', strokeThickness: 4,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
@@ -715,6 +722,6 @@ class ChaseScene extends Phaser.Scene {
         tick();
         this.time.addEvent({ delay: 1000, loop: true, callback: tick });
 
-        this._menuLink(210);
+        this._menuLink(this._y(0.525));
     }
 }

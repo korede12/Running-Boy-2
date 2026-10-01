@@ -1,8 +1,18 @@
 // ── Game constants ────────────────────────────────────────────────────────
 // Canvas size. Every width-dependent value below and in the scene is
 // expressed relative to these, so changing GAME_W re-lays-out the game.
-const GAME_W       = 800;    // landscape; set to 400 for the original square
-const GAME_H       = 400;
+//
+// A chase-mode runner faces down the road, which wants height rather than
+// width — and it is the shape a phone is already being held in. Every other
+// theme is side-on and needs the width, so it keeps the landscape canvas.
+// This runs before the page body exists; see RunningBoy.html.
+const CHASE_MODE = (() => {
+    try { return getTheme(RunStore.character()).mode === 'chase'; }
+    catch (_) { return false; }
+})();
+
+const GAME_W       = CHASE_MODE ? 450 : 800;   // 800x400 landscape; 400x400
+const GAME_H       = CHASE_MODE ? 800 : 400;   // restores the original square
 
 const GROUND_Y     = 330;
 const TOTAL_FRAMES = 25;

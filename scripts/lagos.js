@@ -12,21 +12,33 @@
 
 const ROAD = {
     SEG_LEN:   200,
-    HALF:      1630,          // half the tarmac's width
-    LANE_W:    1087,          // (2 * HALF) / 3
     CAM_DEPTH: 0.84,          // 1 / tan(fov/2); fov = 100°
-    CAM_H:     900,
     CAM_BACK:  900,           // how far the camera trails the runner
-    DRAW_SEGS: 110,          // far enough to read a hazard before it matters
+    DRAW_SEGS: 110,           // far enough to read a hazard before it matters
     PERSON_H:  500,
     MAX_CURVE: 2.4,
     HILL_AMP:  170,
+    // Solved below from FRAME: HALF, LANE_W, CAM_H.
 };
+
+// How the view is framed, as fractions of the canvas. The world constants are
+// solved from these rather than written down, so the road reads correctly
+// whichever shape the canvas is: portrait is a narrower, closer view from a
+// higher camera, which is what leaves room for the road ahead on a phone held
+// upright. The landscape numbers are the ones the mode was tuned at.
+const FRAME = (GAME_H > GAME_W)
+    ? { runner: 0.130, road: 0.78, horizon: 0.30, camH: 1800 }
+    : { runner: 0.233, road: 0.76, horizon: 0.40, camH:  900 };
 
 // Pixels per world unit at scale 1. One factor for both axes, so nothing is
 // stretched: a square post stays square.
-const PX_PER_UNIT       = GAME_H / 2;
-const HORIZON_Y = Math.round(GAME_H * 0.40);
+const _SCALE_AT_RUNNER = ROAD.CAM_DEPTH / ROAD.CAM_BACK;
+const PX_PER_UNIT = FRAME.runner * GAME_H / (ROAD.PERSON_H * _SCALE_AT_RUNNER);
+const HORIZON_Y   = Math.round(GAME_H * FRAME.horizon);
+
+ROAD.CAM_H  = FRAME.camH;
+ROAD.HALF   = FRAME.road * GAME_W / (2 * _SCALE_AT_RUNNER * PX_PER_UNIT);
+ROAD.LANE_W = 2 * ROAD.HALF / 3;
 
 // ── Deterministic terrain ─────────────────────────────────────────────────
 
@@ -79,6 +91,16 @@ const LG = {
 // a silhouette is all that survives, so the silhouettes have to differ.
 
 const KIOSK_PAINT = [0x2f7f6a, 0xb6453c, 0x3d6ba8, 0xc8912e, 0x6a4d93];
+
+// Props are written against the landscape road. A portrait canvas has to
+// narrow the road in world units to fit a runner worth looking at, which
+// would otherwise leave a danfo parked beside it wider than the street. They
+// are scaled back toward that reference road — but not all the way, because
+// they also have to stay taller than the runner they stand over. The exponent
+// is that compromise, and it is 1 whenever the road is the one they were
+// drawn for.
+const PROP_REF_HALF = 1630;
+const PROP_SCALE    = Math.pow(ROAD.HALF / PROP_REF_HALF, 0.6);
 
 const SIDE = {
 
@@ -396,7 +418,7 @@ const Lagos = {
                 if (!o) continue;
                 const dir = side === 0 ? -1 : 1;
                 const sx  = p.x + dir * p.w * o.off;
-                const s   = p.scale * PX_PER_UNIT;
+                const s   = p.scale * PX_PER_UNIT * PROP_SCALE;
                 if (s * 700 < 1.5)                  continue;
                 if (sx < -280 || sx > GAME_W + 280) continue;
                 SIDE[o.type](g, sx, p.y, s, o.seed, dir);
@@ -451,6 +473,10 @@ const HAZARDS = {
     pipe:    { clear: 'slide', top: 300, depth: 140, w: 1.00, weight: 2 },
 };
 
+// How wide each thing sits in its lane. Widths are road-relative because a
+// lane is what they have to fit; heights come from the hazard's own `top`,
+// because height is what the runner has to clear and the art must not promise
+// something different from what the collision check reads.
 const HAZ_ART = {
 
     /// An open drain cut across the lane. Flat things vanish in perspective,
@@ -471,7 +497,7 @@ const HAZ_ART = {
 
     barrow(g, L, pn, pf, wx) {
         const s = pn.scale * PX_PER_UNIT, x = L.offX(pn, wx), y = pn.y;
-        const w = 520 * s, h = 280 * s;
+        const w = 0.48 * ROAD.LANE_W * s, h = HAZARDS.barrow.top * s;
         g.fillStyle(0x7a7f85, 1);
         g.beginPath();
         g.moveTo(x - w * 0.5, y - h); g.lineTo(x + w * 0.5, y - h);
@@ -488,8 +514,9 @@ const HAZ_ART = {
 
     cones(g, L, pn, pf, wx) {
         const s = pn.scale * PX_PER_UNIT, y = pn.y;
-        for (const o of [-240, 0, 240]) {
-            const x = L.offX(pn, wx + o), h = 240 * s, w = 150 * s;
+        for (const f of [-0.22, 0, 0.22]) {
+            const x = L.offX(pn, wx + f * ROAD.LANE_W);
+            const h = HAZARDS.cones.top * s, w = 0.14 * ROAD.LANE_W * s;
             g.fillStyle(0x3a3a3e, 1); g.fillRect(x - w * 0.8, y - 22 * s, w * 1.6, 22 * s);
             g.fillStyle(0xe2641f, 1);
             g.beginPath();
@@ -505,7 +532,7 @@ const HAZ_ART = {
     /// the only answer is the next lane over.
     danfo(g, L, pn, pf, wx) {
         const s = pn.scale * PX_PER_UNIT, x = L.offX(pn, wx), y = pn.y;
-        const w = 1180 * s, h = 980 * s;
+        const w = 1.08 * ROAD.LANE_W * s, h = HAZARDS.danfo.top * s;
         g.fillStyle(0x1a1a1d, 1);
         g.fillRect(x - w * 0.52, y - h * 0.10, w * 1.04, h * 0.10);   // shadow
         g.fillStyle(LG.danfo, 1); g.fillRect(x - w / 2, y - h, w, h * 0.88);
