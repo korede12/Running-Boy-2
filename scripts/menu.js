@@ -46,6 +46,7 @@ function getName() {
 function openModal(id) {
     if (id === 'hs-modal')     renderHighScores();
     if (id === 'name-modal')   renderNameModal();
+    if (id === 'char-modal')   refreshCharacterCards();
     if (id === 'market-modal') { renderMarket(); refreshChainBalance(); }
     document.getElementById(id).classList.add('open');
 }
@@ -834,6 +835,13 @@ function selectCharacter(id) {
     refreshCharacterCards();
 }
 
+/// Picking a runner is starting the run. Choosing first and then having to
+/// find Start Game again was the wrong way round: the choice is the launch.
+function playAs(id) {
+    selectCharacter(id);
+    startGame();
+}
+
 function refreshCharacterCards() {
     const grid = document.getElementById('char-grid');
     if (!grid || typeof THEMES === 'undefined') return;
@@ -848,12 +856,15 @@ function refreshCharacterCards() {
             : (typeof OBSTACLE_SETS !== 'undefined' && OBSTACLE_SETS[t.obstacles])
                 ? OBSTACLE_SETS[t.obstacles].length + ' hazards'
                 : 'classic';
-        return `<div class="char-card${sel}" data-char="${id}" onclick="selectCharacter('${id}')">` +
+        // The one you played last is marked, so coming back for another run
+        // is a single tap on a card you already recognise.
+        return `<div class="char-card${sel}" data-char="${id}" onclick="playAs('${id}')">` +
                (t.preview
                    ? `<img src="${t.preview}" alt="${t.label}">`
                    : `<div class="char-proc">${STICK_ICON}</div>`) +
                `<div class="char-name">${t.label}</div>` +
-               `<div class="char-obs">${obs}</div></div>`;
+               `<div class="char-obs">${obs}</div>` +
+               `<div class="char-go">${sel ? '&#9654; PLAY AGAIN' : '&#9654; PLAY'}</div></div>`;
     }).join('');
 
     const credit = document.getElementById('char-credit');

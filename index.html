@@ -97,14 +97,9 @@
     </div>
 
     <div id="menu">
-        <button class="menu-btn" onclick="startGame()">
+        <button class="menu-btn" onclick="openModal('char-modal')">
             <span class="icon">&#9654;</span>
             <span class="label">Start Game</span>
-            <span class="arrow">›</span>
-        </button>
-        <button class="menu-btn" onclick="openModal('char-modal')">
-            <span class="icon">&#9679;</span>
-            <span class="label">Choose Character</span>
             <span class="arrow">›</span>
         </button>
         <button class="menu-btn" onclick="openModal('hs-modal')">
@@ -163,11 +158,12 @@
     </div>
 </div>
 
-<!-- ── Choose Character Modal ── -->
+<!-- ── Start Game: choosing the runner is the launch ── -->
 <div class="modal-backdrop" id="char-modal">
     <div class="modal">
         <button class="modal-close" onclick="closeModal('char-modal')">&#10005;</button>
-        <div class="modal-title">&#9679; Choose Character</div>
+        <div class="modal-title">&#9654; Choose Your Runner</div>
+        <div id="char-hint">Pick one — the run starts straight away</div>
         <div id="char-grid"><!-- built from THEMES by menu.js --></div>
         <div id="char-credit"></div>
     </div>

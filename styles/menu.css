@@ -1146,6 +1146,30 @@ body {
     margin-top: 3px;
 }
 .char-card.selected .char-obs { color: #8a7233; }
+
+/* Picking a card starts the run, so every card says so. */
+.char-go {
+    font-family: monospace;
+    font-size: 9px;
+    letter-spacing: .08em;
+    color: #4a4a58;
+    margin-top: 7px;
+    padding-top: 6px;
+    border-top: 1px solid #2a2a36;
+    transition: color .15s;
+}
+.char-card:hover .char-go { color: #ccaa44; }
+.char-card.selected .char-go { color: #ccaa44; border-top-color: #4a3f1e; }
+
+#char-hint {
+    font-family: monospace;
+    font-size: 10px;
+    letter-spacing: .06em;
+    color: #667;
+    text-align: center;
+    margin: -10px 0 14px;
+}
+
 #char-credit {
     font-family: monospace;
     font-size: 10px;
