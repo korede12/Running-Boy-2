@@ -104,7 +104,7 @@ const THEMES = {
     // lagos.js where they are drawn.
     portable: {
         label: 'Portable',
-        preview: null,
+        preview: 'assets/portable_card.svg',
         credit: null,
         procedural: true,          // drawn in code, see runners.js
         icon: 'portable',
