@@ -106,8 +106,11 @@ const THEMES = {
         label: 'Portable',
         preview: null,
         credit: null,
-        procedural: true,          // the stick figure stands in until the art exists
+        procedural: true,          // drawn in code, see runners.js
+        icon: 'portable',
         mode: 'chase',
+        runner: 'portable',        // who you are
+        chaser: 'police',          // and who is behind you
         obstacles: null,
     },
 };

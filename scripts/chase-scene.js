@@ -57,8 +57,6 @@ class ChaseScene extends Phaser.Scene {
                                    // in the same band as the 2D modes
     static PLAYER_HALF  = 110;     // half the runner's width, for collisions
 
-    static INK_PLAYER   = 0x1b1b2e;
-    static INK_CHASER   = 0xb3202a;
 
     constructor() { super({ key: 'ChaseScene' }); }
 
@@ -76,6 +74,12 @@ class ChaseScene extends Phaser.Scene {
     create() {
         this.gWorld = this.add.graphics().setDepth(10);
         this.gFx    = this.add.graphics().setDepth(40).setScrollFactor(0);
+
+        // Who you are and who is behind you both come from the theme, so a
+        // second chase pairing needs no change here.
+        const theme      = (typeof getTheme === 'function') ? getTheme(RunStore.character()) : null;
+        this.runnerSkin  = (theme && theme.runner) || 'portable';
+        this.chaserSkin  = (theme && theme.chaser) || 'police';
 
         const blockedUntil = RunStore.checkLaunchCooldown();
         if (blockedUntil) {
@@ -513,7 +517,7 @@ class ChaseScene extends Phaser.Scene {
                                                 Lagos.laneX(it.c.lane), it.c.y,
                                                 this.time.now / 260 + it.c.z);
             else if (it.player)  this._drawRunner(g, pts, this.playerZ, this.laneX, this.py,
-                                                  ChaseScene.INK_PLAYER, this._playerMode(), 0);
+                                                  this.runnerSkin, this._playerMode(), 0);
             else                 this._drawChaser(g, pts);
         }
 
@@ -529,7 +533,7 @@ class ChaseScene extends Phaser.Scene {
 
     /// `cap` limits the drawn height to that multiple of the runner's own,
     /// or 0 for no limit.
-    _drawRunner(g, pts, z, wx, py, ink, mode, cap) {
+    _drawRunner(g, pts, z, wx, py, skin, mode, cap) {
         const p = Lagos.at(pts, z);
         const s = p.scale * Lagos.PX;
         const x = Lagos.offX(p, wx);
@@ -541,7 +545,7 @@ class ChaseScene extends Phaser.Scene {
         g.fillStyle(0x000000, 0.30 * Math.max(0.12, 1 - py / 700));
         g.fillEllipse(x, p.y, h * 0.52, h * 0.15);
 
-        StickFigure.drawBack(g, x, p.y - py * s, h, mode, this.runPhase, ink);
+        Runner.draw(g, x, p.y - py * s, h, mode, this.runPhase, skin);
     }
 
     /// Where he is drawn, which is not quite where he is. See CHASER_SHOW.
@@ -558,7 +562,7 @@ class ChaseScene extends Phaser.Scene {
     /// loom, not so close that there is nothing else to look at.
     _drawChaser(g, pts) {
         this._drawRunner(g, pts, this._chaserZ(), this.chaserX, 0,
-                         ChaseScene.INK_CHASER, 'run', ChaseScene.CHASER_CAP);
+                         this.chaserSkin, 'run', ChaseScene.CHASER_CAP);
     }
 
     _drawChaseBar() {

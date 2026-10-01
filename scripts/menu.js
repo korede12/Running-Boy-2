@@ -814,13 +814,37 @@ document.addEventListener('keydown', e => {
 });
 
 // A character drawn in code has no preview image, so the picker shows an
-// inline mark instead of a broken <img>.
+// inline mark instead of a broken <img>. Each one is the figure the game
+// actually draws, so the card does not promise something else.
 const STICK_ICON = '<svg viewBox="0 0 40 64" width="100%" height="96">' +
     '<g stroke="#4444ee" stroke-width="3" fill="none" stroke-linecap="round">' +
     '<circle cx="20" cy="10" r="7"/><line x1="20" y1="17" x2="20" y2="38"/>' +
     '<polyline points="20,22 10,30 13,39"/><polyline points="20,22 31,29 28,38"/>' +
     '<polyline points="20,38 12,50 15,60"/><polyline points="20,38 29,49 27,60"/>' +
     '</g></svg>';
+
+// Seen from behind, as in the chase — the dyed dreads are the character.
+const PORTABLE_ICON = '<svg viewBox="0 0 40 64" width="100%" height="96">' +
+    '<g stroke-linecap="round" fill="none">' +
+    '<path d="M16 38 L13 55" stroke="#2b3c5e" stroke-width="6"/>' +
+    '<path d="M24 38 L27 55" stroke="#2b3c5e" stroke-width="6"/>' +
+    '<path d="M12 24 L8 36" stroke="#f4f1e8" stroke-width="5"/>' +
+    '<path d="M28 24 L32 36" stroke="#f4f1e8" stroke-width="5"/>' +
+    '</g>' +
+    '<ellipse cx="13" cy="57" rx="4.2" ry="2.4" fill="#f4f1e8"/>' +
+    '<ellipse cx="27" cy="57" rx="4.2" ry="2.4" fill="#f4f1e8"/>' +
+    '<path d="M12 22 L28 22 L25.5 40 L14.5 40 Z" fill="#f4f1e8"/>' +
+    '<rect x="15" y="28" width="10" height="7" fill="#d93b3b"/>' +
+    '<ellipse cx="20" cy="14" rx="6.2" ry="7.2" fill="#8a5a33"/>' +
+    '<g stroke-width="3.2" stroke-linecap="round" fill="none">' +
+    '<path d="M14.5 9 L12.5 22" stroke="#3fbf4f"/>' +
+    '<path d="M17.5 7.5 L16.5 23" stroke="#f2d021"/>' +
+    '<path d="M20.5 7.5 L20.5 23.5" stroke="#2f86e0"/>' +
+    '<path d="M23.5 7.5 L24.5 23" stroke="#e8509c"/>' +
+    '<path d="M26 9 L27.5 22" stroke="#3fbf4f"/>' +
+    '</g></svg>';
+
+const PROC_ICONS = { stick: STICK_ICON, portable: PORTABLE_ICON };
 
 // ── Character selection ───────────────────────────────────────────────────
 const LS_CHARACTER = 'runningboy_character';
@@ -861,7 +885,7 @@ function refreshCharacterCards() {
         return `<div class="char-card${sel}" data-char="${id}" onclick="playAs('${id}')">` +
                (t.preview
                    ? `<img src="${t.preview}" alt="${t.label}">`
-                   : `<div class="char-proc">${STICK_ICON}</div>`) +
+                   : `<div class="char-proc">${PROC_ICONS[t.icon] || STICK_ICON}</div>`) +
                `<div class="char-name">${t.label}</div>` +
                `<div class="char-obs">${obs}</div>` +
                `<div class="char-go">${sel ? '&#9654; PLAY AGAIN' : '&#9654; PLAY'}</div></div>`;
