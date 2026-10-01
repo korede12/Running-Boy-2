@@ -495,10 +495,7 @@ class GameScene extends Phaser.Scene {
         this.bgGround.tilePositionX = camX / (this.bgGround.tileScaleX || 1);
     }
 
-    _readCharacter() {
-        try { return localStorage.getItem('runningboy_character') || 'skeleton'; }
-        catch (_) { return 'skeleton'; }
-    }
+    _readCharacter() { return RunStore.character(); }
 
     // Keep the rig glued to the boy sprite each frame.
     // Pose the stick figure from whatever the player is doing. The sprite
@@ -1152,38 +1149,7 @@ class GameScene extends Phaser.Scene {
         return false;
     }
 
-    _saveScore(score) {
-        const LS_SCORES = 'runningboy_scores';
-        const LS_NAME   = 'runningboy_name';
-        let playerName  = 'ANON';
-        try {
-            playerName   = (localStorage.getItem(LS_NAME) || 'ANON').toUpperCase();
-            const scores = JSON.parse(localStorage.getItem(LS_SCORES)) || [];
-            scores.push({ name: playerName, score });
-            scores.sort((a, b) => b.score - a.score);
-            localStorage.setItem(LS_SCORES, JSON.stringify(scores.slice(0, 20)));
-        } catch (_) {}
-
-        // Upsert to Supabase leaderboard (personal best only) if connected
-        const auth = window.SkubuAuth;
-        if (auth && auth.isConnected() && window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
-            const address = auth.getAccount().address;
-            fetch(window.SUPABASE_URL + '/rest/v1/rpc/upsert_score', {
-                method: 'POST',
-                headers: {
-                    'Content-Type':  'application/json',
-                    'apikey':        window.SUPABASE_ANON_KEY,
-                    'Authorization': 'Bearer ' + window.SUPABASE_ANON_KEY,
-                },
-                body: JSON.stringify({
-                    p_wallet_address: address,
-                    p_player_name:    playerName,
-                    p_score:          score,
-                    p_period:         new Date().toISOString().slice(0, 10),
-                }),
-            }).catch(() => {});  // fire-and-forget, never block gameplay
-        }
-    }
+    _saveScore(score) { RunStore.saveScore(score); }
 
     _gameOver() {
         this._saveScore(this.score);
@@ -1336,43 +1302,14 @@ class GameScene extends Phaser.Scene {
     }
 
     // ── Loss-limit logic ──────────────────────────────────────────────────
+    // The counter is shared with the chase mode, so it lives in RunStore and
+    // neither mode can become a way around the gate.
 
     // Returns resetAt (epoch ms) if player is in cooldown, otherwise 0.
-    _checkLaunchCooldown() {
-        try {
-            const resetAt = parseInt(localStorage.getItem('runningboy_losses_reset')) || 0;
-            if (resetAt > 0 && Date.now() >= resetAt) {
-                localStorage.removeItem('runningboy_losses_reset');
-                localStorage.setItem('runningboy_losses', 0);
-                return 0;
-            }
-            const losses = parseInt(localStorage.getItem('runningboy_losses')) || 0;
-            return (losses >= 5 && resetAt > 0) ? resetAt : 0;
-        } catch (_) { return 0; }
-    }
+    _checkLaunchCooldown() { return RunStore.checkLaunchCooldown(); }
 
     // Called on each true game over. Returns resetAt if the 5th loss just triggered.
-    _recordLossAndCheck() {
-        try {
-            // If a previous cooldown has already expired, clear it first
-            const existing = parseInt(localStorage.getItem('runningboy_losses_reset')) || 0;
-            if (existing > 0 && Date.now() >= existing) {
-                localStorage.removeItem('runningboy_losses_reset');
-                localStorage.setItem('runningboy_losses', 0);
-            }
-
-            let losses = parseInt(localStorage.getItem('runningboy_losses')) || 0;
-            losses += 1;
-            localStorage.setItem('runningboy_losses', losses);
-
-            if (losses >= 5) {
-                const rt = Date.now() + 5 * 60 * 60 * 1000;
-                localStorage.setItem('runningboy_losses_reset', rt);
-                return rt;
-            }
-            return 0;
-        } catch (_) { return 0; }
-    }
+    _recordLossAndCheck() { return RunStore.recordLossAndCheck(); }
 
     _showSpendSkubuToPlayScreen(skubuCount, resetAt) {
         const bg = this.add.graphics().setScrollFactor(0).setDepth(100);

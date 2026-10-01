@@ -97,6 +97,19 @@ const THEMES = {
         background: { kind: 'notebook' },   // ruled paper, red margin as the floor
         obstacles: 'stickfight',
     },
+
+    // The only theme that changes the camera rather than the scenery. Over
+    // the runner's shoulder, three lanes, and someone behind him — so it
+    // brings its own scene (ChaseScene) and its own hazards, defined in
+    // lagos.js where they are drawn.
+    portable: {
+        label: 'Portable',
+        preview: null,
+        credit: null,
+        procedural: true,          // the stick figure stands in until the art exists
+        mode: 'chase',
+        obstacles: null,
+    },
 };
 
 // ── Obstacle sets ─────────────────────────────────────────────────────────

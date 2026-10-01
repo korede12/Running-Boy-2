@@ -161,4 +161,99 @@ class StickFigure {
 
         return this;
     }
+
+    // ── Back view ─────────────────────────────────────────────────────────
+    // The chase mode looks over the runner's shoulder, and the side view's
+    // joint angles do not survive the change of camera: a limb swinging along
+    // the direction of travel is nearly invisible from behind. So this is
+    // built from what does read from here — how high a foot lifts, how much
+    // a limb is foreshortened, and how the shoulders roll against the hips.
+    //
+    // Static, and it does not clear: the chase scene draws several figures
+    // into one Graphics.
+
+    static drawBack(g, x, y, h, mode, phase, color) {
+        const lw   = Math.max(1.2, 0.055 * h);
+        const dark = Phaser.Display.Color.IntegerToColor(color).darken(34).color;
+
+        // Sliding keeps the feet on the road but drops everything above them.
+        const bodyH = h * (mode === 'slide' ? 0.50 : 1);
+        const sw    = mode === 'run' ? Math.sin(phase * Math.PI * 2) : 0;
+
+        const hipY   = y - 0.44  * bodyH;
+        const neckY  = y - 0.765 * bodyH;
+        const headY  = y - 0.875 * bodyH;
+        const headR  = 0.105 * h;
+        const shHalf = 0.105 * h;
+        const hpHalf = 0.072 * h;
+        const roll   = sw * 0.022 * h;        // shoulders counter the legs
+
+        const seg = (x1, y1, x2, y2, col, k) => {
+            g.lineStyle(lw * (k || 1), col, 1);
+            g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.strokePath();
+        };
+
+        // ── Legs ─────────────────────────────────────────────────────────
+        for (const side of [-1, 1]) {
+            const s   = side * sw;                         // +1 = this leg forward
+            const hx  = x + side * hpHalf;
+            const col = s > 0 ? color : dark;              // the trailing leg sits behind
+
+            let lift = Math.max(0, s) * 0.17 * h;
+            if (mode === 'jump')  lift = 0.15 * h + side * 0.05 * h;
+            if (mode === 'slide') lift = 0.04 * h;
+            if (mode === 'hurt')  lift = 0.08 * h * side;
+
+            const fx = hx + side * 0.018 * h + s * 0.012 * h;
+            const fy = y - lift;
+            // A lifted knee comes up and out; a planted one stays under the hip.
+            const kx = hx + side * 0.035 * h;
+            const ky = hipY + (fy - hipY) * 0.52 - Math.abs(s) * 0.055 * h
+                            - (mode === 'jump' ? 0.05 * h : 0);
+            seg(hx, hipY, kx, ky, col);
+            seg(kx, ky, fx, fy, col);
+        }
+
+        // ── Torso ────────────────────────────────────────────────────────
+        seg(x - hpHalf, hipY, x + hpHalf, hipY, color, 0.8);
+        seg(x, hipY, x, neckY, color);
+        seg(x - shHalf, neckY - roll, x + shHalf, neckY + roll, color, 0.9);
+
+        // ── Arms ─────────────────────────────────────────────────────────
+        for (const side of [-1, 1]) {
+            const a   = -side * sw;                        // opposite the legs
+            const col = a > 0 ? dark : color;              // a forward arm is hidden by the body
+            const sx  = x + side * shHalf, sy = neckY + side * roll;
+
+            let ex = sx + side * 0.050 * h;
+            let ey = sy + 0.150 * bodyH - a * 0.040 * h;
+            // A hand swinging forward disappears in front of the torso, so the
+            // forearm foreshortens instead of crossing over.
+            let hx = ex + side * 0.014 * h;
+            let hy = ey + 0.135 * bodyH * (1 - 0.40 * Math.max(0, a));
+
+            if (mode === 'jump') {
+                // Raised, not spread: straight out to the sides reads as a
+                // goalpost rather than a person in the air.
+                ex = sx + side * 0.046 * h; ey = sy - 0.072 * h;
+                hx = ex + side * 0.018 * h; hy = ey - 0.112 * h;
+            } else if (mode === 'hurt') {
+                ex = sx + side * 0.115 * h; ey = sy - 0.010 * h;
+                hx = ex + side * 0.080 * h; hy = ey - 0.070 * h;
+            } else if (mode === 'slide') {
+                ex = sx + side * 0.030 * h; ey = sy + 0.110 * bodyH;
+                hx = ex + side * 0.010 * h; hy = ey + 0.100 * bodyH;
+            }
+
+            seg(sx, sy, ex, ey, col);
+            seg(ex, ey, hx, hy, col);
+        }
+
+        // ── Head ─────────────────────────────────────────────────────────
+        const tilt = mode === 'hurt' ? 0.045 * h : 0;
+        g.lineStyle(lw * 0.85, color, 1);
+        g.strokeCircle(x + tilt, headY, headR);
+        g.fillStyle(color, 0.22);
+        g.fillCircle(x + tilt, headY, headR);
+    }
 }

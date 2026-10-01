@@ -841,9 +841,13 @@ function refreshCharacterCards() {
 
     grid.innerHTML = Object.entries(THEMES).map(([id, t]) => {
         const sel = id === current ? ' selected' : '';
-        const obs = (typeof OBSTACLE_SETS !== 'undefined' && OBSTACLE_SETS[t.obstacles])
-            ? OBSTACLE_SETS[t.obstacles].length + ' hazards'
-            : 'classic';
+        // A theme with its own camera is worth saying so on the card; the
+        // rest are told apart by how much they throw at you.
+        const obs = t.mode === 'chase'
+            ? 'chase · 3 lanes'
+            : (typeof OBSTACLE_SETS !== 'undefined' && OBSTACLE_SETS[t.obstacles])
+                ? OBSTACLE_SETS[t.obstacles].length + ' hazards'
+                : 'classic';
         return `<div class="char-card${sel}" data-char="${id}" onclick="selectCharacter('${id}')">` +
                (t.preview
                    ? `<img src="${t.preview}" alt="${t.label}">`
