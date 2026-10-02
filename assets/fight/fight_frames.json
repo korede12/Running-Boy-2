@@ -1,0 +1,210 @@
+{
+  "source": "hand-drawn page, restyled",
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "columns": 6,
+  "rows": 3,
+  "count": 18,
+  "anchor": "bottom-centre, frames share a baseline",
+  "suggestedFps": 14,
+  "frames": [
+    {
+      "index": 0,
+      "name": "fight_01",
+      "kind": "key",
+      "col": 0,
+      "row": 0,
+      "x": 0,
+      "y": 0,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 1,
+      "name": "fight_02",
+      "kind": "between",
+      "col": 1,
+      "row": 0,
+      "x": 256,
+      "y": 0,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 2,
+      "name": "fight_03",
+      "kind": "key",
+      "col": 2,
+      "row": 0,
+      "x": 512,
+      "y": 0,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 3,
+      "name": "fight_04",
+      "kind": "between",
+      "col": 3,
+      "row": 0,
+      "x": 768,
+      "y": 0,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 4,
+      "name": "fight_05",
+      "kind": "key",
+      "col": 4,
+      "row": 0,
+      "x": 1024,
+      "y": 0,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 5,
+      "name": "fight_06",
+      "kind": "between",
+      "col": 5,
+      "row": 0,
+      "x": 1280,
+      "y": 0,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 6,
+      "name": "fight_07",
+      "kind": "key",
+      "col": 0,
+      "row": 1,
+      "x": 0,
+      "y": 256,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 7,
+      "name": "fight_08",
+      "kind": "between",
+      "col": 1,
+      "row": 1,
+      "x": 256,
+      "y": 256,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 8,
+      "name": "fight_09",
+      "kind": "key",
+      "col": 2,
+      "row": 1,
+      "x": 512,
+      "y": 256,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 9,
+      "name": "fight_10",
+      "kind": "between",
+      "col": 3,
+      "row": 1,
+      "x": 768,
+      "y": 256,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 10,
+      "name": "fight_11",
+      "kind": "key",
+      "col": 4,
+      "row": 1,
+      "x": 1024,
+      "y": 256,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 11,
+      "name": "fight_12",
+      "kind": "between",
+      "col": 5,
+      "row": 1,
+      "x": 1280,
+      "y": 256,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 12,
+      "name": "fight_13",
+      "kind": "key",
+      "col": 0,
+      "row": 2,
+      "x": 0,
+      "y": 512,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 13,
+      "name": "fight_14",
+      "kind": "between",
+      "col": 1,
+      "row": 2,
+      "x": 256,
+      "y": 512,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 14,
+      "name": "fight_15",
+      "kind": "key",
+      "col": 2,
+      "row": 2,
+      "x": 512,
+      "y": 512,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 15,
+      "name": "fight_16",
+      "kind": "between",
+      "col": 3,
+      "row": 2,
+      "x": 768,
+      "y": 512,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 16,
+      "name": "fight_17",
+      "kind": "key",
+      "col": 4,
+      "row": 2,
+      "x": 1024,
+      "y": 512,
+      "w": 256,
+      "h": 256
+    },
+    {
+      "index": 17,
+      "name": "fight_18",
+      "kind": "between",
+      "col": 5,
+      "row": 2,
+      "x": 1280,
+      "y": 512,
+      "w": 256,
+      "h": 256
+    }
+  ]
+}
