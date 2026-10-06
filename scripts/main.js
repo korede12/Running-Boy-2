@@ -5,9 +5,10 @@
 
 const START_SCENE = (() => {
     const theme = (typeof getTheme === 'function') ? getTheme(RunStore.character()) : null;
-    return (theme && theme.mode === 'chase' && typeof ChaseScene !== 'undefined')
-        ? ChaseScene
-        : GameScene;
+    const mode  = theme && theme.mode;
+    if (mode === 'chase' && typeof ChaseScene !== 'undefined') return ChaseScene;
+    if (mode === 'fight' && typeof FightScene !== 'undefined') return FightScene;
+    return GameScene;
 })();
 
 new Phaser.Game({

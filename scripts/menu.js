@@ -875,8 +875,8 @@ function refreshCharacterCards() {
         const sel = id === current ? ' selected' : '';
         // A theme with its own camera is worth saying so on the card; the
         // rest are told apart by how much they throw at you.
-        const obs = t.mode === 'chase'
-            ? 'chase · 3 lanes'
+        const obs = t.mode === 'chase' ? 'chase · 3 lanes'
+            : t.mode === 'fight' ? 'versus · best of 3'
             : (typeof OBSTACLE_SETS !== 'undefined' && OBSTACLE_SETS[t.obstacles])
                 ? OBSTACLE_SETS[t.obstacles].length + ' hazards'
                 : 'classic';

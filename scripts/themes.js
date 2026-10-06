@@ -113,6 +113,18 @@ const THEMES = {
         chaser: 'police',          // and who is behind you
         obstacles: null,
     },
+
+    // Not a runner at all. One-on-one on a Lagos street, best of three,
+    // drawn from the fight poses on the notebook page.
+    fight: {
+        label: 'Fight',
+        preview: 'assets/fight/frames/fight_15.png',
+        credit: null,
+        procedural: false,
+        icon: 'portable',
+        mode: 'fight',
+        obstacles: null,
+    },
 };
 
 // ── Obstacle sets ─────────────────────────────────────────────────────────
