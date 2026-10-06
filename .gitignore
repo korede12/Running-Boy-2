@@ -7,3 +7,6 @@ skills-lock.json
 
 # wrangler working directory (local state, not source)
 .wrangler/
+
+# node_modules anywhere — the tools borrow sharp from a scratch install
+node_modules/

@@ -186,6 +186,8 @@ body {
 /* ── Modal panel ── */
 .modal {
     width: 360px;
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
     background: #080c18;
     border: 1.5px solid #1e3a6e;
     border-radius: 12px;
@@ -1099,36 +1101,44 @@ body {
 }
 
 /* ── Character picker ─────────────────────────────────────────────────── */
+/* Cards auto-flow to whatever the panel can fit, so the grid never leaves a
+   ragged short row the way a fixed card width did at this panel's size. */
 #char-grid {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    padding: 6px 0 2px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 12px;
+    padding: 4px 0 2px;
 }
 .char-card {
-    width: 116px;
-    padding: 12px 8px 10px;
-    border: 1px solid #3a3a4a;
-    border-radius: 10px;
-    background: #16161f;
+    padding: 10px 7px 9px;
+    border: 1px solid #2a2a38;
+    border-radius: 12px;
+    background: linear-gradient(#1b1b27, #111119);
     cursor: pointer;
     text-align: center;
-    transition: border-color .15s, background .15s, transform .15s;
+    transition: border-color .15s, background .15s, transform .15s, box-shadow .15s;
 }
-.char-card:hover { border-color: #ccaa44; transform: translateY(-2px); }
+.char-card:hover {
+    border-color: #ccaa44;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,.45);
+}
 .char-card.selected {
     border-color: #ccaa44;
-    background: #211d14;
-    box-shadow: 0 0 14px rgba(204,170,68,.28);
+    background: linear-gradient(#241f14, #17130c);
+    box-shadow: 0 0 0 1px rgba(204,170,68,.35), 0 0 18px rgba(204,170,68,.22);
 }
-.char-card img {
+/* The thumbnails are drawn standing on the bottom of their own box, so
+   anchoring them there lines every character up on one floor. */
+.char-card img,
+.char-card .char-proc {
     width: 100%;
-    height: 96px;
+    height: 86px;
     object-fit: contain;
+    object-position: bottom;
     display: block;
-    margin-bottom: 8px;
-    image-rendering: auto;
+    margin-bottom: 9px;
+    filter: drop-shadow(0 3px 5px rgba(0,0,0,.55));
 }
 .char-name {
     font-family: monospace;
@@ -1136,30 +1146,29 @@ body {
     letter-spacing: .06em;
     color: #ccc;
 }
-.char-card.selected .char-name { color: #ccaa44; }
+.char-card.selected .char-name { color: #ffd766; }
 
 .char-obs {
     font-family: monospace;
     font-size: 9px;
-    letter-spacing: .05em;
-    color: #666;
+    letter-spacing: .04em;
+    color: #5f5f70;
     margin-top: 3px;
 }
-.char-card.selected .char-obs { color: #8a7233; }
+.char-card.selected .char-obs { color: #a08a46; }
 
-/* Picking a card starts the run, so every card says so. */
 .char-go {
     font-family: monospace;
-    font-size: 9px;
+    font-size: 8.5px;
     letter-spacing: .08em;
-    color: #4a4a58;
+    color: #44445a;
     margin-top: 7px;
     padding-top: 6px;
-    border-top: 1px solid #2a2a36;
-    transition: color .15s;
+    border-top: 1px solid #262633;
+    transition: color .15s, border-color .15s;
 }
 .char-card:hover .char-go { color: #ccaa44; }
-.char-card.selected .char-go { color: #ccaa44; border-top-color: #4a3f1e; }
+.char-card.selected .char-go { color: #ffd766; border-top-color: #4a3f1e; }
 
 #char-hint {
     font-family: monospace;
@@ -1169,21 +1178,18 @@ body {
     text-align: center;
     margin: -10px 0 14px;
 }
-
 #char-credit {
     font-family: monospace;
     font-size: 10px;
-    color: #555;
+    color: #4a4a58;
     text-align: center;
-    margin-top: 10px;
+    margin-top: 12px;
     min-height: 12px;
 }
 
-/* A procedurally-drawn character has no preview image */
-.char-proc {
-    height: 96px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 8px;
+
+/* The picker needs room for a row of characters; no other modal does. */
+.modal.wide {
+    width: 564px;
+    max-width: calc(100vw - 28px);
 }

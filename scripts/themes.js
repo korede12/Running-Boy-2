@@ -14,7 +14,7 @@ const THEMES = {
 
     skeleton: {
         label: 'Skeleton',
-        preview: 'assets/skeleton-01_run_01start_00.png',
+        preview: 'assets/previews/skeleton.png',
         credit: null,
         frames: {
             type: 'sequence',
@@ -26,7 +26,7 @@ const THEMES = {
 
     kolu: {
         label: 'Kolu',
-        preview: 'assets/kolu_frames/run_00.png',
+        preview: 'assets/previews/kolu.png',
         credit: null,
         frames: {
             type: 'sequence',
@@ -46,7 +46,7 @@ const THEMES = {
 
     kenney_green: {
         label: 'Sprout',
-        preview: 'assets/kenney/char/green_idle.png',
+        preview: 'assets/previews/kenney_green.png',
         credit: 'Kenney (kenney.nl) — CC0',
         // Tiled background replaces the procedural night-city sky.
         background: {
@@ -69,7 +69,7 @@ const THEMES = {
 
     kenney_purple: {
         label: 'Plum',
-        preview: 'assets/kenney/char/purple_idle.png',
+        preview: 'assets/previews/kenney_purple.png',
         credit: 'Kenney (kenney.nl) — CC0',
         background: {
             sky:      'assets/kenney/bg/sky_desert.png',
@@ -91,7 +91,7 @@ const THEMES = {
 
     stick: {
         label: 'Stick',
-        preview: null,             // drawn procedurally, no art file
+        preview: 'assets/previews/stick.png',
         credit: null,
         procedural: true,          // StickFigure renders it from joint angles
         background: { kind: 'notebook' },   // ruled paper, red margin as the floor
@@ -104,7 +104,7 @@ const THEMES = {
     // lagos.js where they are drawn.
     portable: {
         label: 'Portable',
-        preview: 'assets/portable_card.svg',
+        preview: 'assets/previews/portable.png',
         credit: null,
         procedural: true,          // drawn in code, see runners.js
         icon: 'portable',
@@ -118,7 +118,7 @@ const THEMES = {
     // drawn from the fight poses on the notebook page.
     fight: {
         label: 'Fight',
-        preview: 'assets/fight/frames/fight_15.png',
+        preview: 'assets/previews/fight.png',
         credit: null,
         procedural: false,
         icon: 'portable',
