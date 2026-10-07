@@ -40,6 +40,9 @@ const MAP_ICONS = {
     run:   'M1 -8 a2.4 2.4 0 1 0 0.1 0 Z M-6 9 L-1 2 L-4 -2 L1 -4 L6 0 L4 2 L0 0 L3 4 L1 9 Z',
     music: 'M0 -9 L9 -11 L9 -4 L3 -2.6 L3 5 A3.6 3.6 0 1 1 0 1.6 Z',
     fist:  'M-6 -2 L-6 4 Q-6 8 -1 8 L3 8 Q7 8 7 4 L7 -3 Q7 -5 5 -5 Q3 -5 3 -3 L3 -5 Q3 -7 1 -7 Q-1 -7 -1 -5 L-1 -4 Q-1 -6 -3 -6 Q-5 -6 -5 -4 L-5 -2 Z',
+    key:   'M-7 1 a3.4 3.4 0 1 0 6.8 0 a3.4 3.4 0 1 0 -6.8 0 M-0.2 1 L7 1 L7 4 L5 4 L5 1.5 L3 1.5 L3 4 L1 4 Z',
+    arcade:'M-7 -8 L7 -8 L7 6 L-7 6 Z M-5 -6 L5 -6 L5 -1 L-5 -1 Z M-4 2 a1.6 1.6 0 1 0 0.1 0 M1 1 L3 1 L3 3 L1 3 Z M-7 6 L7 6 L8 9 L-8 9 Z',
+    desk:  'M-8 -3 L8 -3 L8 0 L-8 0 Z M-6 0 L-6 8 L-4 8 L-4 0 M6 0 L6 8 L4 8 L4 0 M-3 -8 L5 -8 L5 -3 L-3 -3 Z',
     road:  'M-7 -8 L7 -8 L7 -2 L-7 -2 Z M-1.6 -2 L1.6 -2 L1.6 9 L-1.6 9 Z',
     cart:  'M-8 -5 L-5 -5 L-3 3 L5 3 L7 -2 L-4 -2 M-2 7 a1.6 1.6 0 1 0 0.1 0 M4 7 a1.6 1.6 0 1 0 0.1 0',
 };
@@ -507,13 +510,18 @@ const CityMap = {
 
         if (v.kind === 'open') { openModal(v.modal); return; }
 
-        // Travel: the road out is a place you go to, so going there moves
-        // the whole map rather than opening a chooser.
-        if (v.kind === 'travel') {
-            try { localStorage.setItem('runningboy_city', v.to); } catch (_) {}
+        // Travel: the road out is a place you go to, and getting down it
+        // costs either the fare or most of a day.
+        if (v.kind === 'travel') { openTravel(v.to); return; }
+
+        // A day's work: steady, small, and it eats the hours that a run does
+        // not. It is what Abeokuta has instead of a game house full of people.
+        if (v.kind === 'work') {
+            const paid = Player.wage(v.wage, Player.cityId());
+            Player.adjust(paid, v.name);
+            Player.passTime(v.hours);
+            CityMap.banner(`A day at the desk · +${paid} skubu`);
             CityMap.build();
-            CityMap.centre();
-            CityMap.banner('Arrived in ' + getCity(v.to).name);
             return;
         }
 

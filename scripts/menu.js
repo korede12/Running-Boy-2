@@ -47,6 +47,7 @@ function openModal(id) {
     if (id === 'hs-modal')     renderHighScores();
     if (id === 'name-modal')   renderNameModal();
     if (id === 'char-modal')   refreshCharacterCards();
+    if (id === 'estate-modal') renderEstate();
     if (id === 'market-modal') { renderMarket(); refreshChainBalance(); }
     document.getElementById(id).classList.add('open');
 }

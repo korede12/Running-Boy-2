@@ -1151,7 +1151,14 @@ class GameScene extends Phaser.Scene {
         return false;
     }
 
-    _saveScore(score) { RunStore.saveScore(score); }
+    _saveScore(score) {
+        RunStore.saveScore(score);
+        // The game house pays by the point, and pays Lagos rates in Lagos.
+        if (typeof Player !== 'undefined' && Player.exists()) {
+            Player.payForRun(score, Player.cityId());
+            Player.passTime(1);
+        }
+    }
 
     _gameOver() {
         this._saveScore(this.score);

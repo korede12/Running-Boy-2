@@ -26,6 +26,15 @@
         <div class="ht-hint">Tap a place to go there</div>
     </div>
 
+    <div id="life-strip">
+        <div id="life-avatar"></div>
+        <div class="ls-col">
+            <span id="life-skubu-wrap">&#10022; <b id="life-skubu">0</b></span>
+            <span id="life-day"></span>
+            <span id="life-home"></span>
+        </div>
+    </div>
+
     <div id="skubu-badge">
         <span id="skubu-badge-local">&#10022; Skubu: <span id="skubu-count">0</span></span>
         <span id="skubu-badge-chain" style="display:none">
@@ -48,6 +57,52 @@
     </div>
 
     <div id="footer">&#169; Running Boy &nbsp;&#183;&nbsp; v1.0</div>
+</div>
+
+
+<!-- ── Make a person ── -->
+<div class="modal-backdrop" id="create-modal">
+    <div class="modal wide">
+        <div class="modal-title">&#9679; Who are you</div>
+        <div id="create-grid">
+            <div id="create-preview"></div>
+            <div id="create-opts">
+                <label>Name</label>
+                <input id="create-name" maxlength="12" placeholder="YOUR NAME" autocomplete="off"/>
+                <label>Build</label><div id="opt-build" class="optrow"></div>
+                <label>Hair</label><div id="opt-hair" class="optrow"></div>
+                <label>Skin</label><div id="opt-skin" class="optrow"></div>
+                <label>Hair colour</label><div id="opt-haircol" class="optrow"></div>
+                <label>Top</label><div id="opt-top" class="optrow"></div>
+                <label>Trousers</label><div id="opt-legs" class="optrow"></div>
+                <label>Shoes</label><div id="opt-shoes" class="optrow"></div>
+            </div>
+        </div>
+        <label class="citylabel">Where do you start</label>
+        <div id="opt-city"></div>
+        <div id="create-actions">
+            <button class="ghost" onclick="rollAvatar()">Surprise me</button>
+            <button class="primary" onclick="confirmCreate()">Start with nothing</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Estate agent ── -->
+<div class="modal-backdrop" id="estate-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('estate-modal')">&#10005;</button>
+        <div class="modal-title">&#8962; Estate Agent</div>
+        <div id="estate-body"></div>
+    </div>
+</div>
+
+<!-- ── Travel ── -->
+<div class="modal-backdrop" id="travel-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('travel-modal')">&#10005;</button>
+        <div class="modal-title">&#8594; Leaving town</div>
+        <div id="travel-body"></div>
+    </div>
 </div>
 
 <!-- ── High Score Modal ── -->
@@ -262,8 +317,11 @@
 </div>
 
 <script src="scripts/themes.js"></script>
+<script src="scripts/avatar.js"></script>
+<script src="scripts/player.js"></script>
 <script src="scripts/venues.js"></script>
 <script src="scripts/menu.js"></script>
 <script src="scripts/map.js"></script>
+<script src="scripts/life.js"></script>
 </body>
 </html>

@@ -659,6 +659,10 @@ class ChaseScene extends Phaser.Scene {
         this.over = true;
 
         RunStore.saveScore(this.score);
+        if (typeof Player !== 'undefined' && Player.exists()) {
+            Player.payForRun(this.score, Player.cityId());
+            Player.passTime(1);
+        }
         if (this.pendingSkubu > 0 && window.SkubuChain) {
             window.SkubuChain.mintSkubu(this.pendingSkubu, this.sessionId);
         }

@@ -167,6 +167,12 @@ class FightScene extends Phaser.Scene {
         } catch (_) {}
         this.streak = best;
 
+        // Beating Portable is a purse; losing is the night.
+        if (typeof Player !== 'undefined' && Player.exists()) {
+            this.purse = Player.payForFight(won, Player.cityId());
+            Player.passTime(3);
+        }
+
         // A lost match costs a play, the same as losing a run does.
         if (!won) {
             const blockedUntil = RunStore.recordLossAndCheck();
@@ -452,7 +458,7 @@ class FightScene extends Phaser.Scene {
 
         this.add.text(GAME_W / 2, 146,
             `Rounds ${this.roundsWon.p} – ${this.roundsWon.c}` +
-            (won ? `    ·    ${this.streak} in a row` : ''), {
+            (won ? `    ·    +${this.purse || 0} skubu` : ''), {
             fontSize: '14px', color: '#ffffff', fontFamily: 'monospace',
         }).setOrigin(0.5).setDepth(101);
 

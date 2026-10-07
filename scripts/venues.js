@@ -28,9 +28,9 @@ const CITIES = [
         // The expressway, carried off the top of the grid toward Abeokuta.
         exit: { axis: 'gx', at: 10, from: -5, to: -1 },
         venues: [
-            { id: 'home', name: 'Your Place', kind: 'open', modal: 'name-modal',
-              gx: 1,  gy: 1,  gw: 2, gd: 2, icon: 'home',
-              blurb: 'Set the name you run under.' },
+            { id: 'agent_lag', name: 'Estate Agent', kind: 'open', modal: 'estate-modal',
+              gx: 1,  gy: 1,  gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
+              blurb: 'Rooms, flats, and what a house costs here.' },
 
             { id: 'hall', name: 'Hall of Fame', kind: 'open', modal: 'hs-modal',
               gx: 5,  gy: 1,  gw: 2, gd: 2, icon: 'cup',
@@ -44,18 +44,21 @@ const CITIES = [
               gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
               blurb: 'Where the story got told. And who is telling it.' },
 
-            { id: 'street', name: 'Oshodi Street', kind: 'play', mode: 'run',
-              gx: 6,  gy: 6,  gw: 2, gd: 2, icon: 'run', characters: RUNNERS,
-              blurb: 'Keep running. Jump what gets in the way.', tag: 'RUN' },
+            { id: 'game_lag', name: 'Oshodi Game House', kind: 'play', mode: 'run',
+              gx: 6,  gy: 6,  gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
+              characters: RUNNERS,
+              blurb: 'Cabinets in the back. Play well, get paid.', tag: 'GAME HOUSE' },
 
             { id: 'bridge', name: 'Third Mainland', kind: 'play', mode: 'chase',
               gx: 17, gy: 12, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Three lanes, and someone on your heels.', tag: 'CHASE' },
 
-            { id: 'club', name: 'Club Zazuu', kind: 'play', mode: 'fight',
-              gx: 6,  gy: 13, gw: 2, gd: 2, icon: 'fist', characters: ['portable'],
-              blurb: 'One on one, best of three.', tag: 'FIGHT' },
+            { id: 'club', name: 'Club Zazuu', kind: 'play', mode: 'fight', opponent: 'portable',
+              gx: 6,  gy: 13, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
+              characters: ['portable'],
+              blurb: 'Portable is in there, and he does not lose quietly.',
+              tag: 'FIGHT PORTABLE' },
 
             { id: 'market', name: 'Balogun Market', kind: 'open', modal: 'market-modal',
               gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
@@ -75,27 +78,33 @@ const CITIES = [
                 [17, 18], [18, 18], [18, 19], [10, 10], [11, 10]],
         exit: { axis: 'gy', at: 14, from: 21, to: 25 },
         venues: [
-            { id: 'palace', name: 'Ake Palace', kind: 'open', modal: 'name-modal',
-              gx: 15, gy: 1, gw: 2, gd: 2, icon: 'home', roof: '#c8912e',
-              blurb: 'Set the name you run under.' },
+            { id: 'agent_abk', name: 'Estate Agent', kind: 'open', modal: 'estate-modal',
+              gx: 15, gy: 1, gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
+              blurb: 'Half what Lagos asks, and half the hurry.' },
 
             { id: 'centenary', name: 'Centenary Hall', kind: 'open', modal: 'hs-modal',
               gx: 9,  gy: 1, gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
-            { id: 'olumo', name: 'Olumo Rock', kind: 'play', mode: 'run',
-              gx: 1,  gy: 8, gw: 2, gd: 2, vh: 132, icon: 'run',
-              characters: RUNNERS, roof: '#7d6f5c',
-              blurb: 'Down off the rock, and keep going.', tag: 'RUN' },
+            { id: 'secretariat', name: 'Ogun Secretariat', kind: 'work',
+              gx: 1,  gy: 8, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
+              wage: 26, hours: 8,
+              blurb: 'A desk, a day, and a small steady wage.', tag: 'WORK' },
 
             { id: 'lafenwa', name: 'Lafenwa Bridge', kind: 'play', mode: 'chase',
               gx: 15, gy: 9, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Over the Ogun, with someone behind you.', tag: 'CHASE' },
 
-            { id: 'kuto', name: 'Kuto Arena', kind: 'play', mode: 'fight',
-              gx: 9,  gy: 16, gw: 2, gd: 2, icon: 'fist', characters: ['portable'],
-              blurb: 'One on one, best of three.', tag: 'FIGHT' },
+            { id: 'game_abk', name: 'Kuto Game House', kind: 'play', mode: 'run',
+              gx: 9,  gy: 16, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
+              characters: RUNNERS,
+              blurb: 'Quieter room, smaller takings.', tag: 'GAME HOUSE' },
+
+            { id: 'ake_club', name: 'Ake Club', kind: 'play', mode: 'fight', opponent: 'portable',
+              gx: 15, gy: 17, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
+              characters: ['portable'],
+              blurb: 'Portable tours. Tonight he is here.', tag: 'FIGHT PORTABLE' },
 
             { id: 'itoku', name: 'Itoku Market', kind: 'open', modal: 'market-modal',
               gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
