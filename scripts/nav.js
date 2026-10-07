@@ -67,23 +67,36 @@ const Nav = {
         const rough = Player.sleepsRough();
         const g = Player.nextGoal();
         const loan = Player.loan();
+        const here = Player.atVenue();
+        const shut = here && !isOpen(here, hour);
 
         host.innerHTML =
-            // The room itself, with where it is and what it costs written on it.
-            '<div class="rm-scene' + (rough ? ' rough' : '') + '">' +
-                Room.svg(p.housing, p) +
+            // Where you are standing, which is the thing this screen is for.
+            '<div class="rm-scene">' +
+                Scene.svg(p) +
                 '<div class="rm-label">' +
-                    `<b>${Player.spot()}</b>` +
-                    `<span>${getCity(p.city).name} &nbsp;·&nbsp; ` +
-                    `${Player.sleepHours()}h a night</span>` +
-                    `<span class="nv-at">&#9678; standing at ` +
-                    `${(Player.atVenue() || {}).name || 'nowhere in particular'}</span>` +
+                    `<b>${Scene.caption(p)}</b>` +
+                    `<span>${getCity(p.city).name}` +
+                    (here ? ` &nbsp;·&nbsp; ${shut ? 'shut' : 'open'}` : '') +
+                    '</span>' +
                 '</div>' +
                 `<div class="rm-time">${String(hour).padStart(2, '0')}:00 &nbsp;·&nbsp; ` +
                 `Day ${Player.day()}</div>` +
+                (here ? `<button class="rm-go" onclick="CityMap.pick('${here.id}')">` +
+                    `GO IN &rsaquo;</button>` : '') +
             '</div>' +
 
-            // Who you were born as. It is not a score, it is a starting hand.
+            // What you sleep in, which is a different question.
+            `<div class="rm-card${rough ? ' rough' : ''}" onclick="Nav.go('profile')">` +
+                `<div class="rm-card-art">${Room.svg(p.housing, p)}</div>` +
+                '<div class="rm-card-text">' +
+                    `<b>${Player.spot()}</b>` +
+                    `<span>${Player.sleepHours()}h a night` +
+                    (rough ? ' · no rent, no door' : '') + '</span>' +
+                '</div>' +
+            '</div>' +
+
+            // Who you were born as. Not a score — a starting hand.
             `<div class="rm-class ${cls.id}">` +
                 `<div class="rm-class-top"><b>${cls.name}</b>` +
                 `<span>${this._trait(cls)}</span></div>` +
