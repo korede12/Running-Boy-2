@@ -38,9 +38,9 @@ const VENUES = [
         tag: 'RUN',
     },
     {
-        id: 'cinema', name: 'Silverbird', kind: 'open', modal: 'about-modal',
-        gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'film',
-        blurb: 'The story so far.',
+        id: 'studio', name: 'Naijabeats', kind: 'open', modal: 'about-modal',
+        gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
+        blurb: 'Where the story got told. And who is telling it.',
     },
     {
         id: 'club', name: 'Club Zazuu', kind: 'play', mode: 'fight',
