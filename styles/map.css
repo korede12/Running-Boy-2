@@ -988,3 +988,9 @@ body[data-view="map"] #find-me { display: flex; }
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .rm-card-text span { font-family: monospace; font-size: 10px; color: #7f8aa0; }
+
+/* Getting across town */
+.rd-dist {
+    font-family: monospace; font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: #7f8aa0; margin-bottom: 12px;
+}

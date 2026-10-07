@@ -102,7 +102,7 @@ const ECONOMY = {
     sleep: {
         NEED:    8,
         HOURS: { none: 3.5, hotel: 8, room: 7, self: 7.5, flat: 8, own: 8.5 },
-        SWING:  9,      // rest gained or lost per hour above or below NEED
+        SETTLE: 0.55,   // how fast rest moves towards that ceiling
         TIRED:  38,     // below this the body starts giving way
         IMMUNE: 1.6,    // what tiredness multiplies the malaria risk by
     },
@@ -119,6 +119,44 @@ const ECONOMY = {
         COMMUTE:   0.5,  // per hour spent travelling
         SETTLED:   6,    // recovered when housed, rested and not broke
         LOW:       28,   // below this it starts costing you health
+    },
+
+    // ── Getting across town ───────────────────────────────────────────────
+    // Lagos is a megacity with layers: danfo and keke everywhere, BRT as the
+    // cheapest organised option over distance, okada kept off the big roads,
+    // a ferry across the lagoon, and Bolt at roughly four times the bus.
+    // Abeokuta has none of that. It runs on okada and keke, it is small
+    // enough to walk, and nothing there is stuck in Lagos traffic.
+    //
+    // fare is the flag-fall, per is per tile crossed, and pace is hours per
+    // tile — which is where the traffic lives.
+    transit: {
+        lagos: [
+            { id: 'walk',  name: 'Walk',        fare: 0,    per: 0,    pace: 0.42, tiring: true,
+              blurb: 'Free, and most of a day across Lagos.' },
+            { id: 'danfo', name: 'Danfo',       fare: 1,    per: 0.32, pace: 0.14,
+              blurb: 'Yellow bus, no timetable, and whatever the traffic gives you.' },
+            { id: 'keke',  name: 'Keke napep',  fare: 1,    per: 0.42, pace: 0.11, maxDist: 10,
+              blurb: 'Tricycle. Short hops only.' },
+            { id: 'brt',   name: 'BRT',         fare: 1.8,  per: 0.20, pace: 0.10, minDist: 6,
+              blurb: 'Its own lane, and the cheapest thing going over any distance.' },
+            { id: 'okada', name: 'Okada',       fare: 1.4,  per: 0.52, pace: 0.07, maxDist: 7, risk: 0.05,
+              blurb: 'Quickest, if it is going your way. Kept off the big roads.' },
+            { id: 'ferry', name: 'LAGFERRY',    fare: 3.2,  per: 0.18, pace: 0.08, minDist: 9,
+              blurb: 'Straight across the lagoon while the bridge sits still.' },
+            { id: 'bolt',  name: 'Bolt',        fare: 5,    per: 1.15, pace: 0.08,
+              blurb: 'Door to door, and about four times the bus.' },
+        ],
+        abeokuta: [
+            { id: 'walk',  name: 'Walk',        fare: 0,    per: 0,    pace: 0.18, tiring: true,
+              blurb: 'Free, and the town is small enough to mean it.' },
+            { id: 'okada', name: 'Okada',       fare: 0.5,  per: 0.26, pace: 0.05, risk: 0.04,
+              blurb: 'How Abeokuta actually moves. Two hundred naira and ten minutes.' },
+            { id: 'keke',  name: 'Keke napep',  fare: 0.5,  per: 0.32, pace: 0.07,
+              blurb: 'Tricycle, and no traffic to speak of.' },
+            { id: 'taxi',  name: 'Shared taxi', fare: 1.5,  per: 0.40, pace: 0.06,
+              blurb: 'From the motor park, when it fills up.' },
+        ],
     },
 
     HOTEL_NIGHT: 46,
@@ -420,6 +458,63 @@ const Player = {
 
     atVenue() { const id = this.at(); return id ? getVenue(id) : null; },
 
+    // ── Crossing town ─────────────────────────────────────────────────────
+
+    /// Tiles between where you are and where you want to be.
+    distanceTo(venueId) {
+        const from = this.atVenue(), to = getVenue(venueId);
+        if (!from || !to || from.id === to.id) return 0;
+        const fx = from.gx + (from.gw || 2) / 2, fy = from.gy + (from.gd || 2) / 2;
+        const tx = to.gx + (to.gw || 2) / 2,     ty = to.gy + (to.gd || 2) / 2;
+        return Math.round(Math.hypot(tx - fx, ty - fy) * 10) / 10;
+    },
+
+    /// Every way of getting there, with what it costs and how long it takes.
+    /// A mode that does not serve the trip is left out rather than shown
+    /// greyed, because a list of things you cannot do is not a list.
+    ridesTo(venueId) {
+        const p = this.get();
+        if (!p) return [];
+        const dist = this.distanceTo(venueId);
+        if (!dist) return [];
+        const list = ECONOMY.transit[p.city] || ECONOMY.transit.lagos;
+        return list.filter(mdl => {
+            if (mdl.minDist && dist < mdl.minDist) return false;
+            if (mdl.maxDist && dist > mdl.maxDist) return false;
+            return true;
+        }).map(mdl => ({
+            id: mdl.id, name: mdl.name, blurb: mdl.blurb, risk: mdl.risk || 0,
+            fare:  Math.round(mdl.fare + mdl.per * dist),
+            hours: Math.max(0.25, Math.round((mdl.pace * dist) * 4) / 4),
+            tiring: !!mdl.tiring,
+        })).sort((a, b) => a.fare - b.fare);
+    },
+
+    /// Make the trip. Charges the fare, spends the hours, and puts you there.
+    rideTo(venueId, modeId) {
+        const p = this.get();
+        if (!p) return null;
+        const ride = this.ridesTo(venueId).find(r => r.id === modeId);
+        if (!ride) return null;
+        if (ride.fare > 0 && !this.adjust(-ride.fare, ride.name)) return null;
+
+        let mishap = null;
+        if (ride.risk && Math.random() < ride.risk) {
+            p.health = Math.max(0, p.health - 9);
+            mishap = 'Came off on the way — that hurt.';
+            p.history.unshift({ amount: 0, why: mishap, at: p.hours });
+        }
+        // Walking is free in money and expensive in everything else.
+        if (ride.tiring) p.rest = Math.max(0, p.rest - Math.round(ride.hours * 4));
+
+        p.commuted = (p.commuted || 0) + ride.hours;
+        this.passTime(ride.hours);
+        p.at = venueId;
+        if (p.health <= 0) this._collapse();
+        this.save();
+        return { ...ride, mishap };
+    },
+
     moveTo(venueId) {
         const p = this.get();
         if (!p || !venueId) return;
@@ -579,8 +674,16 @@ const Player = {
 
     _aNight() {
         const p = this.get(), S = ECONOMY.sleep, M = ECONOMY.mind;
+        // Where you sleep sets a ceiling you settle towards, rather than a
+        // slope. As a difference it matters: adding (slept - NEED) each night
+        // meant a face-me-I-face-you, at seven hours, lost rest every night
+        // for ever — the entry rung on the ladder sentenced you to permanent
+        // sleep deprivation, and through it to the wellbeing floor. The
+        // exponent is what keeps a rough night genuinely bad: three and a
+        // half hours settles near 29, a rented room near 82, a flat at 100.
         const slept = this.sleepHours();
-        p.rest = Math.max(0, Math.min(100, p.rest + (slept - S.NEED) * S.SWING));
+        const ceiling = Math.min(100, Math.pow(slept / S.NEED, 1.5) * 100);
+        p.rest = Math.max(0, Math.min(100, p.rest + (ceiling - p.rest) * S.SETTLE));
         p.hotelNight = false;
 
         // Named pressures, each one something the player can act on, rather
@@ -602,6 +705,21 @@ const Player = {
 
         const settled = !this.sleepsRough() && p.rest >= 60 && p.skubu >= food * 7 && !p.illness;
         p.mind = Math.max(0, Math.min(100, p.mind - drain + (settled ? M.SETTLED : 0)));
+
+        // And a ceiling, because recovery alone pinned everybody at 100 the
+        // moment they were housed and fed — which made wellbeing a flat
+        // bonus rather than something the city does to you. Lagos never
+        // gives all of it back: the density, the traffic and the cost are
+        // still there on a good week, which is the finding this is modelling.
+        const mindCap = Math.max(10, 100
+            - (city.stress || 1) * 22
+            - (this.sleepsRough() ? 26 : 0)
+            - (p.illness ? 14 : 0)
+            - (p.skubu < food * 3 ? 12 : 0));
+        // A clamp, not a drift: nightly recovery is +6 and the drift was -2,
+        // so wellbeing crept back to 100 anyway and the ceiling did nothing.
+        // The ceiling is the best this life can feel, so it is a limit.
+        p.mind = Math.min(p.mind, mindCap);
     },
 
     rest() { const p = this.get(); return p ? p.rest : 100; },

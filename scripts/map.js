@@ -591,12 +591,17 @@ const CityMap = {
         if (!v) return;
         if (typeof _playUiSound === 'function') _playUiSound('single-click.mp3');
 
-        // You walked over, whether or not the door opens.
-        if (typeof Player !== 'undefined' && Player.exists()) Player.moveTo(v.id);
-
         // Shut is shut. You can wait, and waiting costs the hours it costs.
         const hour = (typeof Player !== 'undefined' && Player.exists()) ? Player.hourOfDay() : 9;
         if (!isOpen(v, hour)) { openClosed(v, hour); return; }
+
+        // Places are distances apart. If you are not there yet, the first
+        // question is how you are getting there — and that costs a fare and
+        // the hours. Once you have arrived, tapping again just opens it.
+        if (typeof Player !== 'undefined' && Player.exists() && Player.at() !== v.id) {
+            openRide(v);
+            return;
+        }
 
         if (v.kind === 'open')   { openModal(v.modal); return; }
         if (v.kind === 'hotel')  { openHotel(v); return; }

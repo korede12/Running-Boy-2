@@ -61,6 +61,7 @@ const Journey = {
         const art = {
             flight: this._sky(), train: this._rails(),
             bus:    this._road(), walk:  this._path(o),
+            water:  this._water(),
         }[o.mode] || this._road();
 
         const end = Math.floor((o.startHour + total) % 24);
@@ -99,6 +100,32 @@ const Journey = {
               <path d="M2 -1 L10 -14 L16 -14 L12 -1 Z" fill="#b9c2ce"/>
               <circle cx="46" cy="-1" r="2.4" fill="#2b6fa8"/>
               <circle cx="38" cy="-1" r="2.4" fill="#2b6fa8"/>
+            </g></svg>`;
+    },
+
+    /// The lagoon crossing, which is the one journey where Lagos traffic
+    /// is somebody else's problem.
+    _water() {
+        let w = '';
+        for (let i = 0; i < 10; i++)
+            w += `<path d="M${i * 70} ${150 + (i % 3) * 12} q18 -7 36 0 q18 7 36 0" ` +
+                 `stroke="#4e7fa8" stroke-width="2.4" fill="none" opacity="0.5"/>`;
+        return `<svg viewBox="0 0 640 200" preserveAspectRatio="xMidYMid slice">
+            <rect width="640" height="200" fill="#20405f"/>
+            <rect y="120" width="640" height="80" fill="#15283c"/>
+            <g opacity="0.5" fill="#2c3f5a">
+              <rect x="20" y="78" width="26" height="44"/><rect x="54" y="88" width="20" height="34"/>
+              <rect x="540" y="82" width="24" height="40"/><rect x="572" y="92" width="18" height="30"/>
+            </g>
+            <g class="jr-scroll">${w}</g>
+            <g class="jr-bus">
+              <path d="M0 108 L186 108 L168 140 L18 140 Z" fill="#e8eef4"/>
+              <rect x="30" y="84" width="124" height="26" rx="4" fill="#cfd9e4"/>
+              <rect x="40" y="90" width="26" height="14" rx="2" fill="#2b4a66"/>
+              <rect x="76" y="90" width="26" height="14" rx="2" fill="#2b4a66"/>
+              <rect x="112" y="90" width="26" height="14" rx="2" fill="#2b4a66"/>
+              <rect x="86" y="62" width="5" height="24" fill="#8a94a2"/>
+              <path d="M91 62 L124 74 L91 80 Z" fill="#c0392b"/>
             </g></svg>`;
     },
 

@@ -122,3 +122,70 @@ function leaveJob() {
     refreshLifeHud();
     renderWork();
 }
+
+// ── Getting there ─────────────────────────────────────────────────────────
+// Places are distances apart, so going to one costs a fare and some hours.
+// Which fares you are offered depends on the city: Lagos has danfo, keke,
+// BRT, a restricted okada, a ferry and Bolt; Abeokuta has okada, keke and a
+// shared taxi, and is small enough that walking is a real choice.
+
+let _rideTarget = null;
+
+function openRide(v) {
+    const p = Player.get();
+    if (!p) { openCreate(); return; }
+    _rideTarget = v.id;
+
+    const dist  = Player.distanceTo(v.id);
+    const rides = Player.ridesTo(v.id);
+    const host  = document.getElementById('ride-body');
+    if (host) {
+        host.innerHTML =
+            `<div class="trv-to">${v.name}</div>` +
+            `<div class="rd-dist">${dist} tiles across ${getCity(p.city).name}</div>` +
+            rides.map(r => {
+                const can = r.fare === 0 || p.skubu >= r.fare;
+                return `<div class="est-row${can ? '' : ' off'}">` +
+                    `<span class="est-name">${r.name}</span>` +
+                    `<span class="est-sub">${r.blurb}</span>` +
+                    `<span class="wk-meta">${r.hours}h` +
+                    (r.risk ? ' &nbsp;·&nbsp; <i>risky</i>' : '') + `</span>` +
+                    `<button class="est-btn" ${can ? '' : 'disabled'} ` +
+                    `onclick="takeRide('${r.id}')">` +
+                    `${r.fare ? '&#10022; ' + r.fare : 'FREE'}</button></div>`;
+            }).join('') +
+            `<div class="shop-note">Hours are hours. Rent, hunger and the ` +
+            `mosquitoes all keep their own time while you are on the road.</div>`;
+    }
+    document.getElementById('ride-modal').classList.add('open');
+}
+
+function takeRide(modeId) {
+    const id = _rideTarget;
+    if (!id) return;
+    const p = Player.get();
+    const from = Player.atVenue();
+    const to = getVenue(id);
+    const r = Player.rideTo(id, modeId);
+    closeModal('ride-modal');
+    if (!r) { flash('Not enough skubu.'); return; }
+
+    const done = () => {
+        refreshLifeHud();
+        if (typeof CityMap !== 'undefined') CityMap.build();
+        if (r.mishap) flash(r.mishap);
+        // You have arrived, so now you can go in.
+        CityMap.pick(id);
+    };
+
+    if (typeof Journey !== 'undefined' && r.hours >= 0.5) {
+        Journey.play({
+            mode: ({ walk: 'walk', ferry: 'water' })[r.id] || 'bus',
+            modeName: r.name,
+            fromName: from ? from.name : '',
+            toName: to ? to.name : '',
+            hours: r.hours, wait: 0, fare: r.fare,
+            startHour: Player.hourOfDay(),
+        }, done);
+    } else done();
+}
