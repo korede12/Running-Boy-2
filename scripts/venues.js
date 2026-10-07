@@ -21,6 +21,10 @@ const RUNNERS = ['skeleton', 'kolu', 'kenney_green', 'kenney_purple', 'stick'];
 const CITIES = [
     {
         id: 'lagos', name: 'Lagos', tag: 'the mainland',
+        // How built-up it is. skip = share of plots left empty, so a higher
+        // number is a quieter town; vary is how far the heights reach.
+        feel: { skip: 0.52, base: 30, vary: 130, tower: 100, wide: 0.90,
+                trees: 0.88, adStep: 6, carSkip: 0.42, walkers: 5 },
         grid: 24,
         roadsGX: [4, 10, 16], roadsGY: [4, 11, 18],
         // The lagoon takes everything past this column; one road crosses it.
@@ -68,6 +72,11 @@ const CITIES = [
 
     {
         id: 'abeokuta', name: 'Abeokuta', tag: 'under the rock',
+        // Low and spread out: two plots in three left as ground, nothing
+        // above four storeys, and no towers at all. More trees, fewer
+        // billboards, less traffic — a town with room in it.
+        feel: { skip: 0.72, base: 18, vary: 46, tower: 999, wide: 0.97,
+                trees: 0.70, adStep: 11, carSkip: 0.66, walkers: 2 },
         grid: 21,
         roadsGX: [6, 13], roadsGY: [6, 14],
         // The Ogun runs as a diagonal band. Wherever a road meets it there is

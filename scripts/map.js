@@ -8,7 +8,7 @@
 // the camera has a larger (gx + gy) — which is the entire sort order.
 
 const ISO = { TW: 62, TH: 31, OX: 770, OY: 312 };   // tile width, height, origin
-let CITY = null, GRID = 24, VENUES = [];
+let CITY = null, FEEL = {}, GRID = 24, VENUES = [];
 // Cropped to what the city actually occupies, so it fills the window
 // instead of floating in dead canvas.
 const MAP_W = 1540, MAP_H = 1072;
@@ -107,6 +107,8 @@ const CityMap = {
         const host = document.getElementById('map');
         if (!host || typeof CITIES === 'undefined') return;
         CITY = getCity(currentCityId());
+        FEEL = Object.assign({ skip: 0.52, base: 30, vary: 130, tower: 100, wide: 0.90,
+                               trees: 0.88, adStep: 6, carSkip: 0.42, walkers: 5 }, CITY.feel || {});
         GRID = CITY.grid;
         ROAD_GX = CITY.roadsGX;
         ROAD_GY = CITY.roadsGY;
@@ -264,15 +266,15 @@ const CityMap = {
         for (let gy = 0; gy < GRID - 1; gy++) {
             for (let gx = 0; gx < GRID - 1; gx++) {
                 const n = mrand(gx * 7, gy * 13);
-                if (n < 0.52) continue;                                  // room between things
+                if (n < FEEL.skip) continue;                             // plots left as ground
                 if (taken(gx, gy)) continue;
 
-                const w = n > 0.9 ? 2 : 1, d = n > 0.86 ? 2 : 1;
+                const w = n > FEEL.wide ? 2 : 1, d = n > FEEL.wide - 0.04 ? 2 : 1;
                 if (taken(gx + w - 1, gy + d - 1) || taken(gx + w - 1, gy) || taken(gx, gy + d - 1)) continue;
 
-                const h = 30 + Math.round(mrand(gy, gx) * 130);
+                const h = FEEL.base + Math.round(mrand(gy, gx) * FEEL.vary);
                 const roof = MAP_C.roofs[Math.floor(mrand(gx + 3, gy + 5) * MAP_C.roofs.length)];
-                const tower = h > 100;                                   // tall ones go flat-topped
+                const tower = h > FEEL.tower;                            // tall ones go flat-topped
 
                 let g = this._box(gx, gy, w, d, h,
                     tower ? MAP_C.wallB : roof, MAP_C.wallA, MAP_C.wallC);
@@ -311,10 +313,12 @@ const CityMap = {
     _billboards(out) {
         const spots = [];
         ROAD_GY.forEach((gy, i) => {
-            for (let gx = 2; onLand(gx, gy); gx += 6) spots.push([gx + (i % 2), gy - 0.4, 'x']);
+            for (let gx = 2; gx < GRID - 2; gx += FEEL.adStep) {
+                if (onLand(gx, gy)) spots.push([gx + (i % 2), gy - 0.4, 'x']);
+            }
         });
         ROAD_GX.forEach((gx, i) => {
-            for (let gy = 3; gy < GRID - 2; gy += 7) spots.push([gx - 0.4, gy + (i % 2), 'y']);
+            for (let gy = 3; gy < GRID - 2; gy += FEEL.adStep + 1) spots.push([gx - 0.4, gy + (i % 2), 'y']);
         });
 
         spots.forEach(([gx, gy, axis], i) => {
@@ -362,7 +366,7 @@ const CityMap = {
                 if (!onLand(gx, gy)) continue;
                 if (isRoad(gx, gy) || this._venueTile(gx, gy)) continue;
                 const n = mrand(gx * 31, gy * 17);
-                if (n < 0.88) continue;
+                if (n < FEEL.trees) continue;
                 const b = iso(gx + 0.5, gy + 0.5, 0);
                 const r = 16 + n * 9;
                 let g = `<ellipse cx="${b[0].toFixed(1)}" cy="${b[1].toFixed(1)}" rx="${(r * 0.9).toFixed(1)}" ry="${(r * 0.45).toFixed(1)}" fill="#000" opacity="0.17"/>`;
@@ -402,7 +406,7 @@ const CityMap = {
             `<g class="${cls}" style="animation-delay:${delay.toFixed(1)}s">${body}</g></g>`;
 
         ROAD_GY.forEach((gy, r) => {
-            for (let k = 0; k < 4; k++) {
+            for (let k = 0; k < FEEL.walkers - 1; k++) {
                 const gx = 1 + k * 5;
                 const n = mrand(gx, gy * 3);
                 out.push({ d: this._d(gx, gy, 1, 1) + 0.25,
@@ -416,7 +420,7 @@ const CityMap = {
             }
         });
         ROAD_GX.forEach((gx, c) => {
-            for (let k = 0; k < 3; k++) {
+            for (let k = 0; k < Math.max(1, FEEL.walkers - 2); k++) {
                 const gy = 1 + k * 6;
                 const n = mrand(gx * 5, gy);
                 out.push({ d: this._d(gx, gy, 1, 1) + 0.25,
@@ -441,7 +445,7 @@ const CityMap = {
         };
         let i = 0;
         ROAD_GY.forEach((gy, r) => {
-            for (let k = 0; k < 5; k++) {
+            for (let k = 0; k < FEEL.walkers; k++) {
                 const gx = 1 + k * 4;
                 out.push({ d: this._d(gx, gy, 1, 1) + 0.3, svg:
                     `<g><g class="walks-x" style="animation-delay:${-(k * 9 + r * 5)}s">` +
@@ -452,7 +456,7 @@ const CityMap = {
             }
         });
         ROAD_GX.forEach((gx, c) => {
-            for (let k = 0; k < 4; k++) {
+            for (let k = 0; k < Math.max(1, FEEL.walkers - 1); k++) {
                 const gy = 1 + k * 5;
                 out.push({ d: this._d(gx, gy, 1, 1) + 0.3, svg:
                     `<g><g class="walks-y" style="animation-delay:${-(k * 11 + c * 6)}s">` +
