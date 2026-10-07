@@ -399,3 +399,103 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
     .jr-scroll, .jr-plane, .jr-train, .jr-bus, .jr-cloud, .jr-walker { animation: none; }
 }
+
+/* Court and prison */
+.court-charge {
+    font-family: monospace; font-size: 12px; line-height: 1.6;
+    color: #cfd6e4; margin-bottom: 4px;
+}
+.court-charge b { color: #ff8866; }
+.court-verdict {
+    font-family: monospace; font-size: 30px; font-weight: bold;
+    letter-spacing: .14em; margin: 6px 0 12px;
+}
+.court-verdict.won  { color: #66dd66; text-shadow: 0 0 22px rgba(102,221,102,.4); }
+.court-verdict.lost { color: #ff4444; text-shadow: 0 0 22px rgba(255,68,68,.4); }
+
+/* ── Small screens ────────────────────────────────────────────────────────
+   The map already pans rather than shrinking. What has to give here is the
+   furniture around it: panels that were sized for a desktop column, a
+   create screen laid out side by side, and two badges in the same corner. */
+
+@media (max-width: 680px) {
+    /* Panels fill the width and scroll, rather than overflowing it. */
+    .modal, .modal.wide {
+        width: auto;
+        max-width: none;
+        margin: 10px;
+        padding: 20px 16px 18px;
+        border-radius: 14px;
+    }
+    .modal-backdrop { align-items: flex-start; overflow-y: auto; padding: 8px 0; }
+    .modal-title { font-size: 12px; letter-spacing: 3px; margin-bottom: 14px; }
+
+    /* Preview over options, not beside them. */
+    #create-grid { flex-direction: column; align-items: center; gap: 12px; }
+    #create-preview { flex: 0 0 auto; width: 128px; height: 196px; }
+    #create-opts { width: 100%; }
+    #opt-city { flex-direction: column; }
+    #create-actions { flex-direction: column-reverse; }
+    #create-actions button { width: 100%; padding: 12px; font-size: 13px; }
+
+    /* Thumb-sized targets. */
+    .sw { width: 30px; height: 30px; }
+    .chip { padding: 8px 13px; font-size: 12px; }
+    .est-btn { padding: 11px 14px; font-size: 12px; }
+    .est-row { padding: 11px 0; }
+
+    /* The two corner badges stack instead of fighting for the same corner. */
+    #skubu-badge {
+        top: auto; bottom: 58px; right: 12px;
+        padding: 6px 9px; font-size: 11px;
+    }
+    #life-strip { top: 54px; right: 12px; padding: 6px 9px 6px 6px; }
+    #life-avatar { width: 34px; height: 46px; flex-basis: 34px; }
+    .ls-col { font-size: 10px; }
+    #life-skubu-wrap { font-size: 12px; }
+
+    /* The journey reads top to bottom on a tall screen. */
+    .jr-art { min-height: 38vh; }
+    .jr-panel { padding: 16px 16px 20px; }
+    .jr-clock { font-size: 30px; margin: 4px 0 10px; }
+    .jr-route { font-size: 13px; }
+    .jr-meta { flex-direction: column; gap: 3px; }
+    .jr-skip { top: 10px; right: 12px; }
+}
+
+/* Very narrow: the leaderboard and the title give way to the city. */
+@media (max-width: 420px) {
+    .ht-name { font-size: 24px; }
+    .ht-sub { font-size: 9px; letter-spacing: .3em; }
+    #hud-where { font-size: 10px; }
+    .modal { padding: 16px 12px 14px; }
+    .est-name { font-size: 12px; }
+    .est-sub { font-size: 9px; }
+}
+
+/* Short and wide — a phone on its side. Panels must not run off the bottom. */
+@media (max-height: 520px) and (orientation: landscape) {
+    .modal, .modal.wide { max-height: calc(100vh - 16px); margin: 8px; }
+    #create-grid { flex-direction: row; }
+    #create-preview { width: 108px; height: 164px; }
+    .jr-art { min-height: 46vh; }
+}
+
+/* Health, in the strip and as a warning at the stall */
+.lh-track {
+    display: block; width: 92px; height: 5px; border-radius: 3px;
+    background: #1a1a24; overflow: hidden; margin-top: 3px;
+}
+.lh-fill {
+    display: block; height: 100%; width: 100%; border-radius: 3px;
+    background: #4ccc5a; transition: width .3s ease, background .3s ease;
+}
+.lh-fill.low { background: #ddaa22; }
+.lh-fill.ill { background: #dd3322; }
+.lh-ill { color: #ff8866; font-size: 9px; letter-spacing: .14em; text-transform: uppercase; }
+.warn {
+    font-family: monospace; font-size: 11px; line-height: 1.5;
+    padding: 9px 11px; border-radius: 8px; margin-bottom: 10px;
+    border: 1px solid #5a2420; background: #2a1410; color: #ff9a7a;
+}
+.warn.soft { border-color: #4a3f1e; background: #211d14; color: #ddbb66; }

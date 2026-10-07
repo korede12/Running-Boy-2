@@ -187,6 +187,14 @@ function refreshLifeHud() {
     set('life-skubu', String(p.skubu));
     set('life-day', `Day ${Player.day()} · ${Player.clock()}`);
     set('life-home', Player.housing().name);
+    const hp = document.getElementById('life-health');
+    if (hp) {
+        const h = Player.health();
+        hp.style.width = h + '%';
+        hp.className = 'lh-fill' + (Player.illness() ? ' ill' : h < 40 ? ' low' : '');
+    }
+    const hl = document.getElementById('life-ill');
+    if (hl) hl.textContent = Player.illness() ? 'malaria' : (Player.get().fed ? '' : 'hungry');
     const av = document.getElementById('life-avatar');
     if (av) av.innerHTML = Avatar.svg(p.avatar, 44, 60);
 }
@@ -208,6 +216,13 @@ if (typeof Player !== 'undefined') {
 
 document.addEventListener('DOMContentLoaded', () => {
     refreshLifeHud();
+    // A chase that ended in handcuffs is picked up here, because the court
+    // is a panel on this page rather than a screen inside the run.
+    if (typeof Player !== 'undefined' && Player.exists()) {
+        if (!Player.alive())        setTimeout(openDeath, 200);
+        else if (Player.arrested()) setTimeout(openCourt, 250);
+        else if (Player.inPrison()) setTimeout(openPrison, 250);
+    }
     const badge = document.getElementById('skubu-count');
     if (badge && typeof Player !== 'undefined' && Player.exists()) badge.textContent = String(Player.skubu());
     if (typeof Player !== 'undefined' && !Player.exists()) setTimeout(openCreate, 150);
@@ -237,16 +252,25 @@ function renderShop() {
         return;
     }
 
+    const ill   = Player.illness();
+    const rough = Player.sleepsRough();
+
     const rows = Player.goods().map(g => {
         const cost = Player.priceOf(g.id, p.city);
         const can  = p.skubu >= cost;
         const owned = Player.has(g.id);
+        const why =
+            g.id === 'net'  ? ' · cuts the mosquitoes right down' :
+            g.id === 'meds' ? (ill ? ' · you have it now' : ' · for when you do') :
+            g.wears ? ' · you would wear it' : '';
         return `<div class="est-row">` +
             `<span class="est-name">${g.name}${owned ? ' <small>· owned</small>' : ''}</span>` +
-            `<span class="est-sub">${cost} skubu${g.wears ? ' · you would wear it' : ''}</span>` +
+            `<span class="est-sub">${cost} skubu${why}</span>` +
             (can
                 ? `<button class="est-btn" onclick="buyGood('${g.id}')">BUY · ${cost}</button>`
-                : `<button class="est-btn take" onclick="stealGood('${g.id}')">TAKE IT</button>`) +
+                : Player.canSteal()
+                    ? `<button class="est-btn take" onclick="stealGood('${g.id}')">TAKE IT</button>`
+                    : `<button class="est-btn" disabled>TOO WEAK</button>`) +
             `</div>`;
     }).join('');
 
@@ -275,4 +299,119 @@ function runFromMarket() {
     try { localStorage.setItem('runningboy_venue', 'theft'); } catch (_) {}
     selectCharacter('portable');
     startGame();
+}
+
+// ── Court ─────────────────────────────────────────────────────────────────
+// Being caught is a court date. What you can afford in counsel is what your
+// odds are, which is the choice the panel is really offering.
+
+function openCourt() {
+    renderCourt();
+    document.getElementById('court-modal').classList.add('open');
+}
+
+function renderCourt() {
+    const host = document.getElementById('court-body');
+    if (!host) return;
+    const p = Player.get();
+    const a = p && p.arrest;
+    if (!a) { host.innerHTML = '<div class="est-none">Nothing outstanding.</div>'; return; }
+
+    const rows = Player.lawyers().map(l => {
+        const fee  = Player.lawyerFee(l.id, p.city);
+        const odds = Math.max(0.04, l.odds - p.record * 0.08);
+        const can  = p.skubu >= fee;
+        return `<div class="est-row">` +
+            `<span class="est-name">${l.name}</span>` +
+            `<span class="est-sub">${Math.round(odds * 100)}% chance &nbsp;·&nbsp; ${l.note}</span>` +
+            `<button class="est-btn" ${can ? '' : 'disabled'} onclick="instruct('${l.id}')">` +
+            `${fee ? '&#10022; ' + fee : 'FREE'}</button></div>`;
+    }).join('');
+
+    host.innerHTML =
+        `<div class="court-charge">Taken in over the ${a.item}.` +
+        (p.record ? ` <b>${p.record} previous</b>, which the bench will remember.` : '') +
+        `</div>` +
+        `<div class="est-head">Counsel<span class="est-bal">&#10022; ${p.skubu}</span></div>` + rows +
+        `<div class="shop-note">Lose and it is ${ECONOMY.PRISON_HOURS} hours inside. ` +
+        `Nothing earns while you are in there.</div>`;
+}
+
+function instruct(lawyerId) {
+    const r = Player.standTrial(lawyerId);
+    if (!r) { flash('You cannot cover that fee.'); return; }
+    const host = document.getElementById('court-body');
+    if (host) {
+        host.innerHTML = r.won
+            ? `<div class="court-verdict won">BAILED</div>` +
+              `<div class="court-charge">${r.lawyer.name} got you out. You walk.</div>` +
+              `<button class="est-btn" onclick="closeCourt()">LEAVE</button>`
+            : `<div class="court-verdict lost">CONVICTED</div>` +
+              `<div class="court-charge">${ECONOMY.PRISON_HOURS} hours inside. ` +
+              `Your record is now ${Player.get().record}.</div>` +
+              `<button class="est-btn" onclick="closeCourt()">TAKEN DOWN</button>`;
+    }
+    refreshLifeHud();
+}
+
+function closeCourt() {
+    closeModal('court-modal');
+    if (Player.inPrison()) openPrison();
+    if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); }
+}
+
+// ── Prison ────────────────────────────────────────────────────────────────
+
+function openPrison() {
+    const host = document.getElementById('prison-body');
+    if (host) {
+        host.innerHTML =
+            `<div class="court-verdict lost">${Player.prisonLeft()}h</div>` +
+            `<div class="court-charge">There is nothing to do in here and nothing to earn. ` +
+            `The rent still falls due.</div>` +
+            `<button class="est-btn" onclick="doTime()">SIT IT OUT</button>`;
+    }
+    document.getElementById('prison-modal').classList.add('open');
+}
+
+function doTime() {
+    Player.serveTime();
+    closeModal('prison-modal');
+    refreshLifeHud();
+    if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); CityMap.banner('Released'); }
+}
+
+// ── The end ───────────────────────────────────────────────────────────────
+// Surviving is the game, so not surviving is the only real ending.
+
+function openDeath() {
+    const d = Player.dead();
+    if (!d) return;
+    const p = Player.get();
+    const host = document.getElementById('death-body');
+    if (host) {
+        const owned = p.owns.length;
+        host.innerHTML =
+            `<div class="court-verdict lost">YOU DIED</div>` +
+            `<div class="court-charge">${d.cause}.</div>` +
+            `<div class="est-head">What you managed</div>` +
+            `<div class="est-row"><span class="est-name">Days survived</span>` +
+            `<span class="est-sub">in ${getCity(p.city).name}</span>` +
+            `<button class="est-btn" disabled>${d.day}</button></div>` +
+            `<div class="est-row"><span class="est-name">Last address</span>` +
+            `<span class="est-sub">${owned ? owned + ' owned' : 'nothing owned'}</span>` +
+            `<button class="est-btn" disabled>${Player.housing().name}</button></div>` +
+            `<div class="est-row"><span class="est-name">Left behind</span>` +
+            `<span class="est-sub">${p.items.length} things</span>` +
+            `<button class="est-btn" disabled>&#10022; ${p.skubu}</button></div>` +
+            `<div class="shop-note">Nobody here will remember you. Start again.</div>` +
+            `<button class="est-btn" onclick="startAgain()">START AGAIN</button>`;
+    }
+    document.getElementById('death-modal').classList.add('open');
+}
+
+function startAgain() {
+    Player.startAgain();
+    closeModal('death-modal');
+    openCreate();
 }

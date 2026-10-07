@@ -47,6 +47,39 @@ const ECONOMY = {
 
     WEEK_HOURS: 168,
 
+    // Getting caught is a court date, not a game over. What you spend on
+    // counsel is what your odds are — which is the whole point of the
+    // choice, and roughly the point of the system it is about.
+    lawyers: [
+        { id: 'self', name: 'Defend yourself', fee: 0,   odds: 0.10,
+          note: 'The bench has heard it before.' },
+        { id: 'duty', name: 'Duty counsel',    fee: 70,  odds: 0.34,
+          note: 'Overworked, but present.' },
+        { id: 'firm', name: 'A city firm',     fee: 240, odds: 0.62,
+          note: 'Knows the registrar by name.' },
+        { id: 'san',  name: 'A SAN',           fee: 700, odds: 0.88,
+          note: 'Senior Advocate. Walks you out.' },
+    ],
+    PRISON_HOURS: 72,
+
+    // Health. Sleeping rough is the risk: no roof, no net, and the
+    // mosquitoes find you. Being ill drains you and the tablets cost more
+    // than the net would have.
+    health: {
+        RISK_ROUGH:  0.34,     // chance per day with nowhere to sleep
+        RISK_HOUSED: 0.04,
+        NET_FACTOR:  0.28,     // what a net multiplies the risk by
+        DRAIN:       9,        // health lost per day while ill
+        RECOVER:     6,        // regained per day when well and housed
+        RECOVER_ROUGH: 2,
+        HOSPITAL:    170,      // the bill if you collapse
+        HOSPITAL_HOURS: 24,
+        FOOD_PER_DAY: 14,      // eating, which happens if you can afford it
+        HUNGER_DRAIN: 11,      // health lost per day that you cannot
+        STEAL_MIN:    25,      // too weak to outrun anyone below this
+        WEAK:         40,      // and slower below this
+    },
+
     // What the market sells, priced in Lagos terms. 'wears' means taking it
     // changes what you have on, which is the point of stealing a shirt.
     goods: [
@@ -55,6 +88,8 @@ const ECONOMY = {
         { id: 'jeans',  name: 'Jeans',           price: 38, wears: 'legs' },
         { id: 'kicks',  name: 'Trainers',        price: 52, wears: 'shoes' },
         { id: 'phone',  name: 'Phone',           price: 90, wears: null },
+        { id: 'net',    name: 'Mosquito net',    price: 34, wears: null, keeps: true },
+        { id: 'meds',   name: 'Malaria tablets', price: 48, wears: null, cures: true },
     ],
 };
 
@@ -96,6 +131,13 @@ const Player = {
             hours:   0,           // in-game hours elapsed
             items:   [],          // what you own
             theft:   null,        // what you took and have not paid for
+            arrest:  null,        // picked up, and due in court
+            prison:  0,           // hour you are released
+            record:  0,           // previous convictions
+            health:  100,
+            illness: null,        // { id, since }
+            fed:     true,
+            dead:    null,        // { cause, at } once it is over
             rentDue: ECONOMY.WEEK_HOURS,
             history: [],
         };
@@ -143,9 +185,121 @@ const Player = {
     passTime(hours, why) {
         const p = this.get();
         if (!p) return;
+        const was = p.hours;
         p.hours += hours;
         while (p.hours >= p.rentDue) { p.rentDue += ECONOMY.WEEK_HOURS; this._charge_rent(); }
+        // Days that went by while that happened, each with its own roll.
+        const d0 = Math.floor(was / 24), d1 = Math.floor(p.hours / 24);
+        for (let d = d0; d < d1; d++) this._aDay();
         this.save();
+    },
+
+    // ── Health ────────────────────────────────────────────────────────────
+
+    health()  { const p = this.get(); return p ? p.health : 100; },
+    illness() { const p = this.get(); return p ? p.illness : null; },
+    sleepsRough() {
+        const p = this.get();
+        return !!p && !HOUSING_BY_ID[p.housing].sleeps;
+    },
+
+    /// Risk for a single night, as the market panel should quote it.
+    malariaRisk() {
+        const h = ECONOMY.health;
+        let r = this.sleepsRough() ? h.RISK_ROUGH : h.RISK_HOUSED;
+        if (this.has('net')) r *= h.NET_FACTOR;
+        return r;
+    },
+
+    _aDay() {
+        const p = this.get(), h = ECONOMY.health;
+        if (p.dead) return;
+
+        // You eat if you can afford to. Being too poor to is the thing that
+        // kills people here, not any single disaster.
+        const food = this.price(h.FOOD_PER_DAY, p.city);
+        if (p.skubu >= food) {
+            p.skubu -= food;
+            p.fed = true;
+        } else {
+            p.fed = false;
+            p.health -= h.HUNGER_DRAIN;
+            p.history.unshift({ amount: 0, why: 'Went without food', at: p.hours });
+        }
+
+        if (!p.illness && Math.random() < this.malariaRisk()) {
+            p.illness = { id: 'malaria', since: p.hours };
+            p.history.unshift({ amount: 0, why: 'Came down with malaria', at: p.hours });
+        }
+        if (p.illness) p.health = Math.max(0, p.health - h.DRAIN);
+        else p.health = Math.min(100, p.health +
+            (this.sleepsRough() ? h.RECOVER_ROUGH : h.RECOVER));
+        if (p.health <= 0) this._collapse();
+    },
+
+    /// Collapsing is survivable if you can pay for it. That is the whole
+    /// shape of this game: the hospital is there, and it is not free.
+    _collapse() {
+        const p = this.get(), h = ECONOMY.health;
+        const bill = this.price(h.HOSPITAL, p.city);
+        if (p.skubu < bill) {
+            this._die(p.illness ? 'Malaria, and nothing left for the hospital'
+                                : 'Hunger, and nothing left for the hospital');
+            return;
+        }
+        p.skubu -= bill;
+        p.illness = null;
+        p.health = 45;
+        p.hours += h.HOSPITAL_HOURS;
+        p.history.unshift({ amount: -bill, why: 'Hospital', at: p.hours });
+    },
+
+    _die(cause) {
+        const p = this.get();
+        p.dead = { cause, at: p.hours, day: Math.floor(p.hours / 24) + 1 };
+        p.health = 0;
+        p.history.unshift({ amount: 0, why: 'Died — ' + cause, at: p.hours });
+    },
+
+    // ── What a body can still do ──────────────────────────────────────────
+
+    alive() { const p = this.get(); return !!p && !p.dead; },
+    dead()  { const p = this.get(); return p ? p.dead : null; },
+
+    /// Too weak to outrun anyone, so the market is not worth trying.
+    canSteal() {
+        const p = this.get();
+        return !!p && !p.dead && !p.theft && !this.inPrison() &&
+               p.health >= ECONOMY.health.STEAL_MIN;
+    },
+
+    /// How well the legs work, as a multiplier the runs apply to speed. Being
+    /// ill or hungry shows up in the game rather than only on a bar.
+    fitness() {
+        const p = this.get();
+        if (!p) return 1;
+        let f = Math.max(0.5, Math.min(1, p.health / ECONOMY.health.WEAK));
+        if (p.illness) f *= 0.88;
+        if (!p.fed)    f *= 0.92;
+        return Math.max(0.45, f);
+    },
+
+    /// Start over. The city does not remember you.
+    startAgain() {
+        this._p = null;
+        try { localStorage.removeItem(this.KEY); } catch (_) {}
+        this._announce();
+    },
+
+    /// Tablets clear it and put some of you back. They are consumed.
+    treat() {
+        const p = this.get();
+        if (!p || !p.illness) return false;
+        p.illness = null;
+        p.health = Math.min(100, p.health + 34);
+        p.history.unshift({ amount: 0, why: 'Treated the malaria', at: p.hours });
+        this.save();
+        return true;
     },
 
     day()  { const p = this.get(); return p ? Math.floor(p.hours / 24) + 1 : 1; },
@@ -314,6 +468,8 @@ const Player = {
 
     _take(g) {
         const p = this.get();
+        if (g.cures) { this.treat(); return; }      // taken, not kept
+        if (g.keeps && this.has(g.id)) return;      // one net is enough
         p.items.push({ id: g.id, name: g.name, at: p.hours });
         // Clothes go straight on, so what you took is what you are wearing.
         if (g.wears && g.colour) { p.avatar[g.wears] = g.colour; }
@@ -321,6 +477,63 @@ const Player = {
     },
 
     has(id) { const p = this.get(); return !!(p && p.items.some(i => i.id === id)); },
+
+    // ── The law ───────────────────────────────────────────────────────────
+
+    /// Caught with it. The thing goes back now; what happens to you is
+    /// settled in court.
+    arrest(itemName) {
+        const p = this.get();
+        if (!p) return;
+        p.theft  = null;
+        p.arrest = { item: itemName, at: p.hours };
+        this.save();
+    },
+
+    arrested()  { const p = this.get(); return p ? p.arrest : null; },
+    inPrison()  { const p = this.get(); return !!(p && p.hours < p.prison); },
+    prisonLeft() { const p = this.get(); return p ? Math.max(0, p.prison - p.hours) : 0; },
+
+    lawyers() { return ECONOMY.lawyers; },
+    lawyerFee(id, cityId) {
+        const l = ECONOMY.lawyers.find(x => x.id === id);
+        return l ? this.price(l.fee, cityId) : 0;
+    },
+
+    /// Instruct one and take the verdict. Returns { won, lawyer, fee, until }
+    /// or null if the fee could not be met.
+    standTrial(lawyerId) {
+        const p = this.get();
+        const l = ECONOMY.lawyers.find(x => x.id === lawyerId);
+        if (!p || !p.arrest || !l) return null;
+
+        const fee = this.lawyerFee(l.id, p.city);
+        if (fee && !this.adjust(-fee, l.name)) return null;
+
+        // A record counts against you, so the second time costs more than
+        // the first in something other than money.
+        const odds = Math.max(0.04, l.odds - p.record * 0.08);
+        const won  = Math.random() < odds;
+        const item = p.arrest.item;
+        p.arrest = null;
+
+        if (won) {
+            p.history.unshift({ amount: 0, why: 'Bailed — ' + l.name, at: p.hours });
+        } else {
+            p.record += 1;
+            p.prison = p.hours + ECONOMY.PRISON_HOURS;
+            p.history.unshift({ amount: 0, why: 'Convicted over the ' + item, at: p.hours });
+        }
+        this.save();
+        return { won, lawyer: l, fee, until: p.prison, odds };
+    },
+
+    /// Sit it out. Nothing else happens in prison, which is the cost.
+    serveTime() {
+        const left = this.prisonLeft();
+        if (left > 0) this.passTime(left);
+        return left;
+    },
 
     // ── Change notices ────────────────────────────────────────────────────
 

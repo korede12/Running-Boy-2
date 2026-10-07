@@ -104,8 +104,11 @@ class ChaseScene extends Phaser.Scene {
         this.jumpBuffer = 0;
         this.runPhase  = 0;
 
-        this.speed       = ChaseScene.SPEED_BASE;
-        this.speedTarget = ChaseScene.SPEED_BASE;
+        // A hungry or feverish body does not run as well, and the run is
+        // where that should be felt rather than only on a bar.
+        this.fit = (typeof Player !== 'undefined' && Player.exists()) ? Player.fitness() : 1;
+        this.speed       = ChaseScene.SPEED_BASE * this.fit;
+        this.speedTarget = ChaseScene.SPEED_BASE * this.fit;
         this.chaseGap    = ChaseScene.CHASE_START;
         this.chaserX     = this.laneX;
 
@@ -134,6 +137,17 @@ class ChaseScene extends Phaser.Scene {
         this.paid  = 0;
 
         this._buildHud();
+        if (this.theft) {
+            // Say who is behind you, once, at the start.
+            const w = this.add.text(GAME_W / 2, this._y(0.3),
+                'POLICE!\nRun. Cover the ' + this.theft.owed + '.', {
+                fontSize: '22px', color: '#ff5050', fontFamily: 'monospace',
+                fontStyle: 'bold', align: 'center',
+                stroke: '#000', strokeThickness: 5,
+            }).setOrigin(0.5).setDepth(70);
+            this.tweens.add({ targets: w, alpha: 0, delay: 1500, duration: 700,
+                              onComplete: () => w.destroy() });
+        }
         this._bindInput();
 
         this.cameras.main.setBackgroundColor('#9ab4cc');
@@ -255,7 +269,7 @@ class ChaseScene extends Phaser.Scene {
         // without the top of the range arriving before the run has settled.
         const climbed = (this.speedTarget - C.SPEED_BASE) / (C.SPEED_MAX - C.SPEED_BASE);
         const rate    = C.SPEED_RAMP * (1 - C.SPEED_EASE * climbed);
-        this.speedTarget = Math.min(C.SPEED_MAX, this.speedTarget + rate * dt);
+        this.speedTarget = Math.min(C.SPEED_MAX * this.fit, this.speedTarget + rate * dt);
         const want = this.time.now < this.stumbleTo
             ? this.speedTarget * C.STUMBLE_DRAG
             : this.speedTarget;
@@ -700,10 +714,12 @@ class ChaseScene extends Phaser.Scene {
         if (this.over) return;
         this.over = true;
 
-        // Caught carrying it: it goes back, and the run was for nothing.
+        // Caught carrying it: the thing goes back and you go in. What
+        // happens after that is settled in court, back on the map.
         if (this.theft && typeof Player !== 'undefined') {
-            Player.settleTheft(false);
+            Player.arrest(this.theft.name);
             this.lostItem = this.theft.name;
+            this.arrested = true;
         }
         RunStore.saveScore(this.score);
         if (typeof Player !== 'undefined' && Player.exists()) {
@@ -720,11 +736,13 @@ class ChaseScene extends Phaser.Scene {
 
         this._overlay();
         if (this.lostItem) {
-            this.add.text(GAME_W / 2, this._y(0.185), 'They took back the ' + this.lostItem, {
-                fontSize: '13px', color: '#ff8866', fontFamily: 'monospace',
+            this.add.text(GAME_W / 2, this._y(0.185),
+                'They took back the ' + this.lostItem + '. You are being taken in.', {
+                fontSize: '12px', color: '#ff8866', fontFamily: 'monospace',
+                align: 'center', wordWrap: { width: GAME_W - 40 },
             }).setOrigin(0.5).setDepth(101);
         }
-        this.add.text(GAME_W / 2, this._y(0.275), 'CAUGHT!', {
+        this.add.text(GAME_W / 2, this._y(0.275), this.arrested ? 'ARRESTED' : 'CAUGHT!', {
             fontSize: '34px', color: '#ff4444', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#000', strokeThickness: 5,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
@@ -738,7 +756,7 @@ class ChaseScene extends Phaser.Scene {
             fontSize: '13px', color: '#aab', fontFamily: 'monospace',
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0);
 
-        this._menuLink(this._y(0.645));
+        this._menuLink(this._y(0.645), this.arrested ? '[ GO TO COURT ]' : '[ MENU ]');
         this.input.keyboard.once('keydown-SPACE', () => this._restart());
         this.input.once('pointerdown', () => this._restart());
     }
@@ -756,8 +774,8 @@ class ChaseScene extends Phaser.Scene {
         return [ol];
     }
 
-    _menuLink(y) {
-        const link = this.add.text(GAME_W / 2, y, '[ MENU ]', {
+    _menuLink(y, label) {
+        const link = this.add.text(GAME_W / 2, y, label || '[ MENU ]', {
             fontSize: '14px', color: '#66aaff', fontFamily: 'monospace',
             stroke: '#000', strokeThickness: 3,
         }).setOrigin(0.5).setDepth(101).setScrollFactor(0)

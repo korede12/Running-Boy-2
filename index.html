@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Running Boy</title>
     <link rel="stylesheet" href="styles/menu.css">
     <link rel="stylesheet" href="styles/map.css">
@@ -34,6 +34,8 @@
             <span id="life-skubu-wrap">&#10022; <b id="life-skubu">0</b></span>
             <span id="life-day"></span>
             <span id="life-home"></span>
+            <span class="lh-track"><span id="life-health" class="lh-fill"></span></span>
+            <span id="life-ill" class="lh-ill"></span>
         </div>
     </div>
 
@@ -86,6 +88,30 @@
             <button class="ghost" onclick="rollAvatar()">Surprise me</button>
             <button class="primary" onclick="confirmCreate()">Start with nothing</button>
         </div>
+    </div>
+</div>
+
+<!-- ── The end ── -->
+<div class="modal-backdrop" id="death-modal">
+    <div class="modal">
+        <div class="modal-title">&#9760; Survived until</div>
+        <div id="death-body"></div>
+    </div>
+</div>
+
+<!-- ── Court ── -->
+<div class="modal-backdrop" id="court-modal">
+    <div class="modal">
+        <div class="modal-title">&#9878; Magistrate</div>
+        <div id="court-body"></div>
+    </div>
+</div>
+
+<!-- ── Prison ── -->
+<div class="modal-backdrop" id="prison-modal">
+    <div class="modal">
+        <div class="modal-title">&#9939; Inside</div>
+        <div id="prison-body"></div>
     </div>
 </div>
 
