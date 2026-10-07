@@ -8,7 +8,7 @@
 // the camera has a larger (gx + gy) — which is the entire sort order.
 
 const ISO = { TW: 62, TH: 31, OX: 770, OY: 312 };   // tile width, height, origin
-const GRID = 24;
+let CITY = null, GRID = 24, VENUES = [];
 // Cropped to what the city actually occupies, so it fills the window
 // instead of floating in dead canvas.
 const MAP_W = 1540, MAP_H = 1072;
@@ -31,10 +31,7 @@ const AD_FACES = [
     ['#11998e', '#38ef7d'], ['#fc466b', '#3f5efb'], ['#ee0979', '#ff6a00'],
 ];
 
-const ROAD_GX = [4, 10, 16];
-const ROAD_GY = [4, 11, 18];
-const BRIDGE_GY = 11;          // the road that crosses the lagoon
-const WATER_FROM = 19;         // the tile at which the land runs out
+let ROAD_GX = [], ROAD_GY = [];
 
 const MAP_ICONS = {
     home:  'M-8 2 L0 -7 L8 2 L8 8 L-8 8 Z',
@@ -43,6 +40,7 @@ const MAP_ICONS = {
     run:   'M1 -8 a2.4 2.4 0 1 0 0.1 0 Z M-6 9 L-1 2 L-4 -2 L1 -4 L6 0 L4 2 L0 0 L3 4 L1 9 Z',
     music: 'M0 -9 L9 -11 L9 -4 L3 -2.6 L3 5 A3.6 3.6 0 1 1 0 1.6 Z',
     fist:  'M-6 -2 L-6 4 Q-6 8 -1 8 L3 8 Q7 8 7 4 L7 -3 Q7 -5 5 -5 Q3 -5 3 -3 L3 -5 Q3 -7 1 -7 Q-1 -7 -1 -5 L-1 -4 Q-1 -6 -3 -6 Q-5 -6 -5 -4 L-5 -2 Z',
+    road:  'M-7 -8 L7 -8 L7 -2 L-7 -2 Z M-1.6 -2 L1.6 -2 L1.6 9 L-1.6 9 Z',
     cart:  'M-8 -5 L-5 -5 L-3 3 L5 3 L7 -2 L-4 -2 M-2 7 a1.6 1.6 0 1 0 0.1 0 M4 7 a1.6 1.6 0 1 0 0.1 0',
 };
 
@@ -62,14 +60,54 @@ const pt = p => p[0].toFixed(1) + ' ' + p[1].toFixed(1);
 const poly = (pts, fill, extra) =>
     `<polygon points="${pts.map(pt).join(' ')}" fill="${fill}"${extra || ''}/>`;
 
-const isRoad  = (gx, gy) => ROAD_GX.includes(gx) || ROAD_GY.includes(gy);
-const isWater = (gx, gy) => gx >= WATER_FROM && gy !== BRIDGE_GY;
+const isRoad = (gx, gy) =>
+    ROAD_GX.includes(gx) || ROAD_GY.includes(gy) ||
+    (CITY.exit && (CITY.exit.axis === 'gx' ? gx === CITY.exit.at : gy === CITY.exit.at) &&
+     (CITY.exit.axis === 'gx' ? gy : gx) >= CITY.exit.from &&
+     (CITY.exit.axis === 'gx' ? gy : gx) <= CITY.exit.to);
+
+const isRock = (gx, gy) =>
+    !!(CITY.rocks && CITY.rocks.some(r => r[0] === gx && r[1] === gy));
+
+/// Lagoon past a column, or a river running the diagonal. A road crossing
+/// either one is a bridge, which falls out of the geometry rather than
+/// being placed by hand.
+function isWater(gx, gy) {
+    if (CITY.water) return gx >= CITY.water.from && gy !== CITY.water.bridgeGY;
+    if (CITY.river) {
+        const d = gy - gx;
+        return d >= CITY.river.lo && d <= CITY.river.hi && !isRoad(gx, gy);
+    }
+    return false;
+}
+
+/// Buildable ground: on the grid, not wet, and not the shore strip a lagoon
+/// needs left clear.
+function onLand(gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= GRID || gy >= GRID) return false;
+    if (isWater(gx, gy)) return false;
+    if (CITY.water && gx >= CITY.water.from - 1) return false;
+    return true;
+}
+
+/// Where a road runs over water it is carried on a deck.
+const isBridge = (gx, gy) => {
+    if (!isRoad(gx, gy)) return false;
+    if (CITY.water) return gx >= CITY.water.from && gy === CITY.water.bridgeGY;
+    if (CITY.river) { const d = gy - gx; return d >= CITY.river.lo && d <= CITY.river.hi; }
+    return false;
+};
 
 const CityMap = {
 
     build() {
         const host = document.getElementById('map');
-        if (!host || typeof VENUES === 'undefined') return;
+        if (!host || typeof CITIES === 'undefined') return;
+        CITY = getCity(currentCityId());
+        GRID = CITY.grid;
+        ROAD_GX = CITY.roadsGX;
+        ROAD_GY = CITY.roadsGY;
+        VENUES = CITY.venues;
 
         const s = [];
         s.push(`<svg id="map-svg" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="City map">`);
@@ -91,6 +129,8 @@ const CityMap = {
         // camera, and laid down back to front — otherwise a far tower paints
         // over the near one in front of it.
         const props = [];
+        this._rocks(props);
+        this._exit(props);
         this._blocks(props);
         this._nature(props);
         this._traffic(props);
@@ -102,6 +142,9 @@ const CityMap = {
 
         s.push(`</svg>`);
         host.innerHTML = s.join('');
+
+        const where = document.getElementById('hud-where');
+        if (where) where.textContent = CITY.name + ' · ' + CITY.tag;
 
         host.querySelectorAll('.venue').forEach(g => {
             const id = g.getAttribute('data-venue');
@@ -121,7 +164,7 @@ const CityMap = {
         for (let gy = 0; gy < GRID; gy++) {
             for (let gx = 0; gx < GRID; gx++) {
                 if (isWater(gx, gy)) { s.push(tile(gx, gy, MAP_C.water[(gx + gy) % 2])); continue; }
-                if (gx === WATER_FROM - 1) { s.push(tile(gx, gy, MAP_C.sand)); continue; }
+                if (CITY.water && gx === CITY.water.from - 1) { s.push(tile(gx, gy, MAP_C.sand)); continue; }
                 if (isRoad(gx, gy)) {
                     s.push(tile(gx, gy, MAP_C.road));
                     const along = ROAD_GY.includes(gy);
@@ -134,15 +177,19 @@ const CityMap = {
             }
         }
 
-        // The bridge deck, carried over the water.
-        for (let gx = WATER_FROM; gx < GRID; gx++) {
+        // Decks, wherever a road was found to be crossing water.
+        const decks = [];
+        for (let gy = 0; gy < GRID; gy++)
+            for (let gx = 0; gx < GRID; gx++)
+                if (isBridge(gx, gy)) decks.push([gx, gy]);
+        for (const [gx, gy] of decks) {
             const H = 18;
-            const A = iso(gx, BRIDGE_GY, H), B = iso(gx + 1, BRIDGE_GY, H);
-            const C = iso(gx + 1, BRIDGE_GY + 1, H), D = iso(gx, BRIDGE_GY + 1, H);
+            const A = iso(gx, gy, H), B = iso(gx + 1, gy, H);
+            const C = iso(gx + 1, gy + 1, H), D = iso(gx, gy + 1, H);
             s.push(poly([D, C, [C[0], C[1] + H], [D[0], D[1] + H]], MAP_C.roadDk));
             s.push(poly([B, C, [C[0], C[1] + H], [B[0], B[1] + H]], '#50505d'));
             s.push(poly([A, B, C, D], MAP_C.road));
-            const a = iso(gx, BRIDGE_GY + 0.5, H), b = iso(gx + 1, BRIDGE_GY + 0.5, H);
+            const a = iso(gx, gy + 0.5, H), b = iso(gx + 1, gy + 0.5, H);
             s.push(`<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" stroke="${MAP_C.line}" stroke-width="2.4" stroke-dasharray="11 13" opacity="0.8"/>`);
         }
     },
@@ -166,11 +213,49 @@ const CityMap = {
                                 gy >= v.gy - 1 && gy <= v.gy + (v.gd || 2));
     },
 
+    // ── Rock ──────────────────────────────────────────────────────────────
+    // Olumo and the outcrops the town is built around: stacked boulders
+    // rather than boxes, so they read as landscape and not architecture.
+
+    _rocks(out) {
+        for (const [gx, gy] of (CITY.rocks || [])) {
+            const n = mrand(gx * 11, gy * 19);
+            const h = 54 + Math.round(n * 96);
+            let g = this._box(gx, gy, 1, 1, h, '#6f6558', '#5b5245', '#433d33');
+            g += this._box(gx + 0.18, gy + 0.2, 0.66, 0.62, h + 26 + n * 22,
+                           '#7d7263', '#675e50', '#4b443a');
+            if (n > 0.5) g += this._box(gx + 0.42, gy + 0.1, 0.4, 0.38, h + 52 + n * 26,
+                                        '#8a7e6d', '#6f6658', '#524a3f');
+            out.push({ d: this._d(gx, gy, 1, 1) + 0.1, svg: g });
+        }
+    },
+
+    // ── The road out of town ──────────────────────────────────────────────
+    // It runs off the edge of the grid toward the other city, so travelling
+    // is somewhere you drive to rather than a control in a corner.
+
+    _exit(out) {
+        const e = CITY.exit;
+        if (!e) return;
+        const tile = (gx, gy) => poly(
+            [iso(gx, gy, 0), iso(gx + 1, gy, 0), iso(gx + 1, gy + 1, 0), iso(gx, gy + 1, 0)],
+            MAP_C.road);
+        for (let k = e.from; k <= e.to; k++) {
+            const gx = e.axis === 'gx' ? e.at : k;
+            const gy = e.axis === 'gx' ? k : e.at;
+            let g = tile(gx, gy);
+            const a = e.axis === 'gx' ? iso(gx + 0.5, gy, 0) : iso(gx, gy + 0.5, 0);
+            const b = e.axis === 'gx' ? iso(gx + 0.5, gy + 1, 0) : iso(gx + 1, gy + 0.5, 0);
+            g += `<line x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}" stroke="${MAP_C.line}" stroke-width="2.4" stroke-dasharray="11 13" opacity="0.8"/>`;
+            out.push({ d: this._d(gx, gy, 1, 1) - 0.1, svg: g });
+        }
+    },
+
     // ── Blocks of buildings ───────────────────────────────────────────────
 
     _blocks(out) {
         const taken = (gx, gy) =>
-            gx < 0 || gy < 0 || gx >= WATER_FROM - 1 || gy >= GRID - 1 ||
+            gx < 0 || gy < 0 || !onLand(gx, gy) || gy >= GRID - 1 ||
             isRoad(gx, gy) || this._venueTile(gx, gy);
 
         for (let gy = 0; gy < GRID - 1; gy++) {
@@ -223,7 +308,7 @@ const CityMap = {
     _billboards(out) {
         const spots = [];
         ROAD_GY.forEach((gy, i) => {
-            for (let gx = 2; gx < WATER_FROM - 1; gx += 6) spots.push([gx + (i % 2), gy - 0.4, 'x']);
+            for (let gx = 2; onLand(gx, gy); gx += 6) spots.push([gx + (i % 2), gy - 0.4, 'x']);
         });
         ROAD_GX.forEach((gx, i) => {
             for (let gy = 3; gy < GRID - 2; gy += 7) spots.push([gx - 0.4, gy + (i % 2), 'y']);
@@ -270,7 +355,8 @@ const CityMap = {
 
     _nature(out) {
         for (let gy = 1; gy < GRID - 1; gy++) {
-            for (let gx = 1; gx < WATER_FROM - 1; gx++) {
+            for (let gx = 1; gx < GRID - 1; gx++) {
+                if (!onLand(gx, gy)) continue;
                 if (isRoad(gx, gy) || this._venueTile(gx, gy)) continue;
                 const n = mrand(gx * 31, gy * 17);
                 if (n < 0.88) continue;
@@ -316,10 +402,9 @@ const CityMap = {
             for (let k = 0; k < 4; k++) {
                 const gx = 1 + k * 5;
                 const n = mrand(gx, gy * 3);
-                const lift = gy === BRIDGE_GY ? 0 : 0;
                 out.push({ d: this._d(gx, gy, 1, 1) + 0.25,
                     svg: drive(gx, gy, 'rolls-x', -(k * 7 + r * 3),
-                        veh(gx + 0.5, gy + 0.2, cols[i % cols.length], n > 0.6), lift) });
+                        veh(gx + 0.5, gy + 0.2, cols[i % cols.length], n > 0.6)) });
                 i++;
                 out.push({ d: this._d(gx + 2, gy, 1, 1) + 0.26,
                     svg: drive(gx, gy, 'rolls-xr', -(k * 6 + r * 5),
@@ -422,6 +507,16 @@ const CityMap = {
 
         if (v.kind === 'open') { openModal(v.modal); return; }
 
+        // Travel: the road out is a place you go to, so going there moves
+        // the whole map rather than opening a chooser.
+        if (v.kind === 'travel') {
+            try { localStorage.setItem('runningboy_city', v.to); } catch (_) {}
+            CityMap.build();
+            CityMap.centre();
+            CityMap.banner('Arrived in ' + getCity(v.to).name);
+            return;
+        }
+
         try { localStorage.setItem('runningboy_venue', v.id); } catch (_) {}
 
         const who = venueCharacters(v.id);
@@ -431,6 +526,19 @@ const CityMap = {
         const hint = document.getElementById('char-hint');
         if (hint) hint.textContent = v.name + ' — ' + v.blurb;
         openModal('char-modal');
+    },
+
+    /// A word on arrival, so travelling is something that happened rather
+    /// than the map silently becoming a different one.
+    banner(text) {
+        const hud = document.getElementById('hud');
+        if (!hud) return;
+        const el = document.createElement('div');
+        el.id = 'arrive';
+        el.textContent = text;
+        hud.appendChild(el);
+        setTimeout(() => el.classList.add('gone'), 1500);
+        setTimeout(() => el.remove(), 2200);
     },
 
     /// The city is bigger than the window, so open on the middle of it.
