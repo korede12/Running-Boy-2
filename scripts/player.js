@@ -12,9 +12,9 @@ const ECONOMY = {
     // Multipliers on everything a city charges and everything it pays.
     cities: {
         lagos:    { cost: 1.00, pay: 1.00, note: 'Busy, expensive, and where the money is.',
-                    serves: ['walk', 'bus', 'train', 'flight'] },
+                    serves: ['walk', 'bus', 'train', 'flight'], demand: 1.35 },
         abeokuta: { cost: 0.58, pay: 0.62, note: 'Cheaper and slower. Civil service town.',
-                    serves: ['walk', 'bus', 'train'] },
+                    serves: ['walk', 'bus', 'train'], demand: 0.85 },
     },
 
     // Getting between cities is a trade of money against hours. Walking is
@@ -46,6 +46,19 @@ const ECONOMY = {
     ],
 
     WEEK_HOURS: 168,
+
+    // Land and building. A plot is cheap next to a finished house, and the
+    // gap between them is paid in wages and weeks — which is the medium-term
+    // goal the game was missing between surviving a week and owning
+    // anything. Build where land is cheap, earn where the money is.
+    land: {
+        PLOT:        620,                               // priced in Lagos terms
+        STAGES:      ['Foundation', 'Walls', 'Roof', 'Finishing'],
+        WORK_STAGE:  40,                                // labourer-hours each
+        MATERIALS:   [130, 190, 160, 100],              // due at the start of each
+        WAGE_HOUR:   3,                                 // per labourer, per hour
+        MAX_CREW:    6,
+    },
 
     // Getting caught is a court date, not a game over. What you spend on
     // counsel is what your odds are — which is the whole point of the
@@ -128,7 +141,7 @@ const Player = {
             skubu:   0,
             housing: 'none',
             owns:    [],          // houses owned, each { city, tenant }
-            land:    [],          // plots bought, each { city, built, stage }
+            land:    [],          // plots: { city, stage, work, crew, paid }
             hours:   0,           // in-game hours elapsed
             items:   [],          // what you own
             theft:   null,        // what you took and have not paid for
@@ -173,6 +186,17 @@ const Player = {
         return Math.round(base * c.cost);
     },
 
+    /// What a let house brings in. Rent is not simply a share of what
+    /// things cost: Lagos is in demand and Abeokuta is not, which is the
+    /// reason to graduate from building where it is cheap to building where
+    /// it pays. Without this both cities returned the same and the choice
+    /// was flat.
+    rentIncome(cityId) {
+        const id = cityId || this.cityId();
+        const c = ECONOMY.cities[id] || ECONOMY.cities.lagos;
+        return Math.round(this.price(HOUSING_BY_ID.own.letsFor, id) * (c.demand || 1));
+    },
+
     /// What a city pays for work priced in Lagos terms.
     wage(base, cityId) {
         const c = ECONOMY.cities[cityId || (this.get() || {}).city] || ECONOMY.cities.lagos;
@@ -190,6 +214,7 @@ const Player = {
         p.hours += hours;
         while (p.hours >= p.rentDue) { p.rentDue += ECONOMY.WEEK_HOURS; this._charge_rent(); }
         // Days that went by while that happened, each with its own roll.
+        this._buildHours(hours);
         const d0 = Math.floor(was / 24), d1 = Math.floor(p.hours / 24);
         for (let d = d0; d < d1; d++) this._aDay();
         this.save();
@@ -331,7 +356,7 @@ const Player = {
         // Anything let out pays its way back.
         for (const house of p.owns) {
             if (!house.tenant) continue;
-            const income = this.price(HOUSING_BY_ID.own.letsFor, house.city);
+            const income = this.rentIncome(house.city);
             p.skubu += income;
             p.history.unshift({ amount: income, why: 'Rent from ' + house.city, at: p.hours });
         }
@@ -541,6 +566,103 @@ const Player = {
         return left;
     },
 
+    // ── Land, and what it takes to build on it ────────────────────────────
+
+    landCfg() { return ECONOMY.land; },
+    plots()   { const p = this.get(); return p ? p.land : []; },
+
+    plotPrice(cityId) { return this.price(ECONOMY.land.PLOT, cityId || this.cityId()); },
+
+    buyLand(cityId) {
+        const p = this.get();
+        if (!p) return false;
+        const city = cityId || p.city;
+        if (!this.adjust(-this.plotPrice(city), 'Bought land in ' + city)) return false;
+        p.land.push({ city, stage: 0, work: 0, crew: 0, paid: false });
+        this.save();
+        return true;
+    },
+
+    /// Materials for the stage about to start. Nothing moves until they are
+    /// on site, which is why a crew with no materials is just a wage bill.
+    materialsDue(i) {
+        const p = this.get(), L = ECONOMY.land;
+        const plot = p && p.land[i];
+        if (!plot || plot.stage >= L.STAGES.length) return 0;
+        return this.price(L.MATERIALS[plot.stage], plot.city);
+    },
+
+    buyMaterials(i) {
+        const p = this.get(), plot = p && p.land[i];
+        if (!plot || plot.paid) return false;
+        const due = this.materialsDue(i);
+        if (!this.adjust(-due, ECONOMY.land.STAGES[plot.stage] + ' materials')) return false;
+        plot.paid = true;
+        this.save();
+        return true;
+    },
+
+    /// Crew size is the only lever on speed, and it is charged by the hour
+    /// whether or not there is anything for them to do.
+    setCrew(i, n) {
+        const p = this.get(), plot = p && p.land[i];
+        if (!plot) return false;
+        plot.crew = Math.max(0, Math.min(ECONOMY.land.MAX_CREW, Math.round(n)));
+        this.save();
+        return true;
+    },
+
+    crewCostPerHour() {
+        const p = this.get();
+        if (!p) return 0;
+        return p.land.reduce((a, pl) => a + this.price(ECONOMY.land.WAGE_HOUR, pl.city) * pl.crew, 0);
+    },
+
+    /// Called as hours go by. Wages come out first; work only happens on a
+    /// site that has been paid for and still has stages left.
+    _buildHours(hours) {
+        const p = this.get(), L = ECONOMY.land;
+        for (const plot of p.land) {
+            if (!plot.crew) continue;
+            const wage = this.price(L.WAGE_HOUR, plot.city) * plot.crew * hours;
+            if (p.skubu < wage) {
+                // Cannot make payroll: they walk, which is its own lesson.
+                plot.crew = 0;
+                p.history.unshift({ amount: 0, why: 'Crew walked off — unpaid', at: p.hours });
+                continue;
+            }
+            p.skubu -= wage;
+            if (plot.stage >= L.STAGES.length || !plot.paid) continue;
+
+            plot.work += plot.crew * hours;
+            while (plot.paid && plot.work >= L.WORK_STAGE && plot.stage < L.STAGES.length) {
+                plot.work -= L.WORK_STAGE;
+                plot.stage += 1;
+                plot.paid = false;
+                p.history.unshift({
+                    amount: 0,
+                    why: plot.stage >= L.STAGES.length
+                        ? 'Finished building in ' + plot.city
+                        : L.STAGES[plot.stage - 1] + ' done in ' + plot.city,
+                    at: p.hours,
+                });
+            }
+            if (plot.stage >= L.STAGES.length) {
+                // A finished build is a house like any other, and can be let.
+                p.owns.push({ city: plot.city, tenant: false, built: true });
+                plot.done = true;
+                if (p.housing === 'none') p.housing = 'own';
+            }
+        }
+        p.land = p.land.filter(pl => !pl.done);
+    },
+
+    plotProgress(i) {
+        const p = this.get(), L = ECONOMY.land, plot = p && p.land[i];
+        if (!plot) return 0;
+        return Math.min(1, (plot.stage * L.WORK_STAGE + plot.work) / (L.STAGES.length * L.WORK_STAGE));
+    },
+
     // ── What to do next ───────────────────────────────────────────────────
     // A player should never have to ask what they are supposed to be doing.
     // One line, always true, always the most pressing thing — and it names a
@@ -574,6 +696,23 @@ const Player = {
             return { text: 'You can afford a room at ' + room + '.', find: 'agent' };
         if (this.sleepsRough())
             return { text: 'Nowhere to sleep. A room is ' + room + '.', find: 'run' };
+
+        // A site with nobody on it, or nothing for them to do, is the most
+        // wasteful thing you can own — so it outranks buying anything else.
+        for (let i = 0; i < p.land.length; i++) {
+            const plot = p.land[i];
+            const mats = this.materialsDue(i);
+            if (!plot.paid && p.skubu >= mats)
+                return { text: 'Materials for the ' + ECONOMY.land.STAGES[plot.stage].toLowerCase() + ' are ' + mats + '.', find: 'agent' };
+            if (!plot.paid)
+                return { text: 'Site stalled. ' + mats + ' for materials.', find: 'run' };
+            if (!plot.crew)
+                return { text: 'Materials on site and nobody working. Hire a crew.', find: 'agent' };
+        }
+
+        const plot = this.plotPrice(p.city);
+        if (!p.land.length && !p.owns.length && p.skubu >= plot)
+            return { text: 'Land here is ' + plot + '. Build, and let it out.', find: 'agent' };
 
         const house = this.price(HOUSING_BY_ID.own.buy, p.city);
         if (!p.owns.length && p.skubu >= house)

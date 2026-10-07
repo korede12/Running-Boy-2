@@ -570,3 +570,20 @@ html, body {
     .goal { bottom: 10px; padding: 9px 13px; }
     .goal-text { font-size: 11.5px; }
 }
+
+/* A building site */
+.site {
+    border: 1px solid #2a2a38; border-radius: 10px;
+    padding: 11px 12px; margin-bottom: 10px;
+    background: #15151e; font-family: monospace;
+}
+.site-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.site-top b { font-size: 13px; color: #e8edf6; font-weight: normal; }
+.site-top span { font-size: 10px; color: #ccaa44; letter-spacing: .08em; }
+.site-bar { height: 6px; border-radius: 3px; background: #10101a; margin: 8px 0 7px; overflow: hidden; }
+.site-bar span { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg,#8a6a14,#ffd766); }
+.site-note { font-size: 10px; color: #7f8aa0; line-height: 1.5; }
+.site-note.warnish { color: #ddbb66; }
+.site-crew { display: flex; align-items: center; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+.site-crew > span { font-size: 9px; letter-spacing: .16em; color: #5f6a80; text-transform: uppercase; }
+.site .est-btn { margin-top: 8px; }

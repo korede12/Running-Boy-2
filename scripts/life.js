@@ -96,11 +96,11 @@ function renderEstate() {
 
     const mine = p.owns.length ? p.owns.map((o, i) =>
         `<div class="est-row"><span class="est-name">House in ${getCity(o.city).name}</span>` +
-        `<span class="est-sub">${o.tenant ? 'Let out · ' + Player.price(60, o.city) + '/wk' : 'Empty'}</span>` +
+        `<span class="est-sub">${o.tenant ? 'Let out · ' + Player.rentIncome(o.city) + '/wk' : 'Empty'}</span>` +
         `<button class="est-btn" ${o.tenant ? 'disabled' : ''} onclick="letHome(${i})">` +
         `${o.tenant ? 'LET' : 'LET IT OUT'}</button></div>`).join('') : '';
 
-    host.innerHTML =
+    host.innerHTML = renderLand(p) +
         `<div class="est-head">${city.name} &nbsp;·&nbsp; prices &times;${ECONOMY.cities[p.city].cost.toFixed(2)}` +
         `<span class="est-bal">&#10022; ${p.skubu}</span></div>` +
         `<div class="est-now">Living: <b>${now.name}</b></div>` + rows +
@@ -449,3 +449,53 @@ function doGoal(g) {
     if (!v) return;
     if (typeof CityMap !== 'undefined') CityMap.pick(v.id);
 }
+
+// ── Land and building ─────────────────────────────────────────────────────
+// A plot is cheap next to a finished house, and the distance between them is
+// paid in wages and weeks. It is the game's medium-term goal: buy where land
+// is cheap, earn where the money is, and come back to pay the crew.
+
+function renderLand(p) {
+    const L = Player.landCfg();
+    const plotCost = Player.plotPrice(p.city);
+
+    const sites = p.land.map((plot, i) => {
+        const pct   = Math.round(Player.plotProgress(i) * 100);
+        const stage = plot.stage < L.STAGES.length ? L.STAGES[plot.stage] : 'Done';
+        const mats  = Player.materialsDue(i);
+        const wage  = Player.price(L.WAGE_HOUR, plot.city) * plot.crew;
+
+        const crew = [0, 1, 2, 4, 6].map(n =>
+            `<button class="chip${plot.crew === n ? ' on' : ''}" onclick="setCrew(${i},${n})">${n || 'none'}</button>`
+        ).join('');
+
+        return `<div class="site">` +
+            `<div class="site-top"><b>Plot in ${getCity(plot.city).name}</b>` +
+            `<span>${stage} &nbsp;·&nbsp; ${pct}%</span></div>` +
+            `<div class="site-bar"><span style="width:${pct}%"></span></div>` +
+            (plot.paid
+                ? `<div class="site-note">Materials on site. ${plot.crew
+                    ? plot.crew + ' working · ' + wage + ' skubu an hour'
+                    : 'Nobody working.'}</div>`
+                : `<div class="site-note warnish">${stage} needs ${mats} in materials ` +
+                  `before anyone can start.</div>` +
+                  `<button class="est-btn" ${p.skubu < mats ? 'disabled' : ''} ` +
+                  `onclick="buyMaterials(${i})">BUY MATERIALS &#10022; ${mats}</button>`) +
+            `<div class="site-crew"><span>Crew</span>${crew}</div>` +
+        `</div>`;
+    }).join('');
+
+    const payroll = Player.crewCostPerHour();
+    return `<div class="est-head">Land` +
+        (payroll ? `<span class="est-bal">&#10022; ${payroll}/hr in wages</span>` : '') +
+        `</div>` + sites +
+        `<div class="est-row"><span class="est-name">A plot in ${getCity(p.city).name}</span>` +
+        `<span class="est-sub">Then ${L.STAGES.length} stages, ` +
+        `${L.STAGES.length * L.WORK_STAGE} labourer-hours, and materials.</span>` +
+        `<button class="est-btn" ${p.skubu < plotCost ? 'disabled' : ''} ` +
+        `onclick="buyLand()">BUY &#10022; ${plotCost}</button></div>`;
+}
+
+function buyLand()        { if (Player.buyLand()) { renderEstate(); refreshLifeHud(); } else flash('Not enough skubu.'); }
+function buyMaterials(i)  { if (Player.buyMaterials(i)) { renderEstate(); refreshLifeHud(); } else flash('Not enough skubu.'); }
+function setCrew(i, n)    { Player.setCrew(i, n); renderEstate(); refreshLifeHud(); }
