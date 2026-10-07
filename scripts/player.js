@@ -90,7 +90,9 @@ const Player = {
         const p = this.get();
         if (!p) return false;
         if (amount < 0 && p.skubu + amount < 0) return false;
-        p.skubu = Math.max(0, Math.round((p.skubu + amount) * 100) / 100);
+        // Whole numbers: it is a currency, not a score, and half a skubu
+        // buys nothing.
+        p.skubu = Math.max(0, Math.round(p.skubu + amount));
         p.history.unshift({ amount, why, at: p.hours });
         p.history = p.history.slice(0, 40);
         this.save();
@@ -106,7 +108,7 @@ const Player = {
     /// What a city pays for work priced in Lagos terms.
     wage(base, cityId) {
         const c = ECONOMY.cities[cityId || (this.get() || {}).city] || ECONOMY.cities.lagos;
-        return Math.round(base * c.pay * 100) / 100;
+        return Math.round(base * c.pay);
     },
 
     // ── Time ──────────────────────────────────────────────────────────────

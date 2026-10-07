@@ -76,7 +76,7 @@ class GameScene extends Phaser.Scene {
         this.isBlocked = false;
         const _rt = this._checkLaunchCooldown();
         if (_rt) {
-            const _sk = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
+            const _sk = RunStore.skubu();
             if (_sk > 0) {
                 this._showSpendSkubuToPlayScreen(_sk, _rt);
             } else {
@@ -94,10 +94,7 @@ class GameScene extends Phaser.Scene {
         this.lives           = 5;
         this.sessionId       = crypto.randomUUID();
         this.pendingSkubu    = 0;
-        this.skubuCount      = (() => {
-            try { return parseInt(localStorage.getItem('runningboy_skubu')) || 0; }
-            catch { return 0; }
-        })();
+        this.skubuCount      = RunStore.skubu();
         this.nextSkubuAt     = SKUBU_INTERVAL;
         this.attackUntil     = 0;   // punch: end timestamp, 0 = not striking
         this.attackReadyAt   = 0;   // cooldown
@@ -711,8 +708,8 @@ class GameScene extends Phaser.Scene {
 
     _awardSkubu() {
         this.pendingSkubu += 1;
-        this.skubuCount   += 1;   // optimistic for display
-        try { localStorage.setItem('runningboy_skubu', this.skubuCount); } catch (_) {}
+        RunStore.credit(1, 'Run milestone');
+        this.skubuCount = RunStore.skubu();
         this.skubuLabel.setText(`✦ SKUBU: ${this.skubuCount}`);
         this.sound.play('snd_skubu', { volume: 0.6 });
         this._showSkubuSplash();
@@ -1035,8 +1032,8 @@ class GameScene extends Phaser.Scene {
 
     _doContinue(objs) {
         objs.forEach(o => o.destroy());
-        this.skubuCount -= 1;
-        try { localStorage.setItem('runningboy_skubu', this.skubuCount); } catch (_) {}
+        RunStore.debit(1, 'Continued a run');
+        this.skubuCount = RunStore.skubu();
         this.skubuLabel.setText(`✦ SKUBU: ${this.skubuCount}`);
         this.lives = 5;
         this._updateLivesDisplay();
@@ -1142,8 +1139,7 @@ class GameScene extends Phaser.Scene {
             const count = (rd.date === today ? (rd.count || 0) : 0) + 1;
             localStorage.setItem('runningboy_daily_runs', JSON.stringify({ date: today, count }));
             if (count >= 3) {
-                const cur = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
-                localStorage.setItem('runningboy_skubu', cur + 1);
+                RunStore.credit(1, 'First run of the day');
                 localStorage.setItem('runningboy_daily_reward', today);
                 return true;
             }
@@ -1383,7 +1379,7 @@ class GameScene extends Phaser.Scene {
           .on('pointerover', function() { this.setColor('#ffee66'); })
           .on('pointerout',  function() { this.setColor('#ffcc22'); })
           .on('pointerdown', () => {
-              localStorage.setItem('runningboy_skubu', skubuCount - 1);
+              RunStore.debit(1, 'Bought a play');
               // Spending a skubu clears the loss counter for a fresh set of 5 games
               localStorage.setItem('runningboy_losses', 0);
               localStorage.removeItem('runningboy_losses_reset');

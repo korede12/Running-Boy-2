@@ -473,8 +473,8 @@ class ChaseScene extends Phaser.Scene {
         while (this.score >= this.nextSkubuAt) {
             this.nextSkubuAt += SKUBU_INTERVAL;
             this.pendingSkubu += 1;
-            this.skubuCount   += 1;
-            RunStore.setSkubu(this.skubuCount);
+            RunStore.credit(1, 'Run milestone');
+            this.skubuCount = RunStore.skubu();
             this.skubuLabel.setText(`✦ SKUBU: ${this.skubuCount}`);
             this.sound.play('snd_skubu', { volume: 0.6 });
         }
@@ -631,8 +631,8 @@ class ChaseScene extends Phaser.Scene {
         panel.push(spend, quit);
         spend.once('pointerdown', () => {
             panel.forEach(o => o.destroy());
-            this.skubuCount -= 1;
-            RunStore.setSkubu(this.skubuCount);
+            RunStore.debit(1, 'Broke away from the chase');
+            this.skubuCount = RunStore.skubu();
             this.skubuLabel.setText(`✦ SKUBU: ${this.skubuCount}`);
             this._escape();
         });

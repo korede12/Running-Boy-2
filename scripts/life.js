@@ -168,7 +168,19 @@ function flash(msg) {
 }
 
 /// A player with no record gets the one screen that matters first.
+// Anything that moves the wallet redraws every place it is shown, so the
+// strip and the old badge can never disagree about the balance.
+if (typeof Player !== 'undefined') {
+    Player.onChange(() => {
+        refreshLifeHud();
+        const badge = document.getElementById('skubu-count');
+        if (badge) badge.textContent = String(Player.skubu());
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     refreshLifeHud();
+    const badge = document.getElementById('skubu-count');
+    if (badge && typeof Player !== 'undefined' && Player.exists()) badge.textContent = String(Player.skubu());
     if (typeof Player !== 'undefined' && !Player.exists()) setTimeout(openCreate, 150);
 });

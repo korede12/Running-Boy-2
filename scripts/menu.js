@@ -262,11 +262,14 @@ function startGame() {
 }
 
 // ── Skubu badge ───────────────────────────────────────────────────────────
+// One wallet, wherever it is being read from.
 function getSkubu() {
-    return parseInt(localStorage.getItem(LS_SKUBU)) || 0;
+    return (typeof RunStore !== 'undefined') ? RunStore.skubu()
+         : parseInt(localStorage.getItem(LS_SKUBU)) || 0;
 }
 function setSkubu(n) {
-    localStorage.setItem(LS_SKUBU, n);
+    if (typeof RunStore !== 'undefined') RunStore.setSkubu(n);
+    else localStorage.setItem(LS_SKUBU, n);
     const el = document.getElementById('skubu-count');
     if (el) el.textContent = n;
 }

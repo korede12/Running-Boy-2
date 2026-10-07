@@ -25,13 +25,55 @@ const RunStore = {
         catch (_) { return 'ANON'; }
     },
 
+    // ── The wallet ────────────────────────────────────────────────────────
+    // Every reward in the game lands in skubu, and there is one balance to
+    // land in. Once a player exists it is theirs; before that it falls back
+    // to the old standalone counter so a page opened without one still
+    // works. Nothing writes the balance directly any more — a second place
+    // keeping its own total is how two wallets happen.
+
     skubu() {
+        if (typeof Player !== 'undefined' && Player.exists()) return Player.skubu();
         try { return parseInt(localStorage.getItem('runningboy_skubu')) || 0; }
         catch (_) { return 0; }
     },
 
+    /// Earn. Returns what was credited.
+    credit(n, why) {
+        n = Math.max(0, Math.round(n));
+        if (!n) return 0;
+        if (typeof Player !== 'undefined' && Player.exists()) {
+            Player.adjust(n, why || 'Reward');
+            return n;
+        }
+        try {
+            const cur = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
+            localStorage.setItem('runningboy_skubu', cur + n);
+        } catch (_) {}
+        return n;
+    },
+
+    /// Spend. Refused, rather than allowed to go negative.
+    debit(n, why) {
+        n = Math.max(0, Math.round(n));
+        if (!n) return true;
+        if (typeof Player !== 'undefined' && Player.exists()) {
+            return Player.adjust(-n, why || 'Spent');
+        }
+        try {
+            const cur = parseInt(localStorage.getItem('runningboy_skubu')) || 0;
+            if (cur < n) return false;
+            localStorage.setItem('runningboy_skubu', cur - n);
+        } catch (_) { return false; }
+        return true;
+    },
+
+    /// Kept for callers that think in totals; expressed as a move either way
+    /// so the ledger still records what happened.
     setSkubu(n) {
-        try { localStorage.setItem('runningboy_skubu', n); } catch (_) {}
+        const cur = this.skubu();
+        if (n > cur) this.credit(n - cur, 'Adjustment');
+        else if (n < cur) this.debit(cur - n, 'Adjustment');
     },
 
     // ── Scores ────────────────────────────────────────────────────────────
