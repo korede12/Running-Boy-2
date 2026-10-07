@@ -122,30 +122,49 @@ function openTravel(toCity) {
     const p = Player.get();
     if (!p) { openCreate(); return; }
     const to = getCity(toCity);
-    const fare = Player.price(ECONOMY.FARE, p.city);
     const host = document.getElementById('travel-body');
+
     if (host) {
+        const runs = Player.routes(p.city, toCity);
+        const rows = runs.map(t => {
+            const fare = Player.fareFor(t, p.city);
+            const wait = Player.waitFor(t);
+            const can  = p.skubu >= fare;
+            const when = wait ? `${t.hours}h, after ${wait}h waiting` : `${t.hours}h`;
+            return `<div class="est-row">` +
+                `<span class="est-name">${t.name}</span>` +
+                `<span class="est-sub">${when} &nbsp;·&nbsp; ${t.note}</span>` +
+                `<button class="est-btn" ${can ? '' : 'disabled'} ` +
+                `onclick="doTravel('${toCity}','${t.id}')">` +
+                `${fare ? '&#10022; ' + fare : 'FREE'}</button></div>`;
+        }).join('');
+
+        // Say what does not run from here, rather than leaving a gap where a
+        // service the player expected ought to have been.
+        const missing = ECONOMY.transport
+            .filter(t => !runs.some(r => r.id === t.id))
+            .map(t => t.name.toLowerCase());
+
         host.innerHTML =
-            `<div class="trv-to">${getCity(p.city).name} &rarr; ${to.name}</div>` +
-            `<div class="est-row"><span class="est-name">Take a bus</span>` +
-            `<span class="est-sub">${ECONOMY.RIDE_HOURS} hour</span>` +
-            `<button class="est-btn" ${p.skubu < fare ? 'disabled' : ''} ` +
-            `onclick="doTravel('${toCity}',true)">PAY &#10022; ${fare}</button></div>` +
-            `<div class="est-row"><span class="est-name">Walk it</span>` +
-            `<span class="est-sub">${ECONOMY.WALK_HOURS} hours, and nothing earned</span>` +
-            `<button class="est-btn" onclick="doTravel('${toCity}',false)">FREE</button></div>`;
+            `<div class="trv-to">${getCity(p.city).name} &rarr; ${to.name}</div>` + rows +
+            (missing.length
+                ? `<div class="shop-note">No ${missing.join(' or ')} on this route.</div>`
+                : '');
     }
     document.getElementById('travel-modal').classList.add('open');
 }
 
-function doTravel(toCity, byRoad) {
-    const r = Player.travel(toCity, byRoad);
+function doTravel(toCity, modeId) {
+    const r = Player.travel(toCity, modeId);
     closeModal('travel-modal');
-    if (!r) { flash('You cannot afford the fare.'); return; }
+    if (!r) { flash('You cannot afford that.'); return; }
     try { localStorage.setItem('runningboy_city', toCity); } catch (_) {}
     if (typeof CityMap !== 'undefined') {
         CityMap.build(); CityMap.centre();
-        CityMap.banner(`${getCity(toCity).name} · ${r.hours}h` + (r.fare ? ` · -${r.fare}` : ' on foot'));
+        const bits = [getCity(toCity).name, r.mode,
+                      (r.wait ? r.wait + 'h wait + ' : '') + r.hours + 'h'];
+        if (r.fare) bits.push('-' + r.fare);
+        CityMap.banner(bits.join(' · '));
     }
     refreshLifeHud();
 }

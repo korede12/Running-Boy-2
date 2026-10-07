@@ -11,13 +11,26 @@ const ECONOMY = {
 
     // Multipliers on everything a city charges and everything it pays.
     cities: {
-        lagos:    { cost: 1.00, pay: 1.00, note: 'Busy, expensive, and where the money is.' },
-        abeokuta: { cost: 0.58, pay: 0.62, note: 'Cheaper and slower. Civil service town.' },
+        lagos:    { cost: 1.00, pay: 1.00, note: 'Busy, expensive, and where the money is.',
+                    serves: ['walk', 'bus', 'train', 'flight'] },
+        abeokuta: { cost: 0.58, pay: 0.62, note: 'Cheaper and slower. Civil service town.',
+                    serves: ['walk', 'bus', 'train'] },
     },
 
-    FARE:        40,    // skubu, by road, between cities
-    WALK_HOURS:  7,     // or do it on foot and lose the day
-    RIDE_HOURS:  1,
+    // Getting between cities is a trade of money against hours. Walking is
+    // free and costs most of a day; a flight is an hour and most of a
+    // deposit. A mode only runs if both ends are served by it, which is why
+    // you cannot fly into Abeokuta.
+    transport: [
+        { id: 'walk',   name: 'Walk it',  fare: 0,   hours: 14,
+          note: 'Free. Gone by nightfall.' },
+        { id: 'bus',    name: 'Danfo',    fare: 40,  hours: 4,
+          note: 'Cheapest thing with wheels.' },
+        { id: 'train',  name: 'Train',    fare: 95,  hours: 2, every: 6,
+          note: 'Quick, when one is due.' },
+        { id: 'flight', name: 'Flight',   fare: 280, hours: 1,
+          note: 'An hour, and you will feel it.' },
+    ],
 
     // What a run is worth. Deliberately small — a house is a lot of runs.
     PAY_PER_POINT: 0.9,
@@ -168,20 +181,38 @@ const Player = {
 
     cityId() { const p = this.get(); return p ? p.city : 'lagos'; },
 
-    /// Returns what it cost, or null if the journey could not be made.
-    travel(toCity, byRoad) {
+    /// Which ways of getting there both ends actually serve.
+    routes(fromCity, toCity) {
+        const a = ECONOMY.cities[fromCity], b = ECONOMY.cities[toCity];
+        if (!a || !b) return [];
+        return ECONOMY.transport.filter(t =>
+            a.serves.includes(t.id) && b.serves.includes(t.id));
+    },
+
+    /// A scheduled service may not be due when you turn up, and the wait is
+    /// part of what it costs you.
+    waitFor(mode) {
+        const p = this.get();
+        if (!p || !mode.every) return 0;
+        return (mode.every - (p.hours % mode.every)) % mode.every;
+    },
+
+    fareFor(mode, fromCity) { return this.price(mode.fare, fromCity); },
+
+    /// Returns what the journey cost, or null if it could not be made.
+    travel(toCity, modeId) {
         const p = this.get();
         if (!p || p.city === toCity) return null;
-        if (byRoad) {
-            const fare = this.price(ECONOMY.FARE, p.city);
-            if (!this.adjust(-fare, 'Fare to ' + toCity)) return null;
-            this.passTime(ECONOMY.RIDE_HOURS);
-            p.city = toCity; this.save();
-            return { fare, hours: ECONOMY.RIDE_HOURS };
-        }
-        this.passTime(ECONOMY.WALK_HOURS);
-        p.city = toCity; this.save();
-        return { fare: 0, hours: ECONOMY.WALK_HOURS };
+        const mode = this.routes(p.city, toCity).find(t => t.id === modeId);
+        if (!mode) return null;
+
+        const fare = this.fareFor(mode, p.city);
+        if (fare && !this.adjust(-fare, mode.name + ' to ' + toCity)) return null;
+        const wait = this.waitFor(mode);
+        this.passTime(wait + mode.hours);
+        p.city = toCity;
+        this.save();
+        return { fare, hours: mode.hours, wait, mode: mode.name };
     },
 
     // ── Where you live ────────────────────────────────────────────────────
