@@ -46,7 +46,7 @@ const Nav = {
 
         if (view === 'home')    this.renderHome();
         if (view === 'profile') this.renderProfile();
-        if (view === 'map' && typeof CityMap !== 'undefined') CityMap.centre();
+        if (view === 'map' && typeof CityMap !== 'undefined') CityMap.centreOnPlayer();
     },
 
     _none() {
@@ -76,6 +76,8 @@ const Nav = {
                     `<b>${Player.spot()}</b>` +
                     `<span>${getCity(p.city).name} &nbsp;·&nbsp; ` +
                     `${Player.sleepHours()}h a night</span>` +
+                    `<span class="nv-at">&#9678; standing at ` +
+                    `${(Player.atVenue() || {}).name || 'nowhere in particular'}</span>` +
                 '</div>' +
                 `<div class="rm-time">${String(hour).padStart(2, '0')}:00 &nbsp;·&nbsp; ` +
                 `Day ${Player.day()}</div>` +

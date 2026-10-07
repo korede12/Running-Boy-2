@@ -209,6 +209,32 @@ const Player = {
         this._announce();
     },
 
+    /// Where you are standing, as a venue id. A position in another city is
+    /// no position at all, so it falls back to somewhere in this one —
+    /// which also means travel does not have to remember to move you.
+    at() {
+        const p = this.get();
+        if (!p) return null;
+        const here = p.at && getVenue(p.at);
+        if (here && (here.city || this._cityOf(p.at)) === p.city) return p.at;
+        const city = getCity(p.city);
+        return (city && city.venues.length) ? city.venues[0].id : null;
+    },
+
+    _cityOf(venueId) {
+        for (const c of CITIES) if (c.venues.some(v => v.id === venueId)) return c.id;
+        return null;
+    },
+
+    atVenue() { const id = this.at(); return id ? getVenue(id) : null; },
+
+    moveTo(venueId) {
+        const p = this.get();
+        if (!p || !venueId) return;
+        p.at = venueId;
+        this.save();
+    },
+
     /// Pick a class by weight. Passing one in is for tests.
     rollClass(forceId) {
         const list = ECONOMY.classes;
@@ -263,6 +289,7 @@ const Player = {
             rest:    100,
             mind:    100,
             commuted: 0,      // hours travelled since the last night
+            at:      null,        // the venue you are standing at
             dead:    null,        // { cause, at } once it is over
             rentDue: ECONOMY.WEEK_HOURS,
             history: [],

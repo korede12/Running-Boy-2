@@ -153,6 +153,12 @@ const CityMap = {
         const tod = this._timeOfDay(hr);
         if (tod.o > 0) s.push(`<rect class="tod" width="${MAP_W}" height="${MAP_H}" fill="${tod.c}" opacity="${tod.o}"/>`);
 
+        // You, last of all. Drawn over the city rather than in it: this is a
+        // locator, and one you can lose behind a tower block is no locator.
+        // It sits above the daylight wash too, so it stays the same green at
+        // every hour.
+        s.push(this._you());
+
         s.push(`</svg>`);
         host.innerHTML = s.join('');
 
@@ -528,11 +534,65 @@ const CityMap = {
         }
     },
 
+    // ── You ───────────────────────────────────────────────────────────────
+    // Standing beside the place you are at, not on top of it, so the venue
+    // underneath stays readable. It goes through the same painter's sort as
+    // everything else, so a building in front still occludes you — which is
+    // what makes it read as being in the city rather than drawn over it.
+
+    _you() {
+        if (typeof Player === 'undefined' || !Player.exists()) return '';
+        const v = Player.atVenue();
+        if (!v) return '';
+
+        const w = v.gw || 2, d = v.gd || 2;
+        const foot = iso(v.gx + w / 2, v.gy + d + 0.85, 0);
+        const x = +foot[0].toFixed(1), y = +foot[1].toFixed(1);
+        const sk = '#9a6440';
+
+        // Fills are inline, not from the stylesheet, so the marker survives
+        // being rendered anywhere the CSS is not.
+        return '<g class="you" aria-label="You are here">' +
+            `<ellipse class="you-ring" cx="${x}" cy="${y}" rx="26" ry="13" fill="none" stroke="#4cd964" stroke-width="3"/>` +
+            `<ellipse cx="${x}" cy="${y}" rx="13" ry="6.5" fill="#4cd964" opacity="0.3"/>` +
+            `<g transform="translate(${x} ${y})">` +
+                '<rect x="-7" y="-30" width="14" height="20" rx="5" fill="#4cd964"/>' +
+                `<circle cx="0" cy="-36" r="6.6" fill="${sk}"/>` +
+                '<path d="M-6.6 -40 q6.6 -5.6 13.2 0 q-6.6 -2.4 -13.2 0 Z" fill="#17171f"/>' +
+                '<rect x="-6" y="-11" width="5" height="10" rx="2" fill="#24301f"/>' +
+                '<rect x="1" y="-11" width="5" height="10" rx="2" fill="#24301f"/>' +
+            '</g>' +
+            `<line x1="${x}" y1="${y - 42}" x2="${x}" y2="${y - 70}" stroke="#4cd964" stroke-width="2.5" opacity="0.7"/>` +
+            `<g class="you-tag" transform="translate(${x} ${y - 86})">` +
+                '<rect x="-34" y="-15" width="68" height="27" rx="13" fill="#0e3a18" stroke="#4cd964" stroke-width="2.5"/>' +
+                '<text x="0" y="5" text-anchor="middle" font-family="monospace" font-size="13" ' +
+                'font-weight="bold" letter-spacing="2" fill="#4cd964">YOU</text>' +
+            '</g>' +
+        '</g>';
+    },
+
+    /// Scroll so that you are in the middle of the window, which is where a
+    /// map should open. Falls back to the centre of the city.
+    centreOnPlayer() {
+        const st = document.getElementById('city-stage');
+        if (!st) { return; }
+        const v = (typeof Player !== 'undefined' && Player.exists()) ? Player.atVenue() : null;
+        if (!v) { this.centre(); return; }
+        const foot = iso(v.gx + (v.gw || 2) / 2, v.gy + (v.gd || 2) + 0.85, 0);
+        const svg = document.getElementById('map-svg');
+        const k = svg ? (svg.clientWidth || MAP_W) / MAP_W : 1;
+        st.scrollLeft = foot[0] * k - st.clientWidth / 2;
+        st.scrollTop  = foot[1] * k - st.clientHeight / 2;
+    },
+
     /// Going somewhere either opens a panel or starts a run there.
     pick(id) {
         const v = getVenue(id);
         if (!v) return;
         if (typeof _playUiSound === 'function') _playUiSound('single-click.mp3');
+
+        // You walked over, whether or not the door opens.
+        if (typeof Player !== 'undefined' && Player.exists()) Player.moveTo(v.id);
 
         // Shut is shut. You can wait, and waiting costs the hours it costs.
         const hour = (typeof Player !== 'undefined' && Player.exists()) ? Player.hourOfDay() : 9;

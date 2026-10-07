@@ -866,3 +866,48 @@ body[data-view="map"] #footer { bottom: calc(66px + env(safe-area-inset-bottom, 
 }
 .rm-loan b { color: #ff8a70; }
 .rm-loan .est-btn { margin-top: 9px; }
+
+/* ── You are here ──────────────────────────────────────────────────────────
+   Green against a city of amber and blue, so it is never mistaken for a
+   venue. The ring pulses on the ground; the tag stays upright above. */
+
+.you { pointer-events: none; }
+.you-tag text {
+    font-family: monospace; font-size: 13px; font-weight: bold;
+    letter-spacing: .17em; fill: #4cd964;
+}
+@keyframes you-pulse {
+    0%   { transform: scale(0.7); opacity: .95; }
+    70%  { transform: scale(1.5); opacity: 0; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+.you-ring {
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: you-pulse 2.1s ease-out infinite;
+}
+@keyframes you-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+}
+.you-tag { animation: you-bob 2.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+    .you-ring, .you-tag { animation: none; }
+    .you-ring { opacity: .55; }
+}
+
+/* Jump back to yourself */
+#find-me {
+    position: fixed; right: 14px; z-index: 320;
+    bottom: calc(118px + env(safe-area-inset-bottom, 0));
+    display: none; align-items: center; gap: 7px;
+    padding: 9px 13px; cursor: pointer;
+    font-family: monospace; font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: #4cd964;
+    background: rgba(10, 18, 12, .92); border: 1px solid #2f6b3a;
+    border-radius: 22px; backdrop-filter: blur(8px);
+}
+body[data-view="map"] #find-me { display: flex; }
+#find-me:active { background: #14301b; }
+#find-me b { font-size: 13px; font-weight: normal; line-height: 1; }
