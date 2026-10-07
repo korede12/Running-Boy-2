@@ -205,6 +205,8 @@ async function fetchLeaderboard() {
     const list = document.getElementById('global-lb-list');
     const myEl = document.getElementById('global-lb-my-rank');
     const btn  = document.getElementById('lb-refresh-btn');
+    // The leaderboard lives on the Profile tab now, so it is often absent.
+    if (!list) return;
     if (btn) btn.classList.add('spinning');
 
     const period = _todayUTC();

@@ -147,6 +147,12 @@ const CityMap = {
         props.sort((a, b) => a.d - b.d);
         for (const p of props) s.push(p.svg);
 
+        // The hour, as a wash over everything. The city is drawn for night,
+        // so daylight is a screen blend rather than a different palette.
+        const hr = (typeof Player !== 'undefined' && Player.exists()) ? Player.hourOfDay() : 9;
+        const tod = this._timeOfDay(hr);
+        if (tod.o > 0) s.push(`<rect class="tod" width="${MAP_W}" height="${MAP_H}" fill="${tod.c}" opacity="${tod.o}"/>`);
+
         s.push(`</svg>`);
         host.innerHTML = s.join('');
 
@@ -160,6 +166,19 @@ const CityMap = {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); CityMap.pick(id); }
             });
         });
+    },
+
+    /// Dawn warms, midday lifts, dusk warms again, night leaves it alone.
+    /// The hour the city is being drawn at.
+    _hour() {
+        return (typeof Player !== 'undefined' && Player.exists()) ? Player.hourOfDay() : 9;
+    },
+
+    _timeOfDay(h) {
+        if (h >= 5  && h < 8)  return { c: '#8a5a2a', o: 0.26 };   // dawn
+        if (h >= 8  && h < 16) return { c: '#5d7296', o: 0.34 };   // day
+        if (h >= 16 && h < 19) return { c: '#9a4f22', o: 0.24 };   // dusk
+        return { c: '#000000', o: 0 };                              // night
     },
 
     // ── Ground ────────────────────────────────────────────────────────────
@@ -476,7 +495,8 @@ const CityMap = {
             const w = v.gw || 2, d = v.gd || 2, h = v.vh || 112;
             const roof = v.roof || (play ? '#c0392b' : '#2874a6');
 
-            let g = `<g class="venue${play ? ' venue-play' : ''}" data-venue="${v.id}" tabindex="0" role="button" aria-label="${v.name}">`;
+            const shut = !isOpen(v, this._hour());
+            let g = `<g class="venue${play ? ' venue-play' : ''}${shut ? ' shut' : ''}" data-venue="${v.id}" tabindex="0" role="button" aria-label="${v.name}">`;
             g += this._box(v.gx, v.gy, w, d, h, roof, MAP_C.wallA, MAP_C.wallB);
             for (let r = 0; r < 3; r++) {
                 const p = iso(v.gx + w, v.gy + 0.3 + r * 0.5, h - 62);
@@ -513,6 +533,10 @@ const CityMap = {
         const v = getVenue(id);
         if (!v) return;
         if (typeof _playUiSound === 'function') _playUiSound('single-click.mp3');
+
+        // Shut is shut. You can wait, and waiting costs the hours it costs.
+        const hour = (typeof Player !== 'undefined' && Player.exists()) ? Player.hourOfDay() : 9;
+        if (!isOpen(v, hour)) { openClosed(v, hour); return; }
 
         if (v.kind === 'open')   { openModal(v.modal); return; }
         if (v.kind === 'hotel')  { openHotel(v); return; }
@@ -569,14 +593,7 @@ const CityMap = {
 document.addEventListener('DOMContentLoaded', () => {
     CityMap.build();
     CityMap.centre();
+    if (typeof Nav !== 'undefined') Nav.mount();
     window.addEventListener('resize', () => CityMap.centre());
 
-    const lb = document.getElementById('global-lb');
-    const hd = document.getElementById('global-lb-header');
-    if (lb && hd) {
-        hd.addEventListener('click', e => {
-            if (e.target.closest('.lb-refresh-btn')) return;
-            lb.classList.toggle('open');
-        });
-    }
 });

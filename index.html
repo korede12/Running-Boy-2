@@ -51,22 +51,18 @@
         <button id="auth-disconnect-btn" class="auth-disconnect-btn" style="display:none" onclick="SkubuAuth&&SkubuAuth.disconnect()">Sign Out</button>
     </div>
 
-    <div id="global-lb">
-        <div id="global-lb-header">
-            <span class="lb-title">&#9733; World Leaderboard</span>
-            <span class="lb-live">LIVE</span>
-            <span class="lb-period">TODAY</span>
-            <button class="lb-refresh-btn" id="lb-refresh-btn" onclick="fetchLeaderboard()" title="Refresh">&#8635;</button>
-        </div>
-        <div id="global-lb-list"><div class="lb-loading">Loading&#8230;</div></div>
-        <div id="global-lb-my-rank" style="display:none"></div>
-    </div>
 
     <div id="goal" class="goal"></div>
 
     <div id="footer">&#169; Running Boy &nbsp;&#183;&nbsp; v1.0</div>
 </div>
 
+
+<!-- Home and Profile sit over the city; the Map tab shows it. -->
+<div class="view" id="view-home"></div>
+<div class="view" id="view-profile"></div>
+
+<nav id="nav" aria-label="Main"></nav>
 
 <!-- ── Make a person ── -->
 <div class="modal-backdrop" id="create-modal">
@@ -110,6 +106,15 @@
         <button class="modal-close" onclick="closeModal('clinic-modal')">&#10005;</button>
         <div class="modal-title">&#9877; Clinic</div>
         <div id="clinic-body"></div>
+    </div>
+</div>
+
+<!-- ── Closed ── -->
+<div class="modal-backdrop" id="shut-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal('shut-modal')">&#10005;</button>
+        <div class="modal-title">&#128274; Closed</div>
+        <div id="shut-body"></div>
     </div>
 </div>
 
@@ -383,5 +388,7 @@
 <script src="scripts/map.js"></script>
 <script src="scripts/journey.js"></script>
 <script src="scripts/life.js"></script>
+<script src="scripts/room.js"></script>
+<script src="scripts/nav.js"></script>
 </body>
 </html>

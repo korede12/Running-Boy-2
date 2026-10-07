@@ -183,6 +183,7 @@ function doTravel(toCity, modeId) {
 // ── The strip along the top ───────────────────────────────────────────────
 
 function refreshLifeHud() {
+    if (typeof Nav !== 'undefined') Nav.refresh();
     const p = Player.get();
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
     if (!p) { set('life-skubu', '0'); set('life-where', ''); return; }
@@ -438,7 +439,17 @@ function refreshGoal() {
     if (!g) { el.style.display = 'none'; return; }
     el.style.display = 'flex';
     el.className = 'goal' + (g.act ? ' urgent' : '');
-    el.innerHTML = `<span class="goal-dot"></span><span class="goal-text">${g.text}</span>` +
+    // If the goal points somewhere that is shut, say so here rather than
+    // sending the player across the city to find a locked door.
+    let when = '';
+    if (g.find) {
+        const v = findVenue(g.find, Player.cityId());
+        const hour = Player.hourOfDay();
+        if (v && !isOpen(v, hour)) {
+            when = ` <em>opens ${String(v.open[0]).padStart(2, '0')}:00</em>`;
+        }
+    }
+    el.innerHTML = `<span class="goal-dot"></span><span class="goal-text">${g.text}${when}</span>` +
                    `<span class="goal-go">&rsaquo;</span>`;
     el.onclick = () => doGoal(g);
 }
@@ -570,4 +581,42 @@ function seeDoctor() {
             `<button class="est-btn" onclick="closeModal('clinic-modal')">THANK YOU</button>`;
     }
     refreshLifeHud();
+}
+
+// ── A closed door ─────────────────────────────────────────────────────────
+// Shut is shut, but it is never a dead end: you can always wait, and waiting
+// costs exactly the hours it costs. That is the point of putting hours on
+// places at all — the clock stops being a number and starts being a
+// constraint you plan around.
+
+function openClosed(v, hour) {
+    const p = Player.get();
+    if (!p) { openCreate(); return; }
+    const wait = opensIn(v, hour);
+    const [from, to] = v.open;
+    const hh = n => String(Math.floor(n) % 24).padStart(2, '0') + ':00';
+
+    const host = document.getElementById('shut-body');
+    if (host) {
+        host.innerHTML =
+            `<div class="trv-to">${v.name}</div>` +
+            `<div class="shut-when">Shut. Opens <b>${hh(from)}</b>, closes <b>${hh(to)}</b>.<br>` +
+            `It is ${hh(hour)} now — <b>${wait}h</b> to wait.</div>` +
+            `<button class="est-btn" onclick="waitUntil(${wait})">WAIT ${wait}H</button>` +
+            `<div class="shop-note">Waiting is not free. Rent, hunger and the ` +
+            `mosquitoes all keep their own time.</div>`;
+    }
+    document.getElementById('shut-modal').classList.add('open');
+}
+
+function waitUntil(hours) {
+    Player.waitHours(hours);
+    closeModal('shut-modal');
+    refreshLifeHud();
+    if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.banner('Waited ' + hours + 'h'); }
+}
+
+function clearLoan() {
+    if (Player.repayLoan()) { refreshLifeHud(); flash('LAPO cleared.'); }
+    else flash('Not enough skubu.');
 }

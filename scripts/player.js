@@ -45,12 +45,54 @@ const ECONOMY = {
     FIGHT_LOSS:    0,
 
     // Somewhere to sleep. Rent is charged per in-game week.
+    // The rungs, in the names they actually go by. A face-me-I-face-you is a
+    // row of single rooms whose doors face each other across a corridor,
+    // sharing a toilet; a self-contain is one room with its own. That is the
+    // real bottom of the rented ladder, so it is the bottom of this one.
     housing: [
-        { id: 'none', name: 'No home',          rent: 0,  buy: 0,    sleeps: false },
-        { id: 'room', name: 'Rented room',      rent: 28, buy: 0,    sleeps: true  },
-        { id: 'flat', name: 'Rented flat',      rent: 85, buy: 0,    sleeps: true  },
-        { id: 'own',  name: 'Own house',        rent: 0,  buy: 2400, sleeps: true, letsFor: 60 },
+        { id: 'none', name: 'No roof',             rent: 0,  buy: 0,    sleeps: false },
+        { id: 'room', name: 'Face-me-I-face-you',  rent: 28, buy: 0,    sleeps: true  },
+        { id: 'self', name: 'Self-contain',        rent: 52, buy: 0,    sleeps: true  },
+        { id: 'flat', name: 'Two-bedroom flat',    rent: 85, buy: 0,    sleeps: true  },
+        { id: 'own',  name: 'Your own place',      rent: 0,  buy: 2400, sleeps: true, letsFor: 60 },
     ],
+
+    // ── Where you started ─────────────────────────────────────────────────
+    // Nobody picks this; it is rolled, because nobody picks it in life
+    // either. Each class is a different starting position and a different
+    // set of strengths, so the roll is not simply a money dial — the one who
+    // starts with the most is the worst at going without.
+    //
+    //   grit — hardened by it. Carries the body and the mind through a bad
+    //          week. "Ajepako" is literally the one raised rough.
+    //   pull — who you know. Shows up in what work pays you.
+    classes: [
+        { id: 'lapo', name: 'LAPO baby', weight: 34,
+          skubu: 0, housing: 'none', grit: 1.10, pull: 0.95,
+          loan: { owed: 140, perWeek: 20 },
+          blurb: 'Your mother services a microfinance loan every week. ' +
+                 'You have no roof and her debt is now partly yours.' },
+
+        { id: 'pako', name: 'Ajepako', weight: 30,
+          skubu: 45, housing: 'room', grit: 1.20, pull: 1.00,
+          blurb: 'Street-raised and hardened by it. A single room with a ' +
+                 'shared toilet, and a constitution that can take a bad week.' },
+
+        { id: 'nepo', name: 'Nepo baby', weight: 22,
+          skubu: 280, housing: 'self', grit: 0.95, pull: 1.22,
+          blurb: 'Your father knows people. A self-contain, a little money, ' +
+                 'and doors that open faster than they should.' },
+
+        { id: 'butter', name: 'Ajebutter', weight: 14,
+          skubu: 950, housing: 'flat', grit: 0.78, pull: 1.10,
+          blurb: 'Trust-fund soft. A two-bedroom flat and real money — and ' +
+                 'no idea how to go without either.' },
+    ],
+
+    // What a roofless player is sleeping under. Rolled once and kept, so the
+    // place stays the same place.
+    SPOTS: ['Under the bridge', 'On the street', 'An uncompleted building',
+            'A motor park bench'],
 
     WEEK_HOURS: 168,
 
@@ -59,7 +101,7 @@ const ECONOMY = {
     // both as illness and as a worse run.
     sleep: {
         NEED:    8,
-        HOURS: { none: 3.5, hotel: 8, room: 7, flat: 7.5, own: 8.5 },
+        HOURS: { none: 3.5, hotel: 8, room: 7, self: 7.5, flat: 8, own: 8.5 },
         SWING:  9,      // rest gained or lost per hour above or below NEED
         TIRED:  38,     // below this the body starts giving way
         IMMUNE: 1.6,    // what tiredness multiplies the malaria risk by
@@ -167,14 +209,46 @@ const Player = {
         this._announce();
     },
 
-    /// A new player: an avatar, a city, and nothing else.
-    create({ name, avatar, city }) {
+    /// Pick a class by weight. Passing one in is for tests.
+    rollClass(forceId) {
+        const list = ECONOMY.classes;
+        if (forceId) return list.find(c => c.id === forceId) || list[0];
+        const total = list.reduce((a, c) => a + c.weight, 0);
+        let r = Math.random() * total;
+        for (const c of list) { r -= c.weight; if (r <= 0) return c; }
+        return list[list.length - 1];
+    },
+
+    social() {
+        const p = this.get();
+        if (!p) return ECONOMY.classes[0];
+        return ECONOMY.classes.find(c => c.id === p.social) || ECONOMY.classes[0];
+    },
+
+    grit() { return this.social().grit || 1; },
+    pull() { return this.social().pull || 1; },
+
+    /// Where a roofless player sleeps. Named, not generic, because "under
+    /// the bridge" is a place and "no fixed address" is a form field.
+    spot() {
+        const p = this.get();
+        if (!p) return ECONOMY.SPOTS[0];
+        if (p.housing !== 'none') return (HOUSING_BY_ID[p.housing] || {}).name || '';
+        return p.spot || ECONOMY.SPOTS[0];
+    },
+
+    /// A new player: an avatar, a city, and whatever they were born into.
+    create({ name, avatar, city, social }) {
+        const cls = this.rollClass(social);
         this._p = {
             name:    (name || 'ANON').toUpperCase().slice(0, 12),
             avatar:  avatar,
             city:    city,
-            skubu:   0,
-            housing: 'none',
+            social:  cls.id,
+            spot:    ECONOMY.SPOTS[Math.floor(Math.random() * ECONOMY.SPOTS.length)],
+            skubu:   cls.skubu,
+            housing: cls.housing,
+            loan:    cls.loan ? { owed: cls.loan.owed, perWeek: cls.loan.perWeek } : null,
             owns:    [],          // houses owned, each { city, tenant }
             land:    [],          // plots: { city, stage, work, crew, paid }
             hours:   0,           // in-game hours elapsed
@@ -193,6 +267,11 @@ const Player = {
             rentDue: ECONOMY.WEEK_HOURS,
             history: [],
         };
+        this._p.history.push({
+            amount: cls.skubu,
+            why: 'Born ' + cls.name + (cls.skubu ? '' : ' — with nothing'),
+            at: 0,
+        });
         try { localStorage.setItem('runningboy_city', city); } catch (_) {}
         try { localStorage.setItem('runningboy_name', this._p.name); } catch (_) {}
         this.save();
@@ -238,7 +317,7 @@ const Player = {
     /// What a city pays for work priced in Lagos terms.
     wage(base, cityId) {
         const c = ECONOMY.cities[cityId || (this.get() || {}).city] || ECONOMY.cities.lagos;
-        return Math.round(base * c.pay);
+        return Math.round(base * c.pay * this.pull());
     },
 
     // ── Time ──────────────────────────────────────────────────────────────
@@ -292,7 +371,7 @@ const Player = {
         // make the same circumstances harder in Lagos than in Abeokuta.
         // Illness is the exception — that is yours wherever you are.
         let drain = M.BASE;
-        if (this.sleepsRough())   drain += M.NO_HOME;
+        if (this.sleepsRough())   drain += M.NO_HOME / this.grit();
         if (p.rest < S.TIRED)     drain += M.POOR_SLEEP;
         if (p.skubu < food * 3)   drain += M.BROKE;
         drain += (p.commuted || 0) * M.COMMUTE;
@@ -367,6 +446,40 @@ const Player = {
         if (!advice.length)   advice.push('Carry on as you are.');
 
         return { fee, findings, advice, health: p.health, rest: p.rest, mind: p.mind, slept };
+    },
+
+    /// A microfinance repayment, weekly, whether or not it is convenient.
+    /// Missing it does not evict you — it grows, which is the trap.
+    _serviceLoan() {
+        const p = this.get();
+        if (!p || !p.loan || p.loan.owed <= 0) return;
+        const due = Math.min(p.loan.owed, this.price(p.loan.perWeek, p.city));
+        if (p.skubu >= due) {
+            p.skubu -= due;
+            p.loan.owed -= due;
+            p.history.unshift({
+                amount: -due,
+                why: p.loan.owed > 0 ? 'LAPO repayment' : 'LAPO loan cleared',
+                at: p.hours,
+            });
+            if (p.loan.owed <= 0) p.loan = null;
+        } else {
+            const interest = Math.max(1, Math.round(p.loan.owed * 0.08));
+            p.loan.owed += interest;
+            p.history.unshift({ amount: 0, why: 'LAPO missed — owing ' + p.loan.owed, at: p.hours });
+        }
+    },
+
+    loan() { const p = this.get(); return p ? p.loan : null; },
+
+    /// Clear it early, if you ever have the money.
+    repayLoan() {
+        const p = this.get();
+        if (!p || !p.loan) return false;
+        if (!this.adjust(-p.loan.owed, 'LAPO loan cleared')) return false;
+        p.loan = null;
+        this.save();
+        return true;
     },
 
     /// Risk for a single night, as the market panel should quote it.
@@ -463,7 +576,11 @@ const Player = {
         if (!p.fed)    f *= 0.92;
         if (p.rest < ECONOMY.sleep.TIRED) f *= 0.86;   // reaction time
         if (p.mind < ECONOMY.mind.LOW)    f *= 0.90;
-        return Math.max(0.45, f);
+        f *= this.grit();                               // or the lack of it
+
+        // Grit is a real edge, not a licence: a hardened runner beats a soft
+        // one, but nobody outruns the police by having been born poor.
+        return Math.max(0.40, Math.min(1.15, f));
     },
 
     /// Start over. The city does not remember you.
@@ -485,25 +602,38 @@ const Player = {
     },
 
     day()  { const p = this.get(); return p ? Math.floor(p.hours / 24) + 1 : 1; },
+    hourOfDay() { const p = this.get(); return p ? p.hours % 24 : 9; },
+
+    /// Wait for something to open. Hours are the only thing it costs, which
+    /// is not nothing once rent and hunger are running.
+    waitHours(n) { if (n > 0) this.passTime(n); return n; },
     clock() {
         const p = this.get();
         const h = p ? p.hours % 24 : 0;
         return String(h).padStart(2, '0') + ':00';
     },
 
+    /// The week's bill. Rent is only part of it: the loan falls due whether
+    /// or not you have a roof, and the roofless player is precisely the one
+    /// carrying it, so none of this can sit behind a rent check.
     _charge_rent() {
         const p = this.get();
         const h = HOUSING_BY_ID[p.housing];
-        if (!h || !h.rent) return;
-        const due = this.price(h.rent, p.city);
-        if (p.skubu >= due) {
-            p.skubu -= due;
-            p.history.unshift({ amount: -due, why: 'Rent', at: p.hours });
-        } else {
-            // Cannot pay: you are out, which is the whole point of rent.
-            p.housing = 'none';
-            p.history.unshift({ amount: 0, why: 'Evicted — rent unpaid', at: p.hours });
+
+        if (h && h.rent) {
+            const due = this.price(h.rent, p.city);
+            if (p.skubu >= due) {
+                p.skubu -= due;
+                p.history.unshift({ amount: -due, why: 'Rent', at: p.hours });
+            } else {
+                // Cannot pay: you are out, which is the whole point of rent.
+                p.housing = 'none';
+                p.history.unshift({ amount: 0, why: 'Evicted — rent unpaid', at: p.hours });
+            }
         }
+
+        this._serviceLoan();
+
         // Anything let out pays its way back.
         for (const house of p.owns) {
             if (!house.tenant) continue;
@@ -866,6 +996,9 @@ const Player = {
             if (!plot.crew)
                 return { text: 'Materials on site and nobody working. Hire a crew.', find: 'agent' };
         }
+
+        if (p.loan && p.loan.owed > 0 && p.skubu >= p.loan.owed)
+            return { text: 'Clear the LAPO loan — ' + p.loan.owed + ' and it stops growing.', find: 'agent' };
 
         const plot = this.plotPrice(p.city);
         if (!p.land.length && !p.owns.length && p.skubu >= plot)

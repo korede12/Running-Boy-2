@@ -9,6 +9,12 @@
 // city, so the game page can look up where it was sent without needing to
 // know which city sent it.
 //
+//  is [from, to) on a 24-hour clock. A pair that runs past 24 is a
+// place that keeps going into the small hours — the club shuts at four.
+//
+// `open` is [from, to) on a 24-hour clock. A window running past 24 is a
+// place that keeps going into the small hours — the club shuts at four.
+//
 // gx/gy are tiles on that city's grid; gw/gd the footprint in tiles.
 //
 // A venue starts a run (`mode`), opens a panel (`modal`), or leaves town
@@ -32,47 +38,47 @@ const CITIES = [
         // The expressway, carried off the top of the grid toward Abeokuta.
         exit: { axis: 'gx', at: 10, from: -5, to: -1 },
         venues: [
-            { id: 'agent_lag', name: 'Estate Agent', kind: 'open', modal: 'estate-modal',
+            { id: 'agent_lag', name: 'Estate Agent', kind: 'open', open: [9, 17], modal: 'estate-modal',
               gx: 1,  gy: 1,  gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
               blurb: 'Rooms, flats, and what a house costs here.' },
 
-            { id: 'hall', name: 'Hall of Fame', kind: 'open', modal: 'hs-modal',
+            { id: 'hall', name: 'Hall of Fame', kind: 'open', open: [10, 20], modal: 'hs-modal',
               gx: 5,  gy: 1,  gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
-            { id: 'exit_abk', name: 'Abeokuta Expressway', kind: 'travel', to: 'abeokuta',
+            { id: 'exit_abk', name: 'Abeokuta Expressway', kind: 'travel', open: [0, 24], to: 'abeokuta',
               gx: 11, gy: 0,  gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Out of town, north.', tag: 'TRAVEL' },
 
-            { id: 'studio', name: 'Naijabeats', kind: 'open', modal: 'about-modal',
+            { id: 'studio', name: 'Naijabeats', kind: 'open', open: [11, 22], modal: 'about-modal',
               gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
               blurb: 'Where the story got told. And who is telling it.' },
 
-            { id: 'game_lag', name: 'Oshodi Game House', kind: 'play', mode: 'run',
+            { id: 'game_lag', name: 'Oshodi Game House', kind: 'play', open: [10, 26], mode: 'run',
               gx: 6,  gy: 6,  gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Cabinets in the back. Play well, get paid.', tag: 'GAME HOUSE' },
 
-            { id: 'bridge', name: 'Third Mainland', kind: 'play', mode: 'chase',
+            { id: 'bridge', name: 'Third Mainland', kind: 'play', open: [0, 24], mode: 'chase',
               gx: 17, gy: 12, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Three lanes, and someone on your heels.', tag: 'CHASE' },
 
-            { id: 'club', name: 'Club Zazuu', kind: 'play', mode: 'fight', opponent: 'portable',
+            { id: 'club', name: 'Club Zazuu', kind: 'play', open: [20, 28], mode: 'fight', opponent: 'portable',
               gx: 6,  gy: 13, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
               characters: ['portable'],
               blurb: 'Portable is in there, and he does not lose quietly.',
               tag: 'FIGHT PORTABLE' },
 
-            { id: 'hotel_lag', name: 'Ikeja Guest Inn', kind: 'hotel',
+            { id: 'hotel_lag', name: 'Ikeja Guest Inn', kind: 'hotel', open: [0, 24],
               gx: 12, gy: 13, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'A bed, a lock, and a full night.', tag: 'SLEEP' },
 
-            { id: 'clinic_lag', name: 'Marina Clinic', kind: 'clinic',
+            { id: 'clinic_lag', name: 'Marina Clinic', kind: 'clinic', open: [8, 18],
               gx: 1,  gy: 19, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
               blurb: 'Find out what is actually wrong.', tag: 'CLINIC' },
 
-            { id: 'market', name: 'Balogun Market', kind: 'open', modal: 'shop-modal',
+            { id: 'market', name: 'Balogun Market', kind: 'open', open: [7, 19], modal: 'shop-modal',
               gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
               blurb: 'Skubu, and what it buys.' },
         ],
@@ -95,47 +101,47 @@ const CITIES = [
                 [17, 18], [18, 18], [18, 19], [10, 10], [11, 10]],
         exit: { axis: 'gy', at: 14, from: 21, to: 25 },
         venues: [
-            { id: 'agent_abk', name: 'Estate Agent', kind: 'open', modal: 'estate-modal',
+            { id: 'agent_abk', name: 'Estate Agent', kind: 'open', open: [9, 17], modal: 'estate-modal',
               gx: 15, gy: 1, gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
               blurb: 'Half what Lagos asks, and half the hurry.' },
 
-            { id: 'centenary', name: 'Centenary Hall', kind: 'open', modal: 'hs-modal',
+            { id: 'centenary', name: 'Centenary Hall', kind: 'open', open: [10, 20], modal: 'hs-modal',
               gx: 9,  gy: 1, gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
-            { id: 'secretariat', name: 'Ogun Secretariat', kind: 'work',
+            { id: 'secretariat', name: 'Ogun Secretariat', kind: 'work', open: [8, 16],
               gx: 1,  gy: 8, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
               wage: 26, hours: 8,
               blurb: 'A desk, a day, and a small steady wage.', tag: 'WORK' },
 
-            { id: 'lafenwa', name: 'Lafenwa Bridge', kind: 'play', mode: 'chase',
+            { id: 'lafenwa', name: 'Lafenwa Bridge', kind: 'play', open: [0, 24], mode: 'chase',
               gx: 15, gy: 9, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Over the Ogun, with someone behind you.', tag: 'CHASE' },
 
-            { id: 'game_abk', name: 'Kuto Game House', kind: 'play', mode: 'run',
+            { id: 'game_abk', name: 'Kuto Game House', kind: 'play', open: [10, 24], mode: 'run',
               gx: 9,  gy: 16, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Quieter room, smaller takings.', tag: 'GAME HOUSE' },
 
-            { id: 'ake_club', name: 'Ake Club', kind: 'play', mode: 'fight', opponent: 'portable',
+            { id: 'ake_club', name: 'Ake Club', kind: 'play', open: [20, 27], mode: 'fight', opponent: 'portable',
               gx: 15, gy: 17, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
               characters: ['portable'],
               blurb: 'Portable tours. Tonight he is here.', tag: 'FIGHT PORTABLE' },
 
-            { id: 'hotel_abk', name: 'Gateway Lodge', kind: 'hotel',
+            { id: 'hotel_abk', name: 'Gateway Lodge', kind: 'hotel', open: [0, 24],
               gx: 9,  gy: 11, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'Quiet enough to actually sleep.', tag: 'SLEEP' },
 
-            { id: 'clinic_abk', name: 'Ibara Clinic', kind: 'clinic',
+            { id: 'clinic_abk', name: 'Ibara Clinic', kind: 'clinic', open: [8, 17],
               gx: 2,  gy: 11, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
               blurb: 'Shorter queue than Lagos.', tag: 'CLINIC' },
 
-            { id: 'itoku', name: 'Itoku Market', kind: 'open', modal: 'shop-modal',
+            { id: 'itoku', name: 'Itoku Market', kind: 'open', open: [7, 18], modal: 'shop-modal',
               gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
               blurb: 'Adire, skubu, and what it buys.' },
 
-            { id: 'exit_lag', name: 'Lagos Expressway', kind: 'travel', to: 'lagos',
+            { id: 'exit_lag', name: 'Lagos Expressway', kind: 'travel', open: [0, 24], to: 'lagos',
               gx: 19, gy: 15, gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Back down to the coast.', tag: 'TRAVEL' },
         ],
@@ -205,4 +211,20 @@ function findVenue(job, cityId) {
         travel: v => v.kind === 'travel',
     }[job];
     return want ? (c.venues.find(want) || null) : null;
+}
+
+/// Whether a venue is open at a given hour of the day. A window that runs
+/// past 24 wraps into the next morning, which is how a club works.
+function isOpen(v, hour) {
+    if (!v || !v.open) return true;
+    const [a, b] = v.open;
+    if (b >= 24) return hour >= a || hour < (b - 24);
+    return hour >= a && hour < b;
+}
+
+/// Hours until it opens, from a given hour.
+function opensIn(v, hour) {
+    if (!v || !v.open || isOpen(v, hour)) return 0;
+    const a = v.open[0];
+    return (a - hour + 24) % 24;
 }
