@@ -1,3 +1,7 @@
+function getCityName(id) {
+    return (typeof getCity === 'function' && getCity(id)) ? getCity(id).name : id;
+}
+
 // ── The player ────────────────────────────────────────────────────────────
 // Who you are, what you own, where you are, and what it costs you to be
 // there. Everything the city does to you goes through here.
@@ -12,9 +16,12 @@ const ECONOMY = {
     // Multipliers on everything a city charges and everything it pays.
     cities: {
         lagos:    { cost: 1.00, pay: 1.00, note: 'Busy, expensive, and where the money is.',
-                    serves: ['walk', 'bus', 'train', 'flight'], demand: 1.35 },
+                    serves: ['walk', 'bus', 'train', 'flight'], demand: 1.35,
+                    // Density, commuting, noise and cost of living are what the
+                    // research names as the stressors; Lagos has all four.
+                    stress: 1.0 },
         abeokuta: { cost: 0.58, pay: 0.62, note: 'Cheaper and slower. Civil service town.',
-                    serves: ['walk', 'bus', 'train'], demand: 0.85 },
+                    serves: ['walk', 'bus', 'train'], demand: 0.85, stress: 0.42 },
     },
 
     // Getting between cities is a trade of money against hours. Walking is
@@ -39,13 +46,41 @@ const ECONOMY = {
 
     // Somewhere to sleep. Rent is charged per in-game week.
     housing: [
-        { id: 'none', name: 'No fixed address', rent: 0,  buy: 0,    sleeps: false },
+        { id: 'none', name: 'No home',          rent: 0,  buy: 0,    sleeps: false },
         { id: 'room', name: 'Rented room',      rent: 28, buy: 0,    sleeps: true  },
         { id: 'flat', name: 'Rented flat',      rent: 85, buy: 0,    sleeps: true  },
         { id: 'own',  name: 'Own house',        rent: 0,  buy: 2400, sleeps: true, letsFor: 60 },
     ],
 
     WEEK_HOURS: 168,
+
+    // Sleep. Adults need seven to nine hours; short sleep weakens the immune
+    // system and slows reaction time, which is why resting badly shows up
+    // both as illness and as a worse run.
+    sleep: {
+        NEED:    8,
+        HOURS: { none: 3.5, hotel: 8, room: 7, flat: 7.5, own: 8.5 },
+        SWING:  9,      // rest gained or lost per hour above or below NEED
+        TIRED:  38,     // below this the body starts giving way
+        IMMUNE: 1.6,    // what tiredness multiplies the malaria risk by
+    },
+
+    // Wellbeing, modelled as circumstance rather than as something wrong
+    // with the person: housing, sleep, money, illness and the city itself
+    // are what the research finds predicts it, so they are what moves it.
+    mind: {
+        BASE:      3,    // the city's own share, scaled by its stress
+        NO_HOME:   7,
+        POOR_SLEEP: 6,
+        BROKE:     4,
+        ILL:       5,
+        COMMUTE:   0.5,  // per hour spent travelling
+        SETTLED:   6,    // recovered when housed, rested and not broke
+        LOW:       28,   // below this it starts costing you health
+    },
+
+    HOTEL_NIGHT: 46,
+    CLINIC_FEE:  58,
 
     // Land and building. A plot is cheap next to a finished house, and the
     // gap between them is paid in wages and weeks — which is the medium-term
@@ -151,6 +186,9 @@ const Player = {
             health:  100,
             illness: null,        // { id, since }
             fed:     true,
+            rest:    100,
+            mind:    100,
+            commuted: 0,      // hours travelled since the last night
             dead:    null,        // { cause, at } once it is over
             rentDue: ECONOMY.WEEK_HOURS,
             history: [],
@@ -229,11 +267,115 @@ const Player = {
         return !!p && !HOUSING_BY_ID[p.housing].sleeps;
     },
 
+    // ── A night ───────────────────────────────────────────────────────────
+
+    /// How long you actually sleep, which is a question about where you are.
+    sleepHours() {
+        const p = this.get();
+        if (!p) return ECONOMY.sleep.NEED;
+        if (p.hotelNight) return ECONOMY.sleep.HOURS.hotel;
+        return ECONOMY.sleep.HOURS[p.housing] || ECONOMY.sleep.HOURS.none;
+    },
+
+    _aNight() {
+        const p = this.get(), S = ECONOMY.sleep, M = ECONOMY.mind;
+        const slept = this.sleepHours();
+        p.rest = Math.max(0, Math.min(100, p.rest + (slept - S.NEED) * S.SWING));
+        p.hotelNight = false;
+
+        // Named pressures, each one something the player can act on, rather
+        // than a number that falls because the game says so.
+        const city  = ECONOMY.cities[p.city] || ECONOMY.cities.lagos;
+        const food  = this.price(ECONOMY.health.FOOD_PER_DAY, p.city);
+        // The city multiplies the pressure rather than adding a little of
+        // its own: density, traffic, noise and the cost of living are what
+        // make the same circumstances harder in Lagos than in Abeokuta.
+        // Illness is the exception — that is yours wherever you are.
+        let drain = M.BASE;
+        if (this.sleepsRough())   drain += M.NO_HOME;
+        if (p.rest < S.TIRED)     drain += M.POOR_SLEEP;
+        if (p.skubu < food * 3)   drain += M.BROKE;
+        drain += (p.commuted || 0) * M.COMMUTE;
+        drain *= (city.stress || 1);
+        if (p.illness)            drain += M.ILL;
+        p.commuted = 0;
+
+        const settled = !this.sleepsRough() && p.rest >= 60 && p.skubu >= food * 7 && !p.illness;
+        p.mind = Math.max(0, Math.min(100, p.mind - drain + (settled ? M.SETTLED : 0)));
+    },
+
+    rest() { const p = this.get(); return p ? p.rest : 100; },
+    mind() { const p = this.get(); return p ? p.mind : 100; },
+
+    /// A bed for the night, bought. Costs the fare and the hours.
+    sleepAtHotel() {
+        const p = this.get();
+        if (!p) return null;
+        const cost = this.price(ECONOMY.HOTEL_NIGHT, p.city);
+        if (!this.adjust(-cost, 'A night at the hotel')) return null;
+        p.hotelNight = true;
+        this.passTime(ECONOMY.sleep.HOURS.hotel);
+        return { cost, hours: ECONOMY.sleep.HOURS.hotel };
+    },
+
+    hotelPrice(cityId) { return this.price(ECONOMY.HOTEL_NIGHT, cityId || this.cityId()); },
+    clinicFee(cityId)  { return this.price(ECONOMY.CLINIC_FEE, cityId || this.cityId()); },
+
+    // ── What a clinic would tell you ──────────────────────────────────────
+    // Findings, then what would actually help. Each line names a cause the
+    // player can do something about, because a report that only says you are
+    // unwell is not a report.
+
+    checkUp() {
+        const p = this.get();
+        if (!p) return null;
+        const S = ECONOMY.sleep, M = ECONOMY.mind;
+        const fee = this.clinicFee(p.city);
+        if (!this.adjust(-fee, 'Clinic')) return null;
+
+        const findings = [], advice = [];
+        const slept = this.sleepHours();
+
+        if (p.illness) {
+            findings.push('Malaria, active.');
+            advice.push('Tablets, today. It is taking ' + ECONOMY.health.DRAIN + ' health a day.');
+        }
+        if (slept < S.NEED - 1) {
+            findings.push('Sleeping about ' + slept + ' hours. Adults need ' + S.NEED + '.');
+            advice.push(this.sleepsRough()
+                ? 'A bed anywhere — a hotel night, or a room of your own.'
+                : 'Your own place would get you the full night.');
+        }
+        if (p.rest < S.TIRED) {
+            findings.push('Run down. Short sleep weakens the immune system, so the mosquitoes find it easier.');
+            advice.push('Rest before you run again.');
+        }
+        if (p.mind < M.LOW) {
+            findings.push('Badly worn down by where and how you are living.');
+        } else if (p.mind < 55) {
+            findings.push('Showing the strain.');
+        }
+        if (p.mind < 55) {
+            const other = p.city === 'lagos' ? 'abeokuta' : 'lagos';
+            if ((ECONOMY.cities[other].stress || 1) < (ECONOMY.cities[p.city].stress || 1)) {
+                advice.push(getCityName(other) + ' is quieter. The density, the traffic and the cost here all tell.');
+            }
+            if (this.sleepsRough()) advice.push('Somewhere of your own would do more than anything else.');
+        }
+        if (!p.fed) { findings.push('Underfed.'); advice.push('Eat before you spend on anything else.'); }
+        if (!findings.length) findings.push('Nothing to report. You are keeping on top of it.');
+        if (!advice.length)   advice.push('Carry on as you are.');
+
+        return { fee, findings, advice, health: p.health, rest: p.rest, mind: p.mind, slept };
+    },
+
     /// Risk for a single night, as the market panel should quote it.
     malariaRisk() {
         const h = ECONOMY.health;
         let r = this.sleepsRough() ? h.RISK_ROUGH : h.RISK_HOUSED;
         if (this.has('net')) r *= h.NET_FACTOR;
+        const p = this.get();
+        if (p && p.rest < ECONOMY.sleep.TIRED) r *= ECONOMY.sleep.IMMUNE;
         return r;
     },
 
@@ -262,9 +404,16 @@ const Player = {
             p.illness = { id: 'malaria', since: p.hours };
             p.history.unshift({ amount: 0, why: 'Came down with malaria', at: p.hours });
         }
+        this._aNight();
+
         if (p.illness) p.health = Math.max(0, p.health - h.DRAIN);
         else p.health = Math.min(100, p.health +
             (this.sleepsRough() ? h.RECOVER_ROUGH : h.RECOVER));
+
+        // Short sleep weakens you directly, and so does being worn down.
+        if (p.rest < ECONOMY.sleep.TIRED) p.health -= 4;
+        if (p.mind < ECONOMY.mind.LOW)    p.health -= 2;
+        p.health = Math.max(0, Math.min(100, p.health));
         if (p.health <= 0) this._collapse();
     },
 
@@ -312,6 +461,8 @@ const Player = {
         let f = Math.max(0.5, Math.min(1, p.health / ECONOMY.health.WEAK));
         if (p.illness) f *= 0.88;
         if (!p.fed)    f *= 0.92;
+        if (p.rest < ECONOMY.sleep.TIRED) f *= 0.86;   // reaction time
+        if (p.mind < ECONOMY.mind.LOW)    f *= 0.90;
         return Math.max(0.45, f);
     },
 
@@ -394,6 +545,7 @@ const Player = {
         const fare = this.fareFor(mode, p.city);
         if (fare && !this.adjust(-fare, mode.name + ' to ' + toCity)) return null;
         const wait = this.waitFor(mode);
+        p.commuted = (p.commuted || 0) + wait + mode.hours;
         this.passTime(wait + mode.hours);
         p.city = toCity;
         this.save();
@@ -683,6 +835,11 @@ const Player = {
             return { text: 'You have malaria. Tablets are ' + meds + '.', find: 'shop' };
         if (p.illness)
             return { text: 'Malaria, and no ' + meds + ' for tablets. Earn it.', find: 'run' };
+
+        if (p.rest < ECONOMY.sleep.TIRED && p.skubu >= this.hotelPrice(p.city))
+            return { text: 'Running on ' + this.sleepHours() + ' hours. Get a bed.', find: 'hotel' };
+        if (p.mind < ECONOMY.mind.LOW)
+            return { text: 'Worn down. A clinic would tell you what is doing it.', find: 'clinic' };
 
         if (p.health < 35)
             return { text: 'You are in no state to run. Eat, and get a roof.', find: 'agent' };

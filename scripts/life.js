@@ -195,6 +195,10 @@ function refreshLifeHud() {
         hp.style.width = h + '%';
         hp.className = 'lh-fill' + (Player.illness() ? ' ill' : h < 40 ? ' low' : '');
     }
+    const rb = document.getElementById('life-rest');
+    if (rb) { rb.style.width = Player.rest() + '%'; rb.className = 'lh-fill rest' + (Player.rest() < ECONOMY.sleep.TIRED ? ' low' : ''); }
+    const mb = document.getElementById('life-mind');
+    if (mb) { mb.style.width = Player.mind() + '%'; mb.className = 'lh-fill mind' + (Player.mind() < ECONOMY.mind.LOW ? ' low' : ''); }
     const hl = document.getElementById('life-ill');
     if (hl) hl.textContent = Player.illness() ? 'malaria' : (Player.get().fed ? '' : 'hungry');
     const av = document.getElementById('life-avatar');
@@ -499,3 +503,71 @@ function renderLand(p) {
 function buyLand()        { if (Player.buyLand()) { renderEstate(); refreshLifeHud(); } else flash('Not enough skubu.'); }
 function buyMaterials(i)  { if (Player.buyMaterials(i)) { renderEstate(); refreshLifeHud(); } else flash('Not enough skubu.'); }
 function setCrew(i, n)    { Player.setCrew(i, n); renderEstate(); refreshLifeHud(); }
+
+// ── A bed, and a check-up ─────────────────────────────────────────────────
+
+function openHotel(v) {
+    const p = Player.get();
+    if (!p) { openCreate(); return; }
+    const cost = Player.hotelPrice(p.city);
+    const host = document.getElementById('hotel-body');
+    if (host) {
+        host.innerHTML =
+            `<div class="trv-to">${v.name}</div>` +
+            `<div class="est-row"><span class="est-name">A night</span>` +
+            `<span class="est-sub">${ECONOMY.sleep.HOURS.hotel} hours, which is a full one. ` +
+            `You are getting ${Player.sleepHours()} where you are.</span>` +
+            `<button class="est-btn" ${p.skubu < cost ? 'disabled' : ''} ` +
+            `onclick="takeRoom()">&#10022; ${cost}</button></div>` +
+            `<div class="shop-note">Short sleep weakens the immune system, so the ` +
+            `mosquitoes find it easier, and it slows you down when you run.</div>`;
+    }
+    document.getElementById('hotel-modal').classList.add('open');
+}
+
+function takeRoom() {
+    const r = Player.sleepAtHotel();
+    closeModal('hotel-modal');
+    if (!r) { flash('Not enough skubu.'); return; }
+    refreshLifeHud();
+    if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.banner('Slept ' + r.hours + 'h · -' + r.cost); }
+}
+
+function openClinic(v) {
+    const p = Player.get();
+    if (!p) { openCreate(); return; }
+    const fee = Player.clinicFee(p.city);
+    const host = document.getElementById('clinic-body');
+    if (host) {
+        host.innerHTML =
+            `<div class="trv-to">${v.name}</div>` +
+            `<div class="est-row"><span class="est-name">Consultation</span>` +
+            `<span class="est-sub">A look at everything, and what would help.</span>` +
+            `<button class="est-btn" ${p.skubu < fee ? 'disabled' : ''} ` +
+            `onclick="seeDoctor()">&#10022; ${fee}</button></div>`;
+    }
+    document.getElementById('clinic-modal').classList.add('open');
+}
+
+function seeDoctor() {
+    const r = Player.checkUp();
+    if (!r) { flash('Not enough skubu.'); return; }
+    const host = document.getElementById('clinic-body');
+    const bar = (label, v, cls) =>
+        `<div class="vital"><span>${label}</span>` +
+        `<span class="vital-track"><span class="vital-fill ${cls}" style="width:${v}%"></span></span>` +
+        `<b>${Math.round(v)}</b></div>`;
+    if (host) {
+        host.innerHTML =
+            `<div class="est-head">Vitals</div>` +
+            bar('Physical', r.health, r.health < 40 ? 'low' : '') +
+            bar('Rested',   r.rest,   r.rest < ECONOMY.sleep.TIRED ? 'low' : '') +
+            bar('Wellbeing', r.mind,  r.mind < ECONOMY.mind.LOW ? 'low' : '') +
+            `<div class="est-head">Findings</div>` +
+            r.findings.map(f => `<div class="rep">${f}</div>`).join('') +
+            `<div class="est-head">What would help</div>` +
+            r.advice.map(a => `<div class="rep good">${a}</div>`).join('') +
+            `<button class="est-btn" onclick="closeModal('clinic-modal')">THANK YOU</button>`;
+    }
+    refreshLifeHud();
+}

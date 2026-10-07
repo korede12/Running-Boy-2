@@ -40,6 +40,8 @@ const MAP_ICONS = {
     run:   'M1 -8 a2.4 2.4 0 1 0 0.1 0 Z M-6 9 L-1 2 L-4 -2 L1 -4 L6 0 L4 2 L0 0 L3 4 L1 9 Z',
     music: 'M0 -9 L9 -11 L9 -4 L3 -2.6 L3 5 A3.6 3.6 0 1 1 0 1.6 Z',
     fist:  'M-6 -2 L-6 4 Q-6 8 -1 8 L3 8 Q7 8 7 4 L7 -3 Q7 -5 5 -5 Q3 -5 3 -3 L3 -5 Q3 -7 1 -7 Q-1 -7 -1 -5 L-1 -4 Q-1 -6 -3 -6 Q-5 -6 -5 -4 L-5 -2 Z',
+    bed:   'M-9 -2 L-9 5 L-7 5 L-7 3 L7 3 L7 5 L9 5 L9 -1 Q9 -3 7 -3 L-2 -3 L-2 -2 Z M-7 -5 a3 3 0 1 0 0.1 0 Z',
+    cross: 'M-3 -8 L3 -8 L3 -3 L8 -3 L8 3 L3 3 L3 8 L-3 8 L-3 3 L-8 3 L-8 -3 L-3 -3 Z',
     key:   'M-7 1 a3.4 3.4 0 1 0 6.8 0 a3.4 3.4 0 1 0 -6.8 0 M-0.2 1 L7 1 L7 4 L5 4 L5 1.5 L3 1.5 L3 4 L1 4 Z',
     arcade:'M-7 -8 L7 -8 L7 6 L-7 6 Z M-5 -6 L5 -6 L5 -1 L-5 -1 Z M-4 2 a1.6 1.6 0 1 0 0.1 0 M1 1 L3 1 L3 3 L1 3 Z M-7 6 L7 6 L8 9 L-8 9 Z',
     desk:  'M-8 -3 L8 -3 L8 0 L-8 0 Z M-6 0 L-6 8 L-4 8 L-4 0 M6 0 L6 8 L4 8 L4 0 M-3 -8 L5 -8 L5 -3 L-3 -3 Z',
@@ -512,7 +514,9 @@ const CityMap = {
         if (!v) return;
         if (typeof _playUiSound === 'function') _playUiSound('single-click.mp3');
 
-        if (v.kind === 'open') { openModal(v.modal); return; }
+        if (v.kind === 'open')   { openModal(v.modal); return; }
+        if (v.kind === 'hotel')  { openHotel(v); return; }
+        if (v.kind === 'clinic') { openClinic(v); return; }
 
         // Travel: the road out is a place you go to, and getting down it
         // costs either the fare or most of a day.

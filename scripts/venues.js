@@ -64,6 +64,14 @@ const CITIES = [
               blurb: 'Portable is in there, and he does not lose quietly.',
               tag: 'FIGHT PORTABLE' },
 
+            { id: 'hotel_lag', name: 'Ikeja Guest Inn', kind: 'hotel',
+              gx: 12, gy: 13, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
+              blurb: 'A bed, a lock, and a full night.', tag: 'SLEEP' },
+
+            { id: 'clinic_lag', name: 'Marina Clinic', kind: 'clinic',
+              gx: 1,  gy: 19, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
+              blurb: 'Find out what is actually wrong.', tag: 'CLINIC' },
+
             { id: 'market', name: 'Balogun Market', kind: 'open', modal: 'shop-modal',
               gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
               blurb: 'Skubu, and what it buys.' },
@@ -114,6 +122,14 @@ const CITIES = [
               gx: 15, gy: 17, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
               characters: ['portable'],
               blurb: 'Portable tours. Tonight he is here.', tag: 'FIGHT PORTABLE' },
+
+            { id: 'hotel_abk', name: 'Gateway Lodge', kind: 'hotel',
+              gx: 9,  gy: 11, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
+              blurb: 'Quiet enough to actually sleep.', tag: 'SLEEP' },
+
+            { id: 'clinic_abk', name: 'Ibara Clinic', kind: 'clinic',
+              gx: 2,  gy: 11, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
+              blurb: 'Shorter queue than Lagos.', tag: 'CLINIC' },
 
             { id: 'itoku', name: 'Itoku Market', kind: 'open', modal: 'shop-modal',
               gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
@@ -182,6 +198,8 @@ function findVenue(job, cityId) {
         fight: v => v.mode === 'fight',
         chase: v => v.mode === 'chase',
         shop:  v => v.modal === 'shop-modal',
+        hotel: v => v.kind === 'hotel',
+        clinic: v => v.kind === 'clinic',
         agent: v => v.modal === 'estate-modal',
         work:  v => v.kind === 'work',
         travel: v => v.kind === 'travel',
