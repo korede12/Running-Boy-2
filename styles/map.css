@@ -6,7 +6,7 @@
 html, body {
     margin: 0;
     height: 100%;
-    background: #15151d;
+    background: #0a0a14;
     overflow: hidden;              /* the stage does the scrolling, not the page */
 }
 
@@ -17,11 +17,11 @@ html, body {
     position: fixed;
     inset: 0;
     overflow: auto;
-    background: #15151d;
+    background: #0a0a14;
     -webkit-overflow-scrolling: touch;
 }
 #map {
-    --city-w: max(100vw, calc(100vh * 1.44), 1040px);
+    --city-w: max(100vw, calc(100vh * 1.44), 1240px);
     width: var(--city-w);
     height: calc(var(--city-w) / 1.44);
     line-height: 0;
@@ -128,20 +128,22 @@ html, body {
 .v-name {
     font-family: monospace;
     font-size: 19px;
-    letter-spacing: .05em;
-    fill: #cfd6e4;
+    font-weight: bold;
+    letter-spacing: .04em;
+    fill: #e8edf6;
     paint-order: stroke;
-    stroke: #0d0d14;
+    stroke: #06060c;
     stroke-width: 5px;
     stroke-linejoin: round;
 }
 .v-tag {
     font-family: monospace;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: bold;
     letter-spacing: .2em;
-    fill: #ffd766;
+    fill: #ffc83d;
     paint-order: stroke;
-    stroke: #0d0d14;
+    stroke: #06060c;
     stroke-width: 5px;
 }
 
@@ -163,21 +165,27 @@ html, body {
 .venue:hover, .venue:focus-visible { transform: translateY(-3px); }
 
 /* ── A city that moves ────────────────────────────────────────────────────
-   Traffic crossing the map, because parked traffic makes a map and traffic
-   going somewhere makes a city. Purely decorative, so it is dropped entirely
-   for anyone who has asked for less motion. */
-.drive { will-change: transform; }
-.drive-e { animation: driveE 26s linear infinite; }
-.drive-w { animation: driveW 30s linear infinite; }
-@keyframes driveE {
-    from { transform: translateX(-80px); }
-    to   { transform: translateX(1520px); }
-}
-@keyframes driveW {
-    from { transform: translateX(1520px); }
-    to   { transform: translateX(-80px); }
-}
+   Along the grid, not across the screen. One tile is (31, 15.5) going one
+   way and (-31, 15.5) going the other, so each direction gets its own
+   keyframes — animate them all the same way and the cars leave the road.
+   Decoration only, so it is dropped for anyone who asked for less motion. */
+.rolls-x, .rolls-xr, .rolls-y, .walks-x, .walks-xr, .walks-y { will-change: transform; }
+
+.rolls-x  { animation: rollX  30s linear infinite; }
+.rolls-xr { animation: rollXR 34s linear infinite; }
+.rolls-y  { animation: rollY  38s linear infinite; }
+.walks-x  { animation: walkX  64s linear infinite; }
+.walks-xr { animation: walkXR 72s linear infinite; }
+.walks-y  { animation: walkY  68s linear infinite; }
+
+@keyframes rollX  { from { transform: translate(-62px, -31px); }  to { transform: translate(558px, 279px); } }
+@keyframes rollXR { from { transform: translate(558px, 279px); }  to { transform: translate(-62px, -31px); } }
+@keyframes rollY  { from { transform: translate(62px, -31px); }   to { transform: translate(-558px, 279px); } }
+@keyframes walkX  { from { transform: translate(-31px, -15.5px); } to { transform: translate(434px, 217px); } }
+@keyframes walkXR { from { transform: translate(434px, 217px); }   to { transform: translate(-31px, -15.5px); } }
+@keyframes walkY  { from { transform: translate(31px, -15.5px); }  to { transform: translate(-434px, 217px); } }
+
 @media (prefers-reduced-motion: reduce) {
-    .drive { display: none; }
+    .rolls-x, .rolls-xr, .rolls-y, .walks-x, .walks-xr, .walks-y { animation: none; }
     .venue-play .v-halo { animation: none; opacity: .5; }
 }
