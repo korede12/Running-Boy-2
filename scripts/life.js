@@ -60,6 +60,7 @@ function confirmCreate() {
     closeModal('create-modal');
     if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); }
     refreshLifeHud();
+    refreshGoal();
 }
 
 // ── Somewhere to sleep ────────────────────────────────────────────────────
@@ -168,6 +169,7 @@ function doTravel(toCity, modeId) {
     const arrive = () => {
         if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); }
         refreshLifeHud();
+    refreshGoal();
     };
 
     if (typeof Journey === 'undefined') { arrive(); return; }
@@ -209,6 +211,7 @@ function flash(msg) {
 if (typeof Player !== 'undefined') {
     Player.onChange(() => {
         refreshLifeHud();
+    refreshGoal();
         const badge = document.getElementById('skubu-count');
         if (badge) badge.textContent = String(Player.skubu());
     });
@@ -216,6 +219,7 @@ if (typeof Player !== 'undefined') {
 
 document.addEventListener('DOMContentLoaded', () => {
     refreshLifeHud();
+    refreshGoal();
     // A chase that ended in handcuffs is picked up here, because the court
     // is a panel on this page rather than a screen inside the run.
     if (typeof Player !== 'undefined' && Player.exists()) {
@@ -352,6 +356,7 @@ function instruct(lawyerId) {
               `<button class="est-btn" onclick="closeCourt()">TAKEN DOWN</button>`;
     }
     refreshLifeHud();
+    refreshGoal();
 }
 
 function closeCourt() {
@@ -378,6 +383,7 @@ function doTime() {
     Player.serveTime();
     closeModal('prison-modal');
     refreshLifeHud();
+    refreshGoal();
     if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); CityMap.banner('Released'); }
 }
 
@@ -414,4 +420,32 @@ function startAgain() {
     Player.startAgain();
     closeModal('death-modal');
     openCreate();
+}
+
+// ── What to do next ───────────────────────────────────────────────────────
+// One line, always the most pressing thing, and tapping it takes you there.
+// The research is blunt about this: a player who has to ask what they are
+// supposed to be doing is a player who stops.
+
+function refreshGoal() {
+    const el = document.getElementById('goal');
+    if (!el) return;
+    const g = (typeof Player !== 'undefined' && Player.exists()) ? Player.nextGoal() : null;
+    if (!g) { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
+    el.className = 'goal' + (g.act ? ' urgent' : '');
+    el.innerHTML = `<span class="goal-dot"></span><span class="goal-text">${g.text}</span>` +
+                   `<span class="goal-go">&rsaquo;</span>`;
+    el.onclick = () => doGoal(g);
+}
+
+function doGoal(g) {
+    if (g.act === 'death')  return openDeath();
+    if (g.act === 'court')  return openCourt();
+    if (g.act === 'prison') return openPrison();
+    if (g.act === 'run')    return runFromMarket();
+
+    const v = findVenue(g.find);
+    if (!v) return;
+    if (typeof CityMap !== 'undefined') CityMap.pick(v.id);
 }

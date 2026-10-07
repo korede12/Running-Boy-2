@@ -172,3 +172,19 @@ function venueCharacters(venueId) {
     if (v && v.characters) return v.characters.slice();
     return Object.keys(typeof THEMES !== 'undefined' ? THEMES : {});
 }
+
+/// The venue in this city that does a given job, so advice can name a place
+/// without knowing which city the player is standing in.
+function findVenue(job, cityId) {
+    const c = getCity(cityId || currentCityId());
+    const want = {
+        run:   v => v.mode === 'run',
+        fight: v => v.mode === 'fight',
+        chase: v => v.mode === 'chase',
+        shop:  v => v.modal === 'shop-modal',
+        agent: v => v.modal === 'estate-modal',
+        work:  v => v.kind === 'work',
+        travel: v => v.kind === 'travel',
+    }[job];
+    return want ? (c.venues.find(want) || null) : null;
+}

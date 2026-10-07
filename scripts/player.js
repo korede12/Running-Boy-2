@@ -77,6 +77,7 @@ const ECONOMY = {
         FOOD_PER_DAY: 14,      // eating, which happens if you can afford it
         HUNGER_DRAIN: 11,      // health lost per day that you cannot
         STEAL_MIN:    25,      // too weak to outrun anyone below this
+        GRACE_DAYS:   2,       // you arrived with something in your bag
         WEAK:         40,      // and slower below this
     },
 
@@ -214,6 +215,11 @@ const Player = {
     _aDay() {
         const p = this.get(), h = ECONOMY.health;
         if (p.dead) return;
+
+        // The first couple of days are on whatever you arrived with. A game
+        // that can kill you before you have worked out where the game house
+        // is does not get a second session.
+        if (p.hours < h.GRACE_DAYS * 24) { p.fed = true; return; }
 
         // You eat if you can afford to. Being too poor to is the thing that
         // kills people here, not any single disaster.
@@ -533,6 +539,50 @@ const Player = {
         const left = this.prisonLeft();
         if (left > 0) this.passTime(left);
         return left;
+    },
+
+    // ── What to do next ───────────────────────────────────────────────────
+    // A player should never have to ask what they are supposed to be doing.
+    // One line, always true, always the most pressing thing — and it names a
+    // place, so it is somewhere to go rather than advice.
+
+    nextGoal() {
+        const p = this.get();
+        if (!p) return null;
+        const h = ECONOMY.health;
+
+        if (p.dead)        return { text: 'You died. Start again.',            act: 'death' };
+        if (p.arrest)      return { text: 'You are due in court.',             act: 'court' };
+        if (this.inPrison()) return { text: this.prisonLeft() + 'h left inside.', act: 'prison' };
+        if (p.theft)        return { text: 'Finish the run. ' + p.theft.owed + ' to cover.', act: 'run' };
+
+        const meds = this.priceOf('meds', p.city);
+        if (p.illness && p.skubu >= meds)
+            return { text: 'You have malaria. Tablets are ' + meds + '.', find: 'shop' };
+        if (p.illness)
+            return { text: 'Malaria, and no ' + meds + ' for tablets. Earn it.', find: 'run' };
+
+        if (p.health < 35)
+            return { text: 'You are in no state to run. Eat, and get a roof.', find: 'agent' };
+
+        const net = this.priceOf('net', p.city);
+        if (this.sleepsRough() && !this.has('net') && p.skubu >= net)
+            return { text: 'Sleeping rough. A net is ' + net + '.', find: 'shop' };
+
+        const room = this.price(HOUSING_BY_ID.room.rent, p.city);
+        if (this.sleepsRough() && p.skubu >= room)
+            return { text: 'You can afford a room at ' + room + '.', find: 'agent' };
+        if (this.sleepsRough())
+            return { text: 'Nowhere to sleep. A room is ' + room + '.', find: 'run' };
+
+        const house = this.price(HOUSING_BY_ID.own.buy, p.city);
+        if (!p.owns.length && p.skubu >= house)
+            return { text: 'You could buy outright, at ' + house + '.', find: 'agent' };
+
+        const idle = p.owns.filter(o => !o.tenant).length;
+        if (idle) return { text: idle + ' house standing empty. Let it out.', find: 'agent' };
+
+        return { text: 'Keep earning. Keep eating.', find: 'run' };
     },
 
     // ── Change notices ────────────────────────────────────────────────────

@@ -499,3 +499,74 @@ html, body {
     border: 1px solid #5a2420; background: #2a1410; color: #ff9a7a;
 }
 .warn.soft { border-color: #4a3f1e; background: #211d14; color: #ddbb66; }
+
+/* ── What to do next ──────────────────────────────────────────────────────
+   Bottom centre, in the thumb zone, because it is the one thing a player
+   should always be able to reach. It is also the answer to the question the
+   research says kills first sessions: what am I supposed to be doing. */
+
+.goal {
+    position: absolute;
+    left: 50%; bottom: 18px;
+    transform: translateX(-50%);
+    display: none; align-items: center; gap: 10px;
+    max-width: min(520px, calc(100vw - 32px));
+    padding: 12px 16px;
+    border: 1px solid #2f4a2c;
+    border-radius: 999px;
+    background: rgba(10,16,10,.92);
+    backdrop-filter: blur(4px);
+    box-shadow: 0 6px 26px rgba(0,0,0,.55);
+    font-family: monospace;
+    cursor: pointer;
+    transition: border-color .15s, transform .12s, background .15s;
+}
+.goal:hover  { border-color: #5a8a4a; transform: translateX(-50%) translateY(-2px); }
+.goal:active { transform: translateX(-50%) translateY(0) scale(.98); }
+.goal.urgent { border-color: #7a2a24; background: rgba(26,10,10,.94); }
+
+.goal-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px;
+    background: #7ad85a; box-shadow: 0 0 10px rgba(122,216,90,.8);
+    animation: goalPulse 2s ease-in-out infinite;
+}
+.goal.urgent .goal-dot { background: #ff5a4a; box-shadow: 0 0 10px rgba(255,90,74,.8); }
+@keyframes goalPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+.goal-text {
+    font-size: 12.5px; color: #dfe9d8; letter-spacing: .02em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.goal.urgent .goal-text { color: #ffd4cc; }
+.goal-go { color: #7ad85a; font-size: 17px; line-height: 1; }
+.goal.urgent .goal-go { color: #ff8a7a; }
+
+/* Tapping a place should look like it registered, not just sound like it. */
+.venue:active .v-disc { stroke-width: 6; }
+.venue:active { transform: translateY(1px); }
+
+@media (max-width: 680px) {
+    /* The goal takes the bottom; the footer was already hidden down here. */
+    .goal {
+        left: 12px; right: 12px; bottom: 12px;
+        transform: none; max-width: none;
+        border-radius: 14px; padding: 13px 14px;
+    }
+    .goal:hover, .goal:active { transform: none; }
+    .goal-text { font-size: 13px; white-space: normal; }
+
+    /* Status moves out of the top corners and down beside the goal, which is
+       where a thumb actually is. */
+    #life-strip {
+        top: auto; bottom: 72px; right: 12px; left: 12px;
+        justify-content: flex-start;
+    }
+    #skubu-badge { bottom: 134px; }
+    #global-lb { bottom: 190px; }
+    #global-lb.open { max-height: 40vh; }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+    .goal { bottom: 10px; padding: 9px 13px; }
+    .goal-text { font-size: 11.5px; }
+}
