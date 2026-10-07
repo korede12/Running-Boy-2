@@ -326,3 +326,76 @@ html, body {
     font-family: monospace; font-size: 10px; line-height: 1.5; color: #5f6a80;
 }
 .est-name small { color: #5f6a80; font-size: 10px; }
+
+/* ── The journey ──────────────────────────────────────────────────────── */
+
+#journey {
+    position: fixed; inset: 0; z-index: 400;
+    display: none;
+    flex-direction: column;
+    background: #06060c;
+    opacity: 0; transition: opacity .3s ease;
+}
+#journey.on { display: flex; opacity: 1; }
+
+.jr-art { position: relative; flex: 1 1 auto; overflow: hidden; min-height: 44vh; }
+.jr-art svg { width: 100%; height: 100%; display: block; }
+
+.jr-panel {
+    flex: 0 0 auto; padding: 22px 26px 26px;
+    font-family: monospace; background: #06060c;
+    border-top: 1px solid #1c1c26;
+}
+.jr-route { font-size: 16px; color: #e8edf6; letter-spacing: .06em; }
+.jr-route span { color: #ccaa44; margin: 0 8px; }
+.jr-clock {
+    font-size: 40px; font-weight: bold; color: #ffd766;
+    letter-spacing: .06em; margin: 6px 0 14px;
+    text-shadow: 0 0 24px rgba(255,215,102,.35);
+}
+.jr-track {
+    height: 8px; border-radius: 4px; background: #16161f; overflow: hidden;
+    box-shadow: inset 0 0 0 1px #23232f;
+}
+.jr-fill {
+    width: 0%; height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, #8a6a14, #ffd766);
+    box-shadow: 0 0 12px rgba(204,170,68,.5);
+}
+.jr-meta {
+    display: flex; justify-content: space-between; gap: 10px;
+    margin-top: 10px; font-size: 10px; letter-spacing: .1em; color: #5f6a80;
+}
+.jr-skip {
+    position: absolute; top: 18px; right: 20px;
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #2a2a3a; background: rgba(6,6,12,.7); color: #9aa3b4;
+    font-family: monospace; font-size: 11px; letter-spacing: .1em;
+}
+
+/* Everything that moves does so by sliding the same way the vehicle faces. */
+.jr-scroll { animation: jrScroll 2.4s linear infinite; }
+@keyframes jrScroll { from { transform: translateX(0); } to { transform: translateX(-676px); } }
+
+.jr-plane { animation: jrCross 4.2s ease-in-out infinite; }
+.jr-train, .jr-bus { animation: jrCross 3.4s ease-in-out infinite; }
+@keyframes jrCross {
+    0%   { transform: translate(-180px, 56px); }
+    50%  { transform: translate(300px, 40px); }
+    100% { transform: translate(760px, 56px); }
+}
+.jr-plane { transform-origin: center; }
+
+.jr-cloud { animation: jrDrift 9s linear infinite; }
+@keyframes jrDrift { from { transform: translateX(700px); } to { transform: translateX(-120px); } }
+
+.jr-walker {
+    position: absolute; left: 50%; bottom: 14%;
+    width: 70px; height: 110px; margin-left: -35px;
+    animation: jrBob .55s ease-in-out infinite alternate;
+}
+@keyframes jrBob { from { transform: translateY(0); } to { transform: translateY(-7px); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .jr-scroll, .jr-plane, .jr-train, .jr-bus, .jr-cloud, .jr-walker { animation: none; }
+}

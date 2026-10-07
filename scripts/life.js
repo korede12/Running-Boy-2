@@ -155,18 +155,27 @@ function openTravel(toCity) {
 }
 
 function doTravel(toCity, modeId) {
+    const from = getCity(Player.cityId()).name;
+    const startHour = Player.get().hours % 24;
+
     const r = Player.travel(toCity, modeId);
     closeModal('travel-modal');
     if (!r) { flash('You cannot afford that.'); return; }
     try { localStorage.setItem('runningboy_city', toCity); } catch (_) {}
-    if (typeof CityMap !== 'undefined') {
-        CityMap.build(); CityMap.centre();
-        const bits = [getCity(toCity).name, r.mode,
-                      (r.wait ? r.wait + 'h wait + ' : '') + r.hours + 'h'];
-        if (r.fare) bits.push('-' + r.fare);
-        CityMap.banner(bits.join(' · '));
-    }
-    refreshLifeHud();
+
+    // The map is rebuilt behind the journey, so the city is already the new
+    // one by the time the screen lifts.
+    const arrive = () => {
+        if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); }
+        refreshLifeHud();
+    };
+
+    if (typeof Journey === 'undefined') { arrive(); return; }
+    Journey.play({
+        mode: modeId, modeName: r.mode,
+        fromName: from, toName: getCity(toCity).name,
+        hours: r.hours, wait: r.wait, fare: r.fare, startHour,
+    }, arrive);
 }
 
 // ── The strip along the top ───────────────────────────────────────────────
