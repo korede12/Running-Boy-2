@@ -61,6 +61,8 @@ class ChaseScene extends Phaser.Scene {
     constructor() { super({ key: 'ChaseScene' }); }
 
     preload() {
+        // Drives the boot bar; the creep hands over to real progress here.
+        if (typeof Boot !== 'undefined') Boot.attach(this);
         this.load.audio('snd_jump',     'sounds/game-scene-jumping-floor-sound-effect-material.mp3');
         this.load.audio('snd_land',     'sounds/landing-effect.mp3');
         this.load.audio('snd_hit',      'sounds/hit-sound-in-game.mp3');

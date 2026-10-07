@@ -2,6 +2,8 @@
 class GameScene extends Phaser.Scene {
 
     preload() {
+        // Drives the boot bar; the creep hands over to real progress here.
+        if (typeof Boot !== 'undefined') Boot.attach(this);
         // The selected character decides both its own frames and which
         // obstacle set the run uses. Everything downstream reads the same
         // run_NN / idle_NN keys, so it never has to care which theme is on.

@@ -18,6 +18,8 @@ class FightScene extends Phaser.Scene {
     constructor() { super({ key: 'FightScene' }); }
 
     preload() {
+        // Drives the boot bar; the creep hands over to real progress here.
+        if (typeof Boot !== 'undefined') Boot.attach(this);
         this.load.spritesheet('fightsheet', 'assets/fight/fight_sheet.png',
             { frameWidth: 256, frameHeight: 256 });
         this.load.audio('snd_hit',      'sounds/hit-sound-in-game.mp3');
