@@ -911,3 +911,50 @@ body[data-view="map"] #footer { bottom: calc(66px + env(safe-area-inset-bottom, 
 body[data-view="map"] #find-me { display: flex; }
 #find-me:active { background: #14301b; }
 #find-me b { font-size: 13px; font-weight: normal; line-height: 1; }
+
+/* ── Work ──────────────────────────────────────────────────────────────────
+   A gig pays today and varies; a job pays weekly if you turned up. The panel
+   has to make that difference obvious at a glance. */
+
+.wk-exp {
+    font-family: monospace; font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: #7f8aa0; margin-bottom: 12px;
+}
+.wk-post {
+    border: 1px solid #2f5f33; border-left-width: 3px; border-radius: 11px;
+    padding: 12px 13px; margin-bottom: 15px; background: #0f1710;
+}
+.wk-post-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.wk-post-top b {
+    font-family: monospace; font-size: 14px; font-weight: normal;
+    letter-spacing: .04em; color: #ffffff;
+}
+.wk-post-top span { font-family: monospace; font-size: 11.5px; color: #4ccc5a; }
+.wk-shifts { display: flex; align-items: center; gap: 5px; margin: 10px 0 7px; }
+.wk-pip {
+    width: 15px; height: 7px; border-radius: 4px;
+    background: #1d2a1f; border: 1px solid #2f4a33;
+}
+.wk-pip.on { background: #4ccc5a; border-color: #4ccc5a; }
+.wk-shifts em {
+    font-style: normal; font-family: monospace; font-size: 9.5px;
+    color: #7f8aa0; margin-left: 5px; letter-spacing: .07em;
+}
+.wk-note { font-family: monospace; font-size: 10.5px; line-height: 1.5; color: #9fb0a2; }
+.wk-post .est-btn { margin-top: 10px; }
+.wk-post .ghost.small {
+    width: 100%; margin-top: 7px; padding: 7px;
+    font-size: 10px; letter-spacing: .1em;
+}
+.wk-meta {
+    display: block; font-family: monospace; font-size: 10px;
+    color: #ccaa44; letter-spacing: .05em; margin-top: 4px;
+}
+.wk-meta i { font-style: normal; color: #e07a5a; }
+.wk-why {
+    display: block; font-family: monospace; font-size: 10px;
+    color: #7f8aa0; margin-top: 8px; padding: 6px 9px;
+    border-radius: 7px; background: #15151e; border-left: 2px solid #3a3a48;
+}
+.est-row.off { opacity: .68; }
+.est-row.off .est-name { color: #9aa3b4; }

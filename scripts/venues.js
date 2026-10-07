@@ -70,6 +70,11 @@ const CITIES = [
               blurb: 'Portable is in there, and he does not lose quietly.',
               tag: 'FIGHT PORTABLE' },
 
+            { id: 'work_lag', name: 'Oshodi Labour Junction', kind: 'work', open: [6, 18],
+              gx: 12, gy: 19, gw: 2, gd: 2, vh: 104, icon: 'desk', roof: '#5b6b7a',
+              blurb: 'Stand here from six and somebody will have a day for you.',
+              tag: 'WORK' },
+
             { id: 'hotel_lag', name: 'Ikeja Guest Inn', kind: 'hotel', open: [0, 24],
               gx: 12, gy: 13, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'A bed, a lock, and a full night.', tag: 'SLEEP' },
@@ -110,9 +115,9 @@ const CITIES = [
               blurb: 'Who has run the furthest.' },
 
             { id: 'secretariat', name: 'Ogun Secretariat', kind: 'work', open: [8, 16],
-              gx: 1,  gy: 8, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
-              wage: 26, hours: 8,
-              blurb: 'A desk, a day, and a small steady wage.', tag: 'WORK' },
+              gx: 1,  gy: 9, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
+              blurb: 'Grade levels, desks, and a wage that comes every week.',
+              tag: 'WORK' },
 
             { id: 'lafenwa', name: 'Lafenwa Bridge', kind: 'play', open: [0, 24], mode: 'chase',
               gx: 15, gy: 9, gw: 2, gd: 2, vh: 92, icon: 'chase',
@@ -120,7 +125,7 @@ const CITIES = [
               blurb: 'Over the Ogun, with someone behind you.', tag: 'CHASE' },
 
             { id: 'game_abk', name: 'Kuto Game House', kind: 'play', open: [10, 24], mode: 'run',
-              gx: 9,  gy: 16, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
+              gx: 9,  gy: 17, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Quieter room, smaller takings.', tag: 'GAME HOUSE' },
 
@@ -208,6 +213,7 @@ function findVenue(job, cityId) {
         clinic: v => v.kind === 'clinic',
         agent: v => v.modal === 'estate-modal',
         work:  v => v.kind === 'work',
+        play:  v => v.kind === 'play',
         travel: v => v.kind === 'travel',
     }[job];
     return want ? (c.venues.find(want) || null) : null;

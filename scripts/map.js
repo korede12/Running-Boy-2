@@ -606,16 +606,8 @@ const CityMap = {
         // costs either the fare or most of a day.
         if (v.kind === 'travel') { openTravel(v.to); return; }
 
-        // A day's work: steady, small, and it eats the hours that a run does
-        // not. It is what Abeokuta has instead of a game house full of people.
-        if (v.kind === 'work') {
-            const paid = Player.wage(v.wage, Player.cityId());
-            Player.adjust(paid, v.name);
-            Player.passTime(v.hours);
-            CityMap.banner(`A day at the desk · +${paid} skubu`);
-            CityMap.build();
-            return;
-        }
+        // Work is a place you go to look for work, not a button that pays.
+        if (v.kind === 'work') { openWork(v); return; }
 
         try { localStorage.setItem('runningboy_venue', v.id); } catch (_) {}
 

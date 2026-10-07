@@ -181,7 +181,78 @@ const ECONOMY = {
         { id: 'phone',  name: 'Phone',           price: 90, wears: null },
         { id: 'net',    name: 'Mosquito net',    price: 34, wears: null, keeps: true },
         { id: 'meds',   name: 'Malaria tablets', price: 48, wears: null, cures: true },
+
+        // Capital, and papers. These are not things you use — they are the
+        // things that let you do better work, which is the only ladder out
+        // of a gig that pays by the shift.
+        { id: 'bike',   name: 'Second-hand bike', price: 320, wears: null, keeps: true,
+          note: 'Okada and dispatch work.' },
+        { id: 'pos',    name: 'POS machine',      price: 240, wears: null, keeps: true,
+          note: 'Run a POS stand.' },
+        { id: 'cert',   name: 'School certificate', price: 420, wears: null, keeps: true,
+          note: 'What an office asks for.' },
     ],
+
+    // ── Work ──────────────────────────────────────────────────────────────
+    // Ninety-three per cent of the workforce is informal, and the research
+    // calls it survivalist. So the game is mostly hustle, and a salary is
+    // the thing you climb towards rather than the thing you start with.
+    //
+    // The tension is the real one: at the top a hustle out-earns a salary,
+    // but it pays nothing on a week you are ill, locked up, or short of a
+    // bike. A job pays whether or not the week went well — provided you
+    // turned up.
+    work: {
+        SHIFTS_DUE: 4,          // turning up, per week, to keep a job
+        EXP_PER_GIG: 1,
+
+        // Paid at the end of the shift. pay is a range because informal
+        // earnings are not stable, which is the whole point of them.
+        gigs: [
+            { id: 'hawk', name: 'Hawking in traffic', hours: 4, pay: [7, 16],
+              needs: {}, hurt: 2,
+              blurb: 'Between the bumpers on the expressway. Anyone can, which is why it pays least.' },
+
+            { id: 'labour', name: 'Site labourer', hours: 8, pay: [22, 34],
+              needs: {}, hurt: 5,
+              blurb: 'Block and mortar from morning. It pays, and it takes it out of you.' },
+
+            { id: 'conduct', name: 'Danfo conductor', hours: 7, pay: [16, 30],
+              needs: { exp: 2 }, hurt: 3,
+              blurb: 'Hanging off the door calling the route. You need to know the roads.' },
+
+            { id: 'dispatch', name: 'Dispatch rider', hours: 6, pay: [24, 44],
+              needs: { exp: 5, item: 'bike' }, hurt: 3,
+              blurb: 'Parcels across the city. Your bike, your fuel, your risk.' },
+
+            { id: 'okada', name: 'Okada', hours: 8, pay: [28, 58],
+              needs: { item: 'bike' }, hurt: 4, risk: 0.07,
+              blurb: 'Carrying passengers all day. The best money on the street and the worst odds.' },
+
+            { id: 'pos', name: 'POS stand', hours: 6, pay: [18, 72],
+              needs: { item: 'pos' }, hurt: 1, risk: 0.04,
+              blurb: 'A table, an umbrella, and everybody\'s cash. Some days are very good.' },
+        ],
+
+        // A wage, weekly, paid whether or not the week went well — so long
+        // as you turned up. week is what it pays; hours is one shift.
+        jobs: [
+            { id: 'attend', name: 'Shop attendant', week: 130, hours: 6, needs: {},
+              blurb: 'Minimum, and it arrives every week.' },
+
+            { id: 'teach', name: 'Teacher', week: 168, hours: 7,
+              needs: { item: 'cert', exp: 4 },
+              blurb: 'They ask for your papers. They do not always pay on time, but they pay.' },
+
+            { id: 'civil', name: 'Civil servant', week: 196, hours: 7,
+              needs: { item: 'cert', exp: 6 }, where: 'abeokuta',
+              blurb: 'A grade level and a desk. Abeokuta runs on these.' },
+
+            { id: 'teller', name: 'Bank teller', week: 242, hours: 9,
+              needs: { item: 'cert', exp: 12 },
+              blurb: 'Long days behind glass, and the best wage anyone will hand you.' },
+        ],
+    },
 };
 
 const HOUSING_BY_ID = ECONOMY.housing.reduce((m, h) => (m[h.id] = h, m), {});
@@ -207,6 +278,127 @@ const Player = {
     save() {
         try { localStorage.setItem(this.KEY, JSON.stringify(this._p)); } catch (_) {}
         this._announce();
+    },
+
+    // ── Earning a living ──────────────────────────────────────────────────
+
+    gigs()     { return ECONOMY.work.gigs; },
+    jobsList() { return ECONOMY.work.jobs; },
+    exp()      { const p = this.get(); return p ? (p.exp || 0) : 0; },
+    job()      { const p = this.get(); if (!p || !p.job) return null;
+                 return ECONOMY.work.jobs.find(j => j.id === p.job.id) || null; },
+    shifts()   { const p = this.get(); return (p && p.job) ? p.job.shifts : 0; },
+
+    /// Why you cannot do this one, or null if you can. Returning the reason
+    /// rather than a boolean is what lets the panel say what is missing.
+    blockedFrom(w) {
+        const p = this.get();
+        if (!p) return 'No one here.';
+        const n = w.needs || {};
+        if (w.where && p.city !== w.where)
+            return 'Only in ' + getCity(w.where).name + '.';
+        if (n.item && !this.has(n.item)) {
+            const good = ECONOMY.goods.find(g => g.id === n.item);
+            return 'Needs a ' + (good ? good.name.toLowerCase() : n.item) + '.';
+        }
+        if (n.exp && (p.exp || 0) < n.exp)
+            return 'Needs ' + n.exp + ' shifts behind you — you have ' + (p.exp || 0) + '.';
+        if (this.fitness() < 0.55) return 'You are in no state to work.';
+        return null;
+    },
+
+    /// One shift of informal work. Paid on the spot, variable, and it costs
+    /// you the hours and some of your condition.
+    doGig(id) {
+        const p = this.get();
+        const g = ECONOMY.work.gigs.find(x => x.id === id);
+        if (!p || !g || this.blockedFrom(g)) return null;
+
+        const [lo, hi] = g.pay;
+        const span = hi - lo;
+        // Condition shows up in the takings: a tired hawker sells less.
+        const paid = Math.max(1, Math.round(
+            this.wage(lo + Math.random() * span, p.city) * (0.65 + 0.35 * this.fitness())));
+
+        this.adjust(paid, g.name);
+        p.exp = (p.exp || 0) + ECONOMY.work.EXP_PER_GIG;
+        p.health = Math.max(0, p.health - (g.hurt || 0));
+
+        // Some work can go wrong. It is the price of the better-paying kind.
+        let mishap = null;
+        if (g.risk && Math.random() < g.risk) {
+            const lost = Math.min(p.skubu, Math.round(paid * 1.6));
+            p.skubu -= lost;
+            p.health = Math.max(0, p.health - 8);
+            mishap = g.id === 'pos' ? 'Robbed at the stand — lost ' + lost
+                                    : 'Came off the bike — lost ' + lost;
+            p.history.unshift({ amount: -lost, why: mishap, at: p.hours });
+        }
+
+        this.passTime(g.hours);
+        if (p.health <= 0) this._collapse();
+        this.save();
+        return { paid, hours: g.hours, mishap, exp: p.exp };
+    },
+
+    /// Ask for a job. Experience and papers are the whole of the interview.
+    applyFor(id) {
+        const p = this.get();
+        const j = ECONOMY.work.jobs.find(x => x.id === id);
+        if (!p || !j || this.blockedFrom(j)) return null;
+        p.job = { id: j.id, shifts: 0 };
+        p.history.unshift({ amount: 0, why: 'Hired — ' + j.name, at: p.hours });
+        this.save();
+        return j;
+    },
+
+    quitJob() {
+        const p = this.get();
+        if (!p || !p.job) return false;
+        const j = this.job();
+        p.job = null;
+        p.history.unshift({ amount: 0, why: 'Left the ' + (j ? j.name.toLowerCase() : 'job'), at: p.hours });
+        this.save();
+        return true;
+    },
+
+    /// Turning up. The wage arrives weekly regardless, but only if you did.
+    workShift() {
+        const p = this.get();
+        const j = this.job();
+        if (!p || !j) return null;
+        if (this.fitness() < 0.5) return { refused: 'You are in no state to work.' };
+        p.job.shifts += 1;
+        p.exp = (p.exp || 0) + 1;
+        this.passTime(j.hours);
+        this.save();
+        return { shifts: p.job.shifts, hours: j.hours, due: ECONOMY.work.SHIFTS_DUE };
+    },
+
+    /// Payday, with the rest of the week's bills. Turn up and it is yours;
+    /// turn up sometimes and you get what you worked; do not turn up at all
+    /// and somebody else gets the job.
+    _payWages() {
+        const p = this.get();
+        const j = this.job();
+        if (!p || !j) return;
+        const due = ECONOMY.work.SHIFTS_DUE;
+        const did = p.job.shifts;
+
+        if (did === 0) {
+            p.job = null;
+            p.history.unshift({ amount: 0, why: 'Sacked — never turned up', at: p.hours });
+            return;
+        }
+        const full = this.wage(j.week, p.city);
+        const paid = did >= due ? full : Math.round(full * did / due);
+        p.skubu += paid;
+        p.history.unshift({
+            amount: paid,
+            why: did >= due ? j.name + ' — wages' : j.name + ' — part week (' + did + '/' + due + ')',
+            at: p.hours,
+        });
+        p.job.shifts = 0;
     },
 
     /// Where you are standing, as a venue id. A position in another city is
@@ -290,6 +482,8 @@ const Player = {
             mind:    100,
             commuted: 0,      // hours travelled since the last night
             at:      null,        // the venue you are standing at
+            job:     null,        // { id, shifts } once somebody hires you
+            exp:     0,           // shifts worked, which is what gets you hired
             dead:    null,        // { cause, at } once it is over
             rentDue: ECONOMY.WEEK_HOURS,
             history: [],
@@ -659,6 +853,7 @@ const Player = {
             }
         }
 
+        this._payWages();
         this._serviceLoan();
 
         // Anything let out pays its way back.
@@ -870,6 +1065,13 @@ const Player = {
 
     /// Sit it out. Nothing else happens in prison, which is the cost.
     serveTime() {
+        {
+            const q = this.get();
+            if (q && q.job) {
+                q.job = null;
+                q.history.unshift({ amount: 0, why: 'Lost the job — inside', at: q.hours });
+            }
+        }
         const left = this.prisonLeft();
         if (left > 0) this.passTime(left);
         return left;
@@ -991,7 +1193,7 @@ const Player = {
         if (p.illness && p.skubu >= meds)
             return { text: 'You have malaria. Tablets are ' + meds + '.', find: 'shop' };
         if (p.illness)
-            return { text: 'Malaria, and no ' + meds + ' for tablets. Earn it.', find: 'run' };
+            return { text: 'Malaria, and no ' + meds + ' for tablets. Earn it.', find: 'work' };
 
         if (p.rest < ECONOMY.sleep.TIRED && p.skubu >= this.hotelPrice(p.city))
             return { text: 'Running on ' + this.sleepHours() + ' hours. Get a bed.', find: 'hotel' };
@@ -1009,7 +1211,7 @@ const Player = {
         if (this.sleepsRough() && p.skubu >= room)
             return { text: 'You can afford a room at ' + room + '.', find: 'agent' };
         if (this.sleepsRough())
-            return { text: 'Nowhere to sleep. A room is ' + room + '.', find: 'run' };
+            return { text: 'Nowhere to sleep. A room is ' + room + '.', find: 'work' };
 
         // A site with nobody on it, or nothing for them to do, is the most
         // wasteful thing you can own — so it outranks buying anything else.
@@ -1019,7 +1221,7 @@ const Player = {
             if (!plot.paid && p.skubu >= mats)
                 return { text: 'Materials for the ' + ECONOMY.land.STAGES[plot.stage].toLowerCase() + ' are ' + mats + '.', find: 'agent' };
             if (!plot.paid)
-                return { text: 'Site stalled. ' + mats + ' for materials.', find: 'run' };
+                return { text: 'Site stalled. ' + mats + ' for materials.', find: 'work' };
             if (!plot.crew)
                 return { text: 'Materials on site and nobody working. Hire a crew.', find: 'agent' };
         }
@@ -1038,7 +1240,7 @@ const Player = {
         const idle = p.owns.filter(o => !o.tenant).length;
         if (idle) return { text: idle + ' house standing empty. Let it out.', find: 'agent' };
 
-        return { text: 'Keep earning. Keep eating.', find: 'run' };
+        return { text: 'Keep earning. Keep eating.', find: 'work' };
     },
 
     // ── Change notices ────────────────────────────────────────────────────

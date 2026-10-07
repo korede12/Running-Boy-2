@@ -127,10 +127,13 @@ const Nav = {
     /// rather than hidden — that the clinic opens at eight is exactly the
     /// thing you need to know at three in the morning.
     _quick(p, hour) {
+        // Work is how you live; the game house and the club are what you do
+        // when you are not. They were the same tile, and that was wrong.
         const jobs = [
-            ['run',    'Earn'],    ['hotel',  'Sleep'],
-            ['clinic', 'Health'],  ['shop',   'Market'],
-            ['fight',  'Club'],    ['agent',  'Property'],
+            ['work',   'Earn'],    ['run',    'Play'],
+            ['hotel',  'Sleep'],   ['clinic', 'Health'],
+            ['shop',   'Market'],  ['fight',  'Fight'],
+            ['agent',  'Property'],
         ];
         return jobs.map(([job, label]) => {
             const v = findVenue(job, p.city);
