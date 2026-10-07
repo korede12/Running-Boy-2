@@ -72,7 +72,8 @@ const Nav = {
 
         host.innerHTML =
             // Where you are standing, which is the thing this screen is for.
-            '<div class="rm-scene">' +
+            (here ? `<div class="rm-scene can-enter" onclick="Place.enter('${here.id}')">`
+                  : '<div class="rm-scene">') +
                 Scene.svg(p) +
                 '<div class="rm-label">' +
                     `<b>${Scene.caption(p)}</b>` +
@@ -82,8 +83,8 @@ const Nav = {
                 '</div>' +
                 `<div class="rm-time">${String(hour).padStart(2, '0')}:00 &nbsp;·&nbsp; ` +
                 `Day ${Player.day()}</div>` +
-                (here ? `<button class="rm-go" onclick="CityMap.pick('${here.id}')">` +
-                    `GO IN &rsaquo;</button>` : '') +
+                (here ? `<button class="rm-go" onclick="event.stopPropagation();CityMap.pick('${here.id}')">` +
+                    `USE &rsaquo;</button>` : '') +
             '</div>' +
 
             // What you sleep in, which is a different question.

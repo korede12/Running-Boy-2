@@ -994,3 +994,105 @@ body[data-view="map"] #find-me { display: flex; }
     font-family: monospace; font-size: 10px; letter-spacing: .12em;
     text-transform: uppercase; color: #7f8aa0; margin-bottom: 12px;
 }
+
+/* ── Inside a place ────────────────────────────────────────────────────────
+   A full-screen walkable room. It sits over everything including the nav,
+   because while you are in it that is where you are. */
+
+#place {
+    position: fixed; inset: 0; z-index: 600;
+    display: none; flex-direction: column;
+    background: #0b0b12;
+}
+#place.on { display: flex; }
+body.in-place { overflow: hidden; }
+
+.pl-top {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 12px 14px calc(12px + env(safe-area-inset-top, 0));
+    border-bottom: 1px solid #1d1d27;
+}
+.pl-name {
+    font-family: monospace; font-size: 13.5px; letter-spacing: .06em; color: #ffffff;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pl-out {
+    flex: 0 0 auto; padding: 7px 13px; cursor: pointer;
+    font-family: monospace; font-size: 10.5px; letter-spacing: .1em;
+    color: #cfd6e4; background: #1a1a24; border: 1px solid #2d2d3a; border-radius: 18px;
+}
+.pl-out:active { background: #24242f; }
+
+.pl-stage {
+    flex: 1 1 auto; min-height: 0; display: flex;
+    align-items: center; justify-content: center;
+    padding: 8px; cursor: pointer; touch-action: manipulation;
+}
+.pl-stage svg { width: 100%; height: 100%; max-height: 100%; display: block; }
+.pl-lab {
+    font-family: monospace; font-size: 11px; letter-spacing: .1em;
+    fill: #8b93a6; paint-order: stroke; stroke: #0b0b12; stroke-width: 3px;
+}
+#pl-me { transition: none; }
+
+.pl-act {
+    flex: 0 0 auto; min-height: 58px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 16px;
+}
+.pl-act button {
+    padding: 12px 26px; cursor: pointer;
+    font-family: monospace; font-size: 12px; letter-spacing: .12em;
+    text-transform: uppercase; color: #0c0c12;
+    background: #ffc83d; border: 0; border-radius: 24px;
+    animation: pl-pop .18s ease-out;
+}
+.pl-act button:active { background: #e0ac2a; }
+@keyframes pl-pop { from { transform: scale(.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+.pl-hint {
+    flex: 0 0 auto; text-align: center;
+    padding: 0 16px calc(14px + env(safe-area-inset-bottom, 0));
+    font-family: monospace; font-size: 9.5px; letter-spacing: .08em; color: #5f6a80;
+}
+
+/* The Home picture is now a door */
+.rm-scene.can-enter { cursor: pointer; }
+.rm-scene.can-enter:active { transform: scale(.99); }
+.rm-scene.can-enter::after {
+    content: 'TAP TO GO IN';
+    position: absolute; left: 11px; top: 10px;
+    font-family: monospace; font-size: 8.5px; letter-spacing: .16em;
+    color: #ffc83d; background: rgba(8, 8, 14, .6);
+    padding: 3px 7px; border-radius: 5px; pointer-events: none;
+}
+
+@media (max-height: 520px) {
+    .pl-hint { display: none; }
+    .pl-act { min-height: 48px; }
+}
+
+/* The doorway list */
+.pl-where {
+    width: 100%; max-width: 440px; max-height: 100%;
+    overflow-y: auto; padding: 4px;
+}
+.pl-where-top {
+    font-family: monospace; font-size: 10px; letter-spacing: .18em;
+    text-transform: uppercase; color: #5f6a80;
+    margin: 4px 0 11px; padding-bottom: 7px; border-bottom: 1px solid #1d1d27;
+}
+.pl-dest {
+    display: flex; flex-direction: column; gap: 2px; width: 100%;
+    text-align: left; cursor: pointer; margin-bottom: 7px;
+    padding: 11px 13px; border: 1px solid #23232e; border-radius: 10px;
+    background: #13131c;
+}
+.pl-dest:active { border-color: #ffc83d; }
+.pl-dest b {
+    font-family: monospace; font-size: 12.5px; font-weight: normal;
+    color: #e8edf6; letter-spacing: .04em;
+}
+.pl-dest span { font-family: monospace; font-size: 10px; color: #8b93a6; }
+.pl-dest.back { border-style: dashed; background: none; }
+.pl-dest.back b { color: #8b93a6; }

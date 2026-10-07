@@ -135,6 +135,12 @@ function openRide(v) {
     const p = Player.get();
     if (!p) { openCreate(); return; }
     _rideTarget = v.id;
+    // Closing this panel without choosing should not strand an intention to
+    // walk into somewhere you never travelled to.
+    const back = document.getElementById('ride-modal');
+    if (back) back.onclick = e => {
+        if (e.target === back && typeof Place !== 'undefined') Place._reenter = null;
+    };
 
     const dist  = Player.distanceTo(v.id);
     const rides = Player.ridesTo(v.id);
@@ -174,7 +180,12 @@ function takeRide(modeId) {
         refreshLifeHud();
         if (typeof CityMap !== 'undefined') CityMap.build();
         if (r.mishap) flash(r.mishap);
-        // You have arrived, so now you can go in.
+        // If you set out from inside somewhere, you arrive inside this one.
+        if (typeof Place !== 'undefined' && Place._reenter === id) {
+            Place._reenter = null;
+            Place.enter(id);
+            return;
+        }
         CityMap.pick(id);
     };
 
