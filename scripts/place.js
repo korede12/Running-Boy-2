@@ -105,7 +105,7 @@ const Place = {
             `</div>` +
             `<div class="pl-stage" id="pl-stage"></div>` +
             `<div class="pl-act" id="pl-act"></div>` +
-            `<div class="pl-hint">Tap the floor to walk &nbsp;·&nbsp; walk up to something to use it</div>`;
+            `<div class="pl-hint">Tap the floor to walk. Stand close to something to use it.</div>`;
     },
 
     _paint() {
@@ -315,7 +315,7 @@ const Place = {
 
         stage.innerHTML =
             '<div class="pl-where">' +
-                '<div class="pl-where-top">Where to?</div>' +
+                '<div class="pl-where-top">Where are you going?</div>' +
                 rest.map(({ v, d }) => {
                     const cheapest = Player.ridesTo(v.id)
                         .filter(r => r.fare > 0).sort((a, b) => a.fare - b.fare)[0];
@@ -326,7 +326,7 @@ const Place = {
                         `</span></button>`;
                 }).join('') +
                 '<button class="pl-dest back" onclick="Place.enter(\'' + here.id + '\')">' +
-                    '<b>Stay here</b><span>Back inside</span></button>' +
+                    '<b>Nowhere — stay here</b><span>Go back inside</span></button>' +
             '</div>';
     },
 
@@ -346,7 +346,7 @@ const Place = {
             wallA: '#20202a', wallB: '#1a1a23',
             props: [], spots: [],
         };
-        const door = { id: 'door', gx: 4, gy: 6, label: 'Out to the street' };
+        const door = { id: 'door', gx: 4, gy: 6, label: 'Go outside' };
 
         const kind = v.id === 'market' || v.id === 'itoku' ? 'market'
                    : v.mode === 'chase' ? 'span'
@@ -395,7 +395,7 @@ const Place = {
                     { gx: 1, gy: 3, w: 2, d: 1, h: 22, top: '#584a66', side: '#3a3040' },
                     { gx: 6, gy: 1, w: 2, d: 1, h: 32, top: '#2f3a4a', side: '#223040', label: 'Reception' },
                 ],
-                spots: [{ id: 'sleep', gx: 6, gy: 2, label: 'Take a room' }],
+                spots: [{ id: 'sleep', gx: 6, gy: 2, label: 'Take a room for the night' }],
             }),
             clinic: () => ({
                 floorA: '#2e3238', floorB: '#292d33', floorLine: '#22262b',
@@ -422,7 +422,7 @@ const Place = {
                     { gx: 1, gy: 1, w: 4, d: 2, h: 40, top: '#e8b31c', side: '#9a7512', label: 'Danfo' },
                     { gx: 7, gy: 2, w: 1, d: 2, h: 30, top: '#4a3f2e', side: '#332b1f' },
                 ],
-                spots: [{ id: 'go', gx: 4, gy: 4, label: 'Leave town' }],
+                spots: [{ id: 'go', gx: 4, gy: 4, label: 'Travel out of town' }],
             }),
             span: () => ({
                 floorA: '#3a3a46', floorB: '#35353f', floorLine: '#2b2b35',
@@ -431,7 +431,7 @@ const Place = {
                     { gx: 0, gy: 0, w: 9, d: 1, h: 16, top: '#4e4e5a', side: '#3a3a46' },
                     { gx: 2, gy: 3, w: 1, d: 1, h: 24, top: '#c0392b', side: '#7e241a' },
                 ],
-                spots: [{ id: 'run', gx: 5, gy: 3, label: 'Start running' }],
+                spots: [{ id: 'run', gx: 5, gy: 3, label: 'Start the run' }],
             }),
         };
 

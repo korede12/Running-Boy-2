@@ -28,7 +28,7 @@ function renderWork(v) {
 
     host.innerHTML =
         (where ? `<div class="trv-to">${where.name}</div>` : '') +
-        `<div class="wk-exp">&#9632; ${Player.exp()} shifts behind you</div>` +
+        `<div class="wk-exp">You have worked ${Player.exp()} shifts. The better jobs ask for experience.</div>` +
         renderPost(job, p) +
         '<div class="est-head">Work going today</div>' +
         Player.gigs().map(g => gigRow(g, p)).join('') +
@@ -50,10 +50,10 @@ function renderPost(job, p) {
             `<span class="wk-pip${i < did ? ' on' : ''}"></span>`).join('') +
         `<em>${did}/${due} shifts this week</em></div>` +
         `<div class="wk-note">${did >= due
-            ? 'Full week. The wage is yours.'
-            : 'Short of a full week — you will be paid what you worked.'}</div>` +
-        `<button class="est-btn" onclick="clockIn()">GO TO WORK &nbsp;·&nbsp; ${job.hours}h</button>` +
-        `<button class="ghost small" onclick="leaveJob()">Leave this job</button>` +
+            ? 'You have done the full week. Your salary is safe.'
+            : 'You have not done the full week yet. Short week, short pay.'}</div>` +
+        `<button class="est-btn" onclick="clockIn()">Clock in &nbsp;·&nbsp; ${job.hours}h of your day</button>` +
+        `<button class="ghost small" onclick="leaveJob()">Resign</button>` +
     `</div>`;
 }
 
@@ -67,7 +67,7 @@ function gigRow(g, p) {
         `&#10022; ${Player.wage(lo, p.city)}&ndash;${Player.wage(hi, p.city)}` +
         (g.risk ? ' &nbsp;·&nbsp; <i>risky</i>' : '') + `</span>` +
         (why ? `<span class="wk-why">${why}</span>`
-             : `<button class="est-btn" onclick="takeGig('${g.id}')">WORK IT</button>`) +
+             : `<button class="est-btn" onclick="takeGig('${g.id}')">Do this shift</button>`) +
     `</div>`;
 }
 
@@ -79,9 +79,9 @@ function jobRow(j, p, current) {
         `<span class="est-sub">${j.blurb}</span>` +
         `<span class="wk-meta">${j.hours}h a shift &nbsp;·&nbsp; ` +
         `&#10022; ${Player.wage(j.week, p.city)} a week</span>` +
-        (mine ? `<button class="est-btn" disabled>YOURS</button>`
+        (mine ? `<button class="est-btn" disabled>You work here</button>`
               : why ? `<span class="wk-why">${why}</span>`
-                    : `<button class="est-btn" onclick="applyJob('${j.id}')">APPLY</button>`) +
+                    : `<button class="est-btn" onclick="applyJob('${j.id}')">Ask for the job</button>`) +
     `</div>`;
 }
 
@@ -89,7 +89,7 @@ function jobRow(j, p, current) {
 
 function takeGig(id) {
     const r = Player.doGig(id);
-    if (!r) { flash('Not today.'); return; }
+    if (!r) { flash('Not today — check what it needs.'); return; }
     refreshLifeHud();
     renderWork();
     const g = Player.gigs().find(x => x.id === id);
@@ -100,10 +100,10 @@ function takeGig(id) {
 
 function applyJob(id) {
     const j = Player.applyFor(id);
-    if (!j) { flash('They turned you down.'); return; }
+    if (!j) { flash('They said no. Come back with more experience.'); return; }
     refreshLifeHud();
     renderWork();
-    flash('Hired — ' + j.name);
+    flash('You got the job — ' + j.name);
 }
 
 function clockIn() {
@@ -112,12 +112,12 @@ function clockIn() {
     if (r.refused) { flash(r.refused); return; }
     refreshLifeHud();
     renderWork();
-    flash('Shift done · ' + r.shifts + '/' + r.due);
+    flash('Shift done. ' + r.shifts + '/' + r.due);
     if (typeof CityMap !== 'undefined') CityMap.build();
 }
 
 function leaveJob() {
-    if (!confirm('Leave the job? The wage stops.')) return;
+    if (!confirm('Resign? The salary stops immediately.')) return;
     Player.quitJob();
     refreshLifeHud();
     renderWork();
@@ -148,7 +148,7 @@ function openRide(v) {
     if (host) {
         host.innerHTML =
             `<div class="trv-to">${v.name}</div>` +
-            `<div class="rd-dist">${dist} tiles across ${getCity(p.city).name}</div>` +
+            `<div class="rd-dist">${dist} tiles away, across ${getCity(p.city).name}</div>` +
             rides.map(r => {
                 const can = r.fare === 0 || p.skubu >= r.fare;
                 return `<div class="est-row${can ? '' : ' off'}">` +
@@ -158,10 +158,10 @@ function openRide(v) {
                     (r.risk ? ' &nbsp;·&nbsp; <i>risky</i>' : '') + `</span>` +
                     `<button class="est-btn" ${can ? '' : 'disabled'} ` +
                     `onclick="takeRide('${r.id}')">` +
-                    `${r.fare ? '&#10022; ' + r.fare : 'FREE'}</button></div>`;
+                    `${r.fare ? '&#10022; ' + r.fare : 'Walk it'}</button></div>`;
             }).join('') +
-            `<div class="shop-note">Hours are hours. Rent, hunger and the ` +
-            `mosquitoes all keep their own time while you are on the road.</div>`;
+            `<div class="shop-note">Time still passes while you travel. Rent, ` +
+            `hunger and mosquitoes do not wait for you.</div>`;
     }
     document.getElementById('ride-modal').classList.add('open');
 }
@@ -174,7 +174,7 @@ function takeRide(modeId) {
     const to = getVenue(id);
     const r = Player.rideTo(id, modeId);
     closeModal('ride-modal');
-    if (!r) { flash('Not enough skubu.'); return; }
+    if (!r) { flash('Your money no reach.'); return; }
 
     const done = () => {
         refreshLifeHud();

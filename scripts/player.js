@@ -70,23 +70,27 @@ const ECONOMY = {
         { id: 'lapo', name: 'LAPO baby', weight: 34,
           skubu: 0, housing: 'none', grit: 1.10, pull: 0.95,
           loan: { owed: 140, perWeek: 20 },
-          blurb: 'Your mother services a microfinance loan every week. ' +
-                 'You have no roof and her debt is now partly yours.' },
+          blurb: 'Your mama still dey pay back LAPO every week, and now ' +
+                 'part of it is yours. You have no room, no bed, nothing. ' +
+                 'Whatever you want, you go find am yourself.' },
 
         { id: 'pako', name: 'Ajepako', weight: 30,
           skubu: 45, housing: 'room', grit: 1.20, pull: 1.00,
-          blurb: 'Street-raised and hardened by it. A single room with a ' +
-                 'shared toilet, and a constitution that can take a bad week.' },
+          blurb: 'You grew up on the street and it made you strong. One ' +
+                 'room, toilet outside, and a body that can take a bad ' +
+                 'week without falling down.' },
 
         { id: 'nepo', name: 'Nepo baby', weight: 22,
           skubu: 280, housing: 'self', grit: 0.95, pull: 1.22,
-          blurb: 'Your father knows people. A self-contain, a little money, ' +
-                 'and doors that open faster than they should.' },
+          blurb: 'Your papa knows people. You get self-contain, small ' +
+                 'money, and doors that open for you faster than they open ' +
+                 'for anybody else.' },
 
         { id: 'butter', name: 'Ajebutter', weight: 14,
           skubu: 950, housing: 'flat', grit: 0.78, pull: 1.10,
-          blurb: 'Trust-fund soft. A two-bedroom flat and real money — and ' +
-                 'no idea how to go without either.' },
+          blurb: 'You never lacked anything. Two-bedroom flat and serious ' +
+                 'money — but if it ever finishes, you will not know what ' +
+                 'to do with yourself.' },
     ],
 
     // What a roofless player is sleeping under. Rolled once and kept, so the
@@ -133,29 +137,29 @@ const ECONOMY = {
     transit: {
         lagos: [
             { id: 'walk',  name: 'Walk',        fare: 0,    per: 0,    pace: 0.42, tiring: true,
-              blurb: 'Free, and most of a day across Lagos.' },
+              blurb: 'Free. And it will take you most of the day.' },
             { id: 'danfo', name: 'Danfo',       fare: 1,    per: 0.32, pace: 0.14,
-              blurb: 'Yellow bus, no timetable, and whatever the traffic gives you.' },
+              blurb: 'Yellow bus. No timetable, and go-slow decides when you arrive.' },
             { id: 'keke',  name: 'Keke napep',  fare: 1,    per: 0.42, pace: 0.11, maxDist: 10,
-              blurb: 'Tricycle. Short hops only.' },
+              blurb: 'Tricycle. Only for short distance.' },
             { id: 'brt',   name: 'BRT',         fare: 1.8,  per: 0.20, pace: 0.10, minDist: 6,
-              blurb: 'Its own lane, and the cheapest thing going over any distance.' },
+              blurb: 'It has its own lane, so no go-slow. Cheapest way to cross far.' },
             { id: 'okada', name: 'Okada',       fare: 1.4,  per: 0.52, pace: 0.07, maxDist: 7, risk: 0.05,
-              blurb: 'Quickest, if it is going your way. Kept off the big roads.' },
+              blurb: 'Fastest thing on two wheels — but they no dey allow am on big road.' },
             { id: 'ferry', name: 'LAGFERRY',    fare: 3.2,  per: 0.18, pace: 0.08, minDist: 9,
-              blurb: 'Straight across the lagoon while the bridge sits still.' },
+              blurb: 'Straight across the water while the bridge is parked.' },
             { id: 'bolt',  name: 'Bolt',        fare: 5,    per: 1.15, pace: 0.08,
-              blurb: 'Door to door, and about four times the bus.' },
+              blurb: 'Comes to your door. Also costs about four times the bus.' },
         ],
         abeokuta: [
             { id: 'walk',  name: 'Walk',        fare: 0,    per: 0,    pace: 0.18, tiring: true,
-              blurb: 'Free, and the town is small enough to mean it.' },
+              blurb: 'Free, and this town is small enough that you can actually do it.' },
             { id: 'okada', name: 'Okada',       fare: 0.5,  per: 0.26, pace: 0.05, risk: 0.04,
-              blurb: 'How Abeokuta actually moves. Two hundred naira and ten minutes.' },
+              blurb: 'This is how Abeokuta moves. Small money, ten minutes, you don reach.' },
             { id: 'keke',  name: 'Keke napep',  fare: 0.5,  per: 0.32, pace: 0.07,
-              blurb: 'Tricycle, and no traffic to speak of.' },
+              blurb: 'Tricycle, and there is no real traffic here to delay you.' },
             { id: 'taxi',  name: 'Shared taxi', fare: 1.5,  per: 0.40, pace: 0.06,
-              blurb: 'From the motor park, when it fills up.' },
+              blurb: 'From the motor park. It moves when it fills up, not before.' },
         ],
     },
 
@@ -249,46 +253,46 @@ const ECONOMY = {
         gigs: [
             { id: 'hawk', name: 'Hawking in traffic', hours: 4, pay: [7, 16],
               needs: {}, hurt: 2,
-              blurb: 'Between the bumpers on the expressway. Anyone can, which is why it pays least.' },
+              blurb: 'Selling between cars in go-slow. Anybody can do it, so it pays the least.' },
 
             { id: 'labour', name: 'Site labourer', hours: 8, pay: [22, 34],
               needs: {}, hurt: 5,
-              blurb: 'Block and mortar from morning. It pays, and it takes it out of you.' },
+              blurb: 'Carrying block and cement from morning. The money is good but your body will feel it.' },
 
             { id: 'conduct', name: 'Danfo conductor', hours: 7, pay: [16, 30],
               needs: { exp: 2 }, hurt: 3,
-              blurb: 'Hanging off the door calling the route. You need to know the roads.' },
+              blurb: 'Hanging on the door shouting the route. You must know the roads first.' },
 
             { id: 'dispatch', name: 'Dispatch rider', hours: 6, pay: [24, 44],
               needs: { exp: 5, item: 'bike' }, hurt: 3,
-              blurb: 'Parcels across the city. Your bike, your fuel, your risk.' },
+              blurb: 'Carrying parcels across town. Your bike, your fuel, your own risk.' },
 
             { id: 'okada', name: 'Okada', hours: 8, pay: [28, 58],
               needs: { item: 'bike' }, hurt: 4, risk: 0.07,
-              blurb: 'Carrying passengers all day. The best money on the street and the worst odds.' },
+              blurb: 'Carrying passengers all day. Best money on the street, and the worst odds.' },
 
             { id: 'pos', name: 'POS stand', hours: 6, pay: [18, 72],
               needs: { item: 'pos' }, hurt: 1, risk: 0.04,
-              blurb: 'A table, an umbrella, and everybody\'s cash. Some days are very good.' },
+              blurb: 'Table, umbrella, and everybody cash passing through your hand. Some days are very sweet.' },
         ],
 
         // A wage, weekly, paid whether or not the week went well — so long
         // as you turned up. week is what it pays; hours is one shift.
         jobs: [
             { id: 'attend', name: 'Shop attendant', week: 130, hours: 6, needs: {},
-              blurb: 'Minimum, and it arrives every week.' },
+              blurb: 'Small pay, but it enters every week without fail.' },
 
             { id: 'teach', name: 'Teacher', week: 168, hours: 7,
               needs: { item: 'cert', exp: 4 },
-              blurb: 'They ask for your papers. They do not always pay on time, but they pay.' },
+              blurb: 'They will ask for your papers. Salary comes late sometimes, but it comes.' },
 
             { id: 'civil', name: 'Civil servant', week: 196, hours: 7,
               needs: { item: 'cert', exp: 6 }, where: 'abeokuta',
-              blurb: 'A grade level and a desk. Abeokuta runs on these.' },
+              blurb: 'Grade level, desk, pension talk. This is what Abeokuta runs on.' },
 
             { id: 'teller', name: 'Bank teller', week: 242, hours: 9,
               needs: { item: 'cert', exp: 12 },
-              blurb: 'Long days behind glass, and the best wage anyone will hand you.' },
+              blurb: 'Long hours behind the counter, and the best salary anybody will give you.' },
         ],
     },
 };
@@ -368,8 +372,8 @@ const Player = {
             const lost = Math.min(p.skubu, Math.round(paid * 1.6));
             p.skubu -= lost;
             p.health = Math.max(0, p.health - 8);
-            mishap = g.id === 'pos' ? 'Robbed at the stand — lost ' + lost
-                                    : 'Came off the bike — lost ' + lost;
+            mishap = g.id === 'pos' ? 'They robbed your stand. You lost ' + lost
+                                    : 'You fell off the bike. It cost you ' + lost;
             p.history.unshift({ amount: -lost, why: mishap, at: p.hours });
         }
 
@@ -425,7 +429,7 @@ const Player = {
 
         if (did === 0) {
             p.job = null;
-            p.history.unshift({ amount: 0, why: 'Sacked — never turned up', at: p.hours });
+            p.history.unshift({ amount: 0, why: 'They sacked you — you never showed up', at: p.hours });
             return;
         }
         const full = this.wage(j.week, p.city);
@@ -501,7 +505,7 @@ const Player = {
         let mishap = null;
         if (ride.risk && Math.random() < ride.risk) {
             p.health = Math.max(0, p.health - 9);
-            mishap = 'Came off on the way — that hurt.';
+            mishap = 'You fell off on the way. That one pained you.';
             p.history.unshift({ amount: 0, why: mishap, at: p.hours });
         }
         // Walking is free in money and expensive in everything else.
@@ -755,34 +759,34 @@ const Player = {
         const slept = this.sleepHours();
 
         if (p.illness) {
-            findings.push('Malaria, active.');
-            advice.push('Tablets, today. It is taking ' + ECONOMY.health.DRAIN + ' health a day.');
+            findings.push('You have malaria right now.');
+            advice.push('Buy tablets today. It is taking ' + ECONOMY.health.DRAIN + ' health off you every day.');
         }
         if (slept < S.NEED - 1) {
-            findings.push('Sleeping about ' + slept + ' hours. Adults need ' + S.NEED + '.');
+            findings.push('You are sleeping about ' + slept + ' hours a night. You need ' + S.NEED + '.');
             advice.push(this.sleepsRough()
-                ? 'A bed anywhere — a hotel night, or a room of your own.'
-                : 'Your own place would get you the full night.');
+                ? 'Get a bed anywhere — one night in a hotel, or rent a room.'
+                : 'A better place would give you the full night.');
         }
         if (p.rest < S.TIRED) {
-            findings.push('Run down. Short sleep weakens the immune system, so the mosquitoes find it easier.');
-            advice.push('Rest before you run again.');
+            findings.push('You are run down. When you do not sleep well, sickness finds you easily.');
+            advice.push('Rest properly before you work again.');
         }
         if (p.mind < M.LOW) {
-            findings.push('Badly worn down by where and how you are living.');
+            findings.push('Where and how you are living is wearing you down badly.');
         } else if (p.mind < 55) {
-            findings.push('Showing the strain.');
+            findings.push('You are starting to show the strain.');
         }
         if (p.mind < 55) {
             const other = p.city === 'lagos' ? 'abeokuta' : 'lagos';
             if ((ECONOMY.cities[other].stress || 1) < (ECONOMY.cities[p.city].stress || 1)) {
-                advice.push(getCityName(other) + ' is quieter. The density, the traffic and the cost here all tell.');
+                advice.push(getCityName(other) + ' is quieter. The crowd, the go-slow and the cost here are telling on you.');
             }
-            if (this.sleepsRough()) advice.push('Somewhere of your own would do more than anything else.');
+            if (this.sleepsRough()) advice.push('Getting your own place would help more than anything else.');
         }
-        if (!p.fed) { findings.push('Underfed.'); advice.push('Eat before you spend on anything else.'); }
-        if (!findings.length) findings.push('Nothing to report. You are keeping on top of it.');
-        if (!advice.length)   advice.push('Carry on as you are.');
+        if (!p.fed) { findings.push('You are not eating enough.'); advice.push('Eat first, before you spend on anything else.'); }
+        if (!findings.length) findings.push('Nothing is wrong. You are managing yourself well.');
+        if (!advice.length)   advice.push('Keep doing what you are doing.');
 
         return { fee, findings, advice, health: p.health, rest: p.rest, mind: p.mind, slept };
     },
@@ -805,7 +809,7 @@ const Player = {
         } else {
             const interest = Math.max(1, Math.round(p.loan.owed * 0.08));
             p.loan.owed += interest;
-            p.history.unshift({ amount: 0, why: 'LAPO missed — owing ' + p.loan.owed, at: p.hours });
+            p.history.unshift({ amount: 0, why: 'Missed LAPO — you now owe ' + p.loan.owed, at: p.hours });
         }
     },
 
@@ -967,7 +971,7 @@ const Player = {
             } else {
                 // Cannot pay: you are out, which is the whole point of rent.
                 p.housing = 'none';
-                p.history.unshift({ amount: 0, why: 'Evicted — rent unpaid', at: p.hours });
+                p.history.unshift({ amount: 0, why: 'Landlord threw you out — rent no pay', at: p.hours });
             }
         }
 
@@ -1187,7 +1191,7 @@ const Player = {
             const q = this.get();
             if (q && q.job) {
                 q.job = null;
-                q.history.unshift({ amount: 0, why: 'Lost the job — inside', at: q.hours });
+                q.history.unshift({ amount: 0, why: 'Lost the job while you were inside', at: q.hours });
             }
         }
         const left = this.prisonLeft();
@@ -1257,7 +1261,7 @@ const Player = {
             if (p.skubu < wage) {
                 // Cannot make payroll: they walk, which is its own lesson.
                 plot.crew = 0;
-                p.history.unshift({ amount: 0, why: 'Crew walked off — unpaid', at: p.hours });
+                p.history.unshift({ amount: 0, why: 'Crew left — you no pay them', at: p.hours });
                 continue;
             }
             p.skubu -= wage;
@@ -1302,34 +1306,34 @@ const Player = {
         if (!p) return null;
         const h = ECONOMY.health;
 
-        if (p.dead)        return { text: 'You died. Start again.',            act: 'death' };
-        if (p.arrest)      return { text: 'You are due in court.',             act: 'court' };
-        if (this.inPrison()) return { text: this.prisonLeft() + 'h left inside.', act: 'prison' };
-        if (p.theft)        return { text: 'Finish the run. ' + p.theft.owed + ' to cover.', act: 'run' };
+        if (p.dead)        return { text: 'You did not make it. Start again.',            act: 'death' };
+        if (p.arrest)      return { text: 'You are due in court. Go and answer am.',             act: 'court' };
+        if (this.inPrison()) return { text: 'You are inside. ' + this.prisonLeft() + ' hours to go.', act: 'prison' };
+        if (p.theft)        return { text: 'Keep running. You still owe ' + p.theft.owed + ' for what you took.', act: 'run' };
 
         const meds = this.priceOf('meds', p.city);
         if (p.illness && p.skubu >= meds)
-            return { text: 'You have malaria. Tablets are ' + meds + '.', find: 'shop' };
+            return { text: 'You have malaria. Go and buy tablets — they cost ' + meds + '.', find: 'shop' };
         if (p.illness)
-            return { text: 'Malaria, and no ' + meds + ' for tablets. Earn it.', find: 'work' };
+            return { text: 'You have malaria and cannot afford the ' + meds + ' for tablets. Go and work.', find: 'work' };
 
         if (p.rest < ECONOMY.sleep.TIRED && p.skubu >= this.hotelPrice(p.city))
-            return { text: 'Running on ' + this.sleepHours() + ' hours. Get a bed.', find: 'hotel' };
+            return { text: 'You are only sleeping ' + this.sleepHours() + ' hours. Go and find a proper bed.', find: 'hotel' };
         if (p.mind < ECONOMY.mind.LOW)
-            return { text: 'Worn down. A clinic would tell you what is doing it.', find: 'clinic' };
+            return { text: 'You are worn out. Go to a clinic and find out why.', find: 'clinic' };
 
         if (p.health < 35)
-            return { text: 'You are in no state to run. Eat, and get a roof.', find: 'agent' };
+            return { text: 'You are too weak to work. Eat first, then find a room.', find: 'agent' };
 
         const net = this.priceOf('net', p.city);
         if (this.sleepsRough() && !this.has('net') && p.skubu >= net)
-            return { text: 'Sleeping rough. A net is ' + net + '.', find: 'shop' };
+            return { text: 'You are sleeping outside. Buy a mosquito net for ' + net + ' before malaria catches you.', find: 'shop' };
 
         const room = this.price(HOUSING_BY_ID.room.rent, p.city);
         if (this.sleepsRough() && p.skubu >= room)
-            return { text: 'You can afford a room at ' + room + '.', find: 'agent' };
+            return { text: 'You can afford a room now — ' + room + ' a week. Go and rent one.', find: 'agent' };
         if (this.sleepsRough())
-            return { text: 'Nowhere to sleep. A room is ' + room + '.', find: 'work' };
+            return { text: 'You have nowhere to sleep. A room costs ' + room + ' a week, so go and earn it.', find: 'work' };
 
         // A site with nobody on it, or nothing for them to do, is the most
         // wasteful thing you can own — so it outranks buying anything else.
@@ -1337,28 +1341,28 @@ const Player = {
             const plot = p.land[i];
             const mats = this.materialsDue(i);
             if (!plot.paid && p.skubu >= mats)
-                return { text: 'Materials for the ' + ECONOMY.land.STAGES[plot.stage].toLowerCase() + ' are ' + mats + '.', find: 'agent' };
+                return { text: 'Your site needs ' + mats + ' of materials for the ' + ECONOMY.land.STAGES[plot.stage].toLowerCase() + '.', find: 'agent' };
             if (!plot.paid)
-                return { text: 'Site stalled. ' + mats + ' for materials.', find: 'work' };
+                return { text: 'Your building has stopped. You need ' + mats + ' for materials.', find: 'work' };
             if (!plot.crew)
-                return { text: 'Materials on site and nobody working. Hire a crew.', find: 'agent' };
+                return { text: 'Materials are on site but nobody is working. Hire a crew.', find: 'agent' };
         }
 
         if (p.loan && p.loan.owed > 0 && p.skubu >= p.loan.owed)
-            return { text: 'Clear the LAPO loan — ' + p.loan.owed + ' and it stops growing.', find: 'agent' };
+            return { text: 'Pay off LAPO. It is ' + p.loan.owed + ', and it only grows from here.', find: 'agent' };
 
         const plot = this.plotPrice(p.city);
         if (!p.land.length && !p.owns.length && p.skubu >= plot)
-            return { text: 'Land here is ' + plot + '. Build, and let it out.', find: 'agent' };
+            return { text: 'Land here costs ' + plot + '. Buy a plot, build on it, then rent it out.', find: 'agent' };
 
         const house = this.price(HOUSING_BY_ID.own.buy, p.city);
         if (!p.owns.length && p.skubu >= house)
-            return { text: 'You could buy outright, at ' + house + '.', find: 'agent' };
+            return { text: 'You can buy a place outright now, for ' + house + '.', find: 'agent' };
 
         const idle = p.owns.filter(o => !o.tenant).length;
-        if (idle) return { text: idle + ' house standing empty. Let it out.', find: 'agent' };
+        if (idle) return { text: 'You have a house in ' + idle + ' sitting empty. Rent it out and let it pay you.', find: 'agent' };
 
-        return { text: 'Keep earning. Keep eating.', find: 'work' };
+        return { text: 'Keep working, keep eating. That is the whole game.', find: 'work' };
     },
 
     // ── Change notices ────────────────────────────────────────────────────

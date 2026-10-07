@@ -50,8 +50,8 @@ const Nav = {
     },
 
     _none() {
-        return '<div class="nv-empty">No one yet.' +
-            '<button class="est-btn" onclick="openCreate()">MAKE A PERSON</button></div>';
+        return '<div class="nv-empty">You have not made anybody yet.' +
+            '<button class="est-btn" onclick="openCreate()">Make your person</button></div>';
     },
 
     // ── Home ──────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ const Nav = {
                 `<div class="rm-time">${String(hour).padStart(2, '0')}:00 &nbsp;·&nbsp; ` +
                 `Day ${Player.day()}</div>` +
                 (here ? `<button class="rm-go" onclick="event.stopPropagation();CityMap.pick('${here.id}')">` +
-                    `USE &rsaquo;</button>` : '') +
+                    `Use this place &rsaquo;</button>` : '') +
             '</div>' +
 
             // What you sleep in, which is a different question.
@@ -104,10 +104,10 @@ const Nav = {
                 `<p>${cls.blurb}</p>` +
             '</div>' +
 
-            (loan ? `<div class="rm-loan">LAPO &mdash; <b>${loan.owed}</b> outstanding, ` +
-                `${Player.price(loan.perWeek, p.city)} a week. Misses grow it.` +
+            (loan ? `<div class="rm-loan">You owe LAPO <b>${loan.owed}</b>, and ` +
+                `${Player.price(loan.perWeek, p.city)} comes out every week. Miss it and it grows.` +
                 (p.skubu >= loan.owed
-                    ? '<button class="est-btn" onclick="clearLoan()">CLEAR IT</button>' : '') +
+                    ? '<button class="est-btn" onclick="clearLoan()">Pay it off</button>' : '') +
                 '</div>' : '') +
 
             this._vitals(p) +
@@ -117,7 +117,7 @@ const Nav = {
                 `<span class="nv-next-text">${g.text}</span>` +
                 '<span class="nv-next-go">&rsaquo;</span></div>' : '') +
 
-            '<div class="nv-sub">Where to go</div>' +
+            '<div class="nv-sub">Where you can go</div>' +
             `<div class="nv-quick">${this._quick(p, hour)}</div>`;
 
         // Wired rather than inlined: the goal is an object, and stringifying
@@ -155,7 +155,7 @@ const Nav = {
             const shut = !isOpen(v, hour);
             return `<button class="nv-tile${shut ? ' shut' : ''}" onclick="Nav.jump('${v.id}')">` +
                 `<b>${label}</b><span>${v.name}</span>` +
-                `<em>${shut ? 'opens ' + String(v.open[0]).padStart(2, '0') + ':00' : 'open now'}</em>` +
+                `<em>${shut ? 'opens at ' + String(v.open[0]).padStart(2, '0') + ':00' : 'open now'}</em>` +
                 '</button>';
         }).join('');
     },
@@ -217,7 +217,7 @@ const Nav = {
                     `<b>${pct}%</b></div>` +
                     `<div class="site-bar"><span style="width:${pct}%"></span></div>`;
             }).join('')
-            : '<div class="nv-none">No land.</div>';
+            : '<div class="nv-none">You do not own any land yet.</div>';
 
         const ledger = (p.history || []).slice(0, 8).map(h =>
             '<div class="nv-row led">' +
@@ -248,15 +248,18 @@ const Nav = {
             '<div id="global-lb-list"><div class="lb-loading">Loading&#8230;</div></div>' +
             '<div id="global-lb-my-rank" style="display:none"></div>' +
 
+            '<div class="nv-sub">Help</div>' +
+            '<button class="ghost" onclick="Intro.replay()">How this game works</button>' +
+
             '<div class="nv-danger">' +
-                '<button class="ghost" onclick="Nav.startOver()">Start again from nothing</button>' +
+                '<button class="ghost" onclick="Nav.startOver()">Give up and start a new life</button>' +
             '</div>';
 
         if (typeof fetchLeaderboard === 'function') fetchLeaderboard();
     },
 
     startOver() {
-        if (!confirm('Give up this life and start again with nothing?')) return;
+        if (!confirm('Give up this life? You lose everything and start again from nothing.')) return;
         Player.startAgain();
         this.go('map');
         if (typeof CityMap !== 'undefined') CityMap.build();

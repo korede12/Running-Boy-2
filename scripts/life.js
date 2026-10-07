@@ -61,6 +61,7 @@ function confirmCreate() {
     if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.centre(); }
     refreshLifeHud();
     refreshGoal();
+    if (typeof Intro !== 'undefined') Intro.maybe();
 }
 
 // ── Somewhere to sleep ────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ function renderEstate() {
     const host = document.getElementById('estate-body');
     if (!host) return;
     const p = Player.get();
-    if (!p) { host.innerHTML = '<div class="est-none">Make a person first.</div>'; return; }
+    if (!p) { host.innerHTML = '<div class="est-none">You need to make your person first.</div>'; return; }
 
     const city = getCity(p.city);
     const now  = Player.housing();
@@ -90,7 +91,7 @@ function renderEstate() {
         const fn = h.id === 'own' ? `buyHome()` : `rentHome('${h.id}')`;
         return `<div class="est-row${here ? ' on' : ''}">` +
                `<span class="est-name">${h.name}</span>` +
-               `<span class="est-sub">${h.id === 'own' ? 'Yours. Can be let out.' : 'Weekly, in advance.'}</span>` +
+               `<span class="est-sub">${h.id === 'own' ? 'Yours. You can rent it out.' : 'Paid weekly, in advance.'}</span>` +
                `<button class="est-btn" ${dis ? 'disabled' : ''} onclick="${fn}">${action}</button></div>`;
     }).join('');
 
@@ -113,7 +114,7 @@ function rentHome(id) {
 }
 function buyHome() {
     if (Player.buyHouse()) { renderEstate(); refreshLifeHud(); }
-    else flash('Not enough skubu.');
+    else flash('Your money no reach.');
 }
 function letHome(i) { Player.letOut(i); renderEstate(); refreshLifeHud(); }
 
@@ -250,7 +251,7 @@ function renderShop() {
     const host = document.getElementById('shop-body');
     if (!host) return;
     const p = Player.get();
-    if (!p) { host.innerHTML = '<div class="est-none">Make a person first.</div>'; return; }
+    if (!p) { host.innerHTML = '<div class="est-none">You need to make your person first.</div>'; return; }
 
     if (p.theft) {
         host.innerHTML =
@@ -292,7 +293,7 @@ function renderShop() {
 
 function buyGood(id) {
     if (Player.buy(id)) { renderShop(); refreshLifeHud(); }
-    else flash('Not enough skubu.');
+    else flash('Your money no reach.');
 }
 
 /// Taking it starts the run immediately — there is no screen between the
@@ -489,13 +490,13 @@ function renderLand(p) {
             `<span>${stage} &nbsp;·&nbsp; ${pct}%</span></div>` +
             `<div class="site-bar"><span style="width:${pct}%"></span></div>` +
             (plot.paid
-                ? `<div class="site-note">Materials on site. ${plot.crew
+                ? `<div class="site-note">Materials are on site. ${plot.crew
                     ? plot.crew + ' working · ' + wage + ' skubu an hour'
-                    : 'Nobody working.'}</div>`
-                : `<div class="site-note warnish">${stage} needs ${mats} in materials ` +
-                  `before anyone can start.</div>` +
+                    : 'Nobody is working.'}</div>`
+                : `<div class="site-note warnish">${stage} needs ${mats} worth of materials ` +
+                  `before anybody can start.</div>` +
                   `<button class="est-btn" ${p.skubu < mats ? 'disabled' : ''} ` +
-                  `onclick="buyMaterials(${i})">BUY MATERIALS &#10022; ${mats}</button>`) +
+                  `onclick="buyMaterials(${i})">Buy the materials &#10022; ${mats}</button>`) +
             `<div class="site-crew"><span>Crew</span>${crew}</div>` +
         `</div>`;
     }).join('');
@@ -505,14 +506,14 @@ function renderLand(p) {
         (payroll ? `<span class="est-bal">&#10022; ${payroll}/hr in wages</span>` : '') +
         `</div>` + sites +
         `<div class="est-row"><span class="est-name">A plot in ${getCity(p.city).name}</span>` +
-        `<span class="est-sub">Then ${L.STAGES.length} stages, ` +
+        `<span class="est-sub">It takes ${L.STAGES.length} stages, ` +
         `${L.STAGES.length * L.WORK_STAGE} labourer-hours, and materials.</span>` +
         `<button class="est-btn" ${p.skubu < plotCost ? 'disabled' : ''} ` +
         `onclick="buyLand()">BUY &#10022; ${plotCost}</button></div>`;
 }
 
-function buyLand()        { if (Player.buyLand()) { renderEstate(); refreshLifeHud(); } else flash('Not enough skubu.'); }
-function buyMaterials(i)  { if (Player.buyMaterials(i)) { renderEstate(); refreshLifeHud(); } else flash('Not enough skubu.'); }
+function buyLand()        { if (Player.buyLand()) { renderEstate(); refreshLifeHud(); } else flash('Your money no reach.'); }
+function buyMaterials(i)  { if (Player.buyMaterials(i)) { renderEstate(); refreshLifeHud(); } else flash('Your money no reach.'); }
 function setCrew(i, n)    { Player.setCrew(i, n); renderEstate(); refreshLifeHud(); }
 
 // ── A bed, and a check-up ─────────────────────────────────────────────────
@@ -530,8 +531,8 @@ function openHotel(v) {
             `You are getting ${Player.sleepHours()} where you are.</span>` +
             `<button class="est-btn" ${p.skubu < cost ? 'disabled' : ''} ` +
             `onclick="takeRoom()">&#10022; ${cost}</button></div>` +
-            `<div class="shop-note">Short sleep weakens the immune system, so the ` +
-            `mosquitoes find it easier, and it slows you down when you run.</div>`;
+            `<div class="shop-note">Sleep badly and you fall sick more easily, ` +
+            `and you are slower when you need to run.</div>`;
     }
     document.getElementById('hotel-modal').classList.add('open');
 }
@@ -539,7 +540,7 @@ function openHotel(v) {
 function takeRoom() {
     const r = Player.sleepAtHotel();
     closeModal('hotel-modal');
-    if (!r) { flash('Not enough skubu.'); return; }
+    if (!r) { flash('Your money no reach.'); return; }
     refreshLifeHud();
     if (typeof CityMap !== 'undefined') { CityMap.build(); CityMap.banner('Slept ' + r.hours + 'h · -' + r.cost); }
 }
@@ -553,7 +554,7 @@ function openClinic(v) {
         host.innerHTML =
             `<div class="trv-to">${v.name}</div>` +
             `<div class="est-row"><span class="est-name">Consultation</span>` +
-            `<span class="est-sub">A look at everything, and what would help.</span>` +
+            `<span class="est-sub">They check everything and tell you what to do about it.</span>` +
             `<button class="est-btn" ${p.skubu < fee ? 'disabled' : ''} ` +
             `onclick="seeDoctor()">&#10022; ${fee}</button></div>`;
     }
@@ -562,7 +563,7 @@ function openClinic(v) {
 
 function seeDoctor() {
     const r = Player.checkUp();
-    if (!r) { flash('Not enough skubu.'); return; }
+    if (!r) { flash('Your money no reach.'); return; }
     const host = document.getElementById('clinic-body');
     const bar = (label, v, cls) =>
         `<div class="vital"><span>${label}</span>` +
@@ -570,15 +571,15 @@ function seeDoctor() {
         `<b>${Math.round(v)}</b></div>`;
     if (host) {
         host.innerHTML =
-            `<div class="est-head">Vitals</div>` +
+            `<div class="est-head">How you are</div>` +
             bar('Physical', r.health, r.health < 40 ? 'low' : '') +
             bar('Rested',   r.rest,   r.rest < ECONOMY.sleep.TIRED ? 'low' : '') +
             bar('Wellbeing', r.mind,  r.mind < ECONOMY.mind.LOW ? 'low' : '') +
-            `<div class="est-head">Findings</div>` +
+            `<div class="est-head">What they found</div>` +
             r.findings.map(f => `<div class="rep">${f}</div>`).join('') +
-            `<div class="est-head">What would help</div>` +
+            `<div class="est-head">What to do about it</div>` +
             r.advice.map(a => `<div class="rep good">${a}</div>`).join('') +
-            `<button class="est-btn" onclick="closeModal('clinic-modal')">THANK YOU</button>`;
+            `<button class="est-btn" onclick="closeModal('clinic-modal')">Got it</button>`;
     }
     refreshLifeHud();
 }
@@ -602,9 +603,9 @@ function openClosed(v, hour) {
             `<div class="trv-to">${v.name}</div>` +
             `<div class="shut-when">Shut. Opens <b>${hh(from)}</b>, closes <b>${hh(to)}</b>.<br>` +
             `It is ${hh(hour)} now — <b>${wait}h</b> to wait.</div>` +
-            `<button class="est-btn" onclick="waitUntil(${wait})">WAIT ${wait}H</button>` +
-            `<div class="shop-note">Waiting is not free. Rent, hunger and the ` +
-            `mosquitoes all keep their own time.</div>`;
+            `<button class="est-btn" onclick="waitUntil(${wait})">Wait ${wait} hours</button>` +
+            `<div class="shop-note">Waiting still costs you the hours. ` +
+            `Rent and hunger keep counting.</div>`;
     }
     document.getElementById('shut-modal').classList.add('open');
 }
@@ -617,6 +618,6 @@ function waitUntil(hours) {
 }
 
 function clearLoan() {
-    if (Player.repayLoan()) { refreshLifeHud(); flash('LAPO cleared.'); }
-    else flash('Not enough skubu.');
+    if (Player.repayLoan()) { refreshLifeHud(); flash('LAPO is settled. That weight is off you.'); }
+    else flash('Your money no reach.');
 }
