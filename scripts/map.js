@@ -38,7 +38,7 @@ const MAP_ROADS = [
 
 // [x, y, w, h] — each is subdivided into buildings when drawn.
 const MAP_BLOCKS = [
-    [30, 40, 180, 230], [280, 40, 240, 230], [600, 40, 260, 120],
+    [30, 40, 180, 230], [280, 40, 240, 230], [600, 40, 260, 200],
     [30, 340, 180, 120], [280, 340, 240, 120], [600, 340, 260, 120],
     [950, 330, 240, 130], [1260, 330, 150, 130],
     [30, 540, 180, 155], [280, 540, 240, 155], [600, 540, 260, 155],
@@ -151,7 +151,16 @@ const CityMap = {
 
     // ── Blocks, broken into buildings ─────────────────────────────────────
 
+    /// Buildings stand up rather than lying flat. The camera looks north, so
+    /// each one is extruded straight up the screen: the roof is the footprint
+    /// moved up by its height and the gap left behind is the facade facing
+    /// you. That one shift is what turns a floor plan into a skyline.
+    ///
+    /// Everything is collected before anything is drawn, because a tall
+    /// building leans over whatever is behind it — so they have to go down
+    /// far to near, or the back row covers the front one.
     _buildings(s) {
+        const put = [];
         for (const [bx, by, bw, bh] of MAP_BLOCKS) {
             const cols = Math.max(1, Math.round(bw / 95));
             const rows = Math.max(1, Math.round(bh / 95));
@@ -159,29 +168,54 @@ const CityMap = {
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) {
                     const n = mrand(bx + c * 37, by + r * 53);
-                    const gap = 6 + n * 7;
+                    const gap = 7 + n * 8;
                     const x = bx + c * cw + gap / 2, y = by + r * ch + gap / 2;
                     const w = cw - gap, h = ch - gap;
-                    if (w < 14 || h < 14) continue;
-
-                    const lift = 3 + Math.round(n * 7);          // stands in for height
-                    s.push(`<rect x="${(x + lift).toFixed(1)}" y="${(y + lift).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${MAP_C.shadow}" opacity="0.75"/>`);
-                    s.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${n > 0.5 ? MAP_C.blockLit : MAP_C.block}"/>`);
-                    s.push(`<rect x="${(x + 4).toFixed(1)}" y="${(y + 4).toFixed(1)}" width="${(w - 8).toFixed(1)}" height="${(h - 8).toFixed(1)}" rx="1.5" fill="${n > 0.5 ? MAP_C.roofLit : MAP_C.roof}"/>`);
-
-                    // Rooftop clutter, which is what says "seen from above".
-                    const k = mrand(x, y);
-                    if (w > 44 && h > 34) {
-                        s.push(`<circle cx="${(x + w - 15).toFixed(1)}" cy="${(y + 14).toFixed(1)}" r="6" fill="#4a4a5c"/>`);
-                        s.push(`<rect x="${(x + 10).toFixed(1)}" y="${(y + h - 20).toFixed(1)}" width="${(12 + k * 14).toFixed(1)}" height="9" fill="#3c3c4c"/>`);
-                    }
-                    if (k > 0.62 && w > 52) {
-                        s.push(`<rect x="${(x + w / 2 - 7).toFixed(1)}" y="${(y + h / 2 - 7).toFixed(1)}" width="14" height="14" fill="#44445a"/>`);
-                    }
-                    // A lit window or two, so the city is awake.
-                    if (k > 0.78) s.push(`<rect x="${(x + 8).toFixed(1)}" y="${(y + 9).toFixed(1)}" width="8" height="6" fill="#ffcc55" opacity="0.5"/>`);
+                    if (w < 16 || h < 16) continue;
+                    put.push({ x, y, w, h, H: 16 + Math.round(n * 62), n });
                 }
             }
+        }
+        put.sort((a, b) => (a.y + a.h) - (b.y + b.h));
+        for (const b of put) this._tower(s, b);
+    },
+
+    _tower(s, { x, y, w, h, H, n }) {
+        const f = v => v.toFixed(1);
+        const roofY = y - H;                       // footprint lifted by its height
+        const wallY = y + h - H;                   // where the facade starts
+        const lit   = n > 0.5;
+
+        // Thrown on the ground behind, away from the one light in the sky.
+        s.push(`<rect x="${f(x + 7)}" y="${f(y + 6)}" width="${f(w)}" height="${f(h)}" rx="2" fill="${MAP_C.shadow}" opacity="0.6"/>`);
+
+        // Facade, darkening toward the street.
+        s.push(`<rect x="${f(x)}" y="${f(wallY)}" width="${f(w)}" height="${f(H)}" fill="${lit ? '#23232f' : '#1d1d27'}"/>`);
+        s.push(`<rect x="${f(x)}" y="${f(wallY + H * 0.62)}" width="${f(w)}" height="${f(H * 0.38)}" fill="#000" opacity="0.22"/>`);
+
+        // Windows down the facade — a few lit, so the city is awake.
+        const cols = Math.max(1, Math.floor((w - 8) / 13));
+        const rows = Math.max(1, Math.floor((H - 8) / 13));
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const wx = x + 5 + c * 13, wy = wallY + 5 + r * 13;
+                const k = mrand(wx * 3, wy * 5);
+                s.push(`<rect x="${f(wx)}" y="${f(wy)}" width="6" height="7" fill="${k > 0.74 ? '#ffcc55' : '#333349'}" opacity="${k > 0.74 ? 0.72 : 0.9}"/>`);
+            }
+        }
+
+        // Roof, with a parapet lip so the top edge catches the light.
+        s.push(`<rect x="${f(x)}" y="${f(roofY)}" width="${f(w)}" height="${f(h)}" rx="2" fill="${lit ? MAP_C.roofLit : MAP_C.roof}"/>`);
+        s.push(`<rect x="${f(x)}" y="${f(roofY)}" width="${f(w)}" height="3" fill="#4a4a60" opacity="0.8"/>`);
+
+        const k = mrand(x, y);
+        if (w > 46 && h > 32) {
+            s.push(`<circle cx="${f(x + w - 15)}" cy="${f(roofY + 15)}" r="6" fill="#4a4a5c"/>`);
+            s.push(`<rect x="${f(x + 10)}" y="${f(roofY + h - 18)}" width="${f(12 + k * 14)}" height="8" fill="#3c3c4c"/>`);
+        }
+        if (k > 0.72 && H > 46) {   // a mast on the taller ones
+            s.push(`<rect x="${f(x + w / 2 - 1.5)}" y="${f(roofY - 16)}" width="3" height="16" fill="#4a4a5c"/>`);
+            s.push(`<circle cx="${f(x + w / 2)}" cy="${f(roofY - 17)}" r="2.6" fill="#ff5a5a" opacity="0.85"/>`);
         }
     },
 
@@ -329,21 +363,37 @@ const CityMap = {
             const col  = play ? MAP_C.pin : MAP_C.pinDim;
 
             s.push(`<g class="venue${play ? ' venue-play' : ''}" data-venue="${v.id}" tabindex="0" role="button" aria-label="${v.name}">`);
-            s.push(`<circle class="v-hit" cx="${v.x}" cy="${v.y}" r="58" fill="transparent"/>`);
+            s.push(`<rect class="v-hit" x="${v.x - 70}" y="${v.y - 120}" width="140" height="190" fill="transparent"/>`);
 
-            // The landmark the pin stands on, so a venue is a building on the
-            // map and not a sticker over one.
-            s.push(`<rect x="${v.x - 52}" y="${v.y - 40}" width="104" height="80" rx="6" fill="#000" opacity="0.5" transform="translate(5 6)"/>`);
-            s.push(`<rect x="${v.x - 52}" y="${v.y - 40}" width="104" height="80" rx="6" fill="#262636" stroke="${col}" stroke-width="2.5"/>`);
-            s.push(`<rect x="${v.x - 52}" y="${v.y - 40}" width="104" height="16" rx="6" fill="${col}" opacity="${play ? 0.9 : 0.45}"/>`);
+            // The landmark stands up like everything else, so a venue is a
+            // building in the city rather than a sticker over one. It is the
+            // tallest thing on its block, which is how you find it.
+            // A toll gate on a bridge is not a tower; anything that tall there also
+            // runs off the top of the screen.
+            const BW = 108, BH = 62, VH = v.vh || 72;
+            const x0 = v.x - BW / 2, y0 = v.y - BH / 2;
+            const roofY = y0 - VH, wallY = y0 + BH - VH;
 
-            if (play) s.push(`<circle class="v-halo" cx="${v.x}" cy="${v.y + 6}" r="34" fill="none" stroke="${col}" stroke-width="2" opacity="0.35"/>`);
-            s.push(`<circle class="v-disc" cx="${v.x}" cy="${v.y + 6}" r="25" fill="#0c0c14" stroke="${col}" stroke-width="3"${play ? ' filter="url(#mglow)"' : ''}/>`);
-            s.push(`<g class="v-icon" transform="translate(${v.x} ${v.y + 6}) scale(1.4)" fill="${col}" fill-rule="evenodd" stroke="${col}" stroke-width="0.6" stroke-linejoin="round">`);
+            s.push(`<rect x="${x0 + 8}" y="${y0 + 7}" width="${BW}" height="${BH}" rx="4" fill="#000" opacity="0.6"/>`);
+            s.push(`<rect x="${x0}" y="${wallY}" width="${BW}" height="${VH}" fill="#2b2b3b"/>`);
+            s.push(`<rect x="${x0}" y="${wallY}" width="${BW}" height="${VH}" fill="none" stroke="${col}" stroke-width="1.5" opacity="${play ? 0.55 : 0.28}"/>`);
+            s.push(`<rect x="${x0}" y="${wallY + VH * 0.6}" width="${BW}" height="${VH * 0.4}" fill="#000" opacity="0.22"/>`);
+            // A lit sign band across the front, in the venue's own colour.
+            s.push(`<rect x="${x0 + 7}" y="${wallY + 12}" width="${BW - 14}" height="15" rx="2" fill="${col}" opacity="${play ? 0.92 : 0.5}"/>`);
+            for (let c = 0; c < 7; c++) {
+                s.push(`<rect x="${x0 + 9 + c * 14}" y="${wallY + 40}" width="8" height="9" fill="${c % 3 === 1 ? '#ffcc55' : '#333349'}" opacity="0.8"/>`);
+            }
+            s.push(`<rect x="${x0}" y="${roofY}" width="${BW}" height="${BH}" rx="4" fill="#3a3a4e" stroke="${col}" stroke-width="3"/>`);
+            s.push(`<rect x="${x0}" y="${roofY}" width="${BW}" height="3" fill="#4a4a60" opacity="0.8"/>`);
+
+            const cy = roofY + BH / 2;
+            if (play) s.push(`<circle class="v-halo" cx="${v.x}" cy="${cy}" r="33" fill="none" stroke="${col}" stroke-width="2" opacity="0.35"/>`);
+            s.push(`<circle class="v-disc" cx="${v.x}" cy="${cy}" r="24" fill="#0c0c14" stroke="${col}" stroke-width="3"${play ? ' filter="url(#mglow)"' : ''}/>`);
+            s.push(`<g class="v-icon" transform="translate(${v.x} ${cy}) scale(1.35)" fill="${col}" fill-rule="evenodd" stroke="${col}" stroke-width="0.6" stroke-linejoin="round">`);
             s.push(`<path d="${MAP_ICONS[v.icon] || MAP_ICONS.home}"/></g>`);
 
-            s.push(`<text class="v-name" x="${v.x}" y="${v.y + 64}" text-anchor="middle">${v.name}</text>`);
-            if (v.tag) s.push(`<text class="v-tag" x="${v.x}" y="${v.y + 82}" text-anchor="middle">${v.tag}</text>`);
+            s.push(`<text class="v-name" x="${v.x}" y="${y0 + BH + 24}" text-anchor="middle">${v.name}</text>`);
+            if (v.tag) s.push(`<text class="v-tag" x="${v.x}" y="${y0 + BH + 42}" text-anchor="middle">${v.tag}</text>`);
             s.push(`</g>`);
         }
     },
@@ -373,6 +423,29 @@ const CityMap = {
         if (hint) hint.textContent = v.name + ' — ' + v.blurb;
         openModal('char-modal');
     },
+
+    /// The city is bigger than the window, so open on the middle of it
+    /// rather than the top-left corner.
+    centre() {
+        const st = document.getElementById('city-stage');
+        if (!st) return;
+        st.scrollLeft = (st.scrollWidth  - st.clientWidth)  / 2;
+        st.scrollTop  = (st.scrollHeight - st.clientHeight) / 2;
+    },
 };
 
-document.addEventListener('DOMContentLoaded', () => CityMap.build());
+document.addEventListener('DOMContentLoaded', () => {
+    CityMap.build();
+    CityMap.centre();
+    window.addEventListener('resize', () => CityMap.centre());
+
+    // On a phone the leaderboard is folded to its header; its header opens it.
+    const lb = document.getElementById('global-lb');
+    const hd = document.getElementById('global-lb-header');
+    if (lb && hd) {
+        hd.addEventListener('click', e => {
+            if (e.target.closest('.lb-refresh-btn')) return;
+            lb.classList.toggle('open');
+        });
+    }
+});

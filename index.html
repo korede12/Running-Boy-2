@@ -15,104 +15,14 @@
 <script type="module" src="scripts/auth.js"></script>
 <script type="module" src="scripts/skubu-chain.js"></script>
 
-<!-- Stars -->
-<div id="stars"></div>
-<!-- Moon -->
-<div id="moon"></div>
+<!-- The city fills the window; everything else floats on top of it. -->
+<div id="city-stage"><div id="map"><!-- built from VENUES by map.js --></div></div>
 
-
-<!-- City silhouette -->
-<svg id="city" viewBox="0 0 800 160" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-        <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="#04040e"/>
-            <stop offset="100%" stop-color="#06060e"/>
-        </linearGradient>
-    </defs>
-    <!-- Buildings -->
-    <rect x="0"   y="60"  width="55"  height="100" fill="#0d0d18"/>
-    <polygon points="0,60 27,36 55,60"  fill="#090910"/>
-    <rect x="45"  y="85"  width="45"  height="75"  fill="#111122"/>
-    <polygon points="45,85 67,64 90,85" fill="#090910"/>
-    <rect x="82"  y="50"  width="60"  height="110" fill="#0d0d1a"/>
-    <polygon points="82,50 112,22 142,50" fill="#090910"/>
-    <rect x="130" y="72"  width="45"  height="88"  fill="#0f0f1c"/>
-    <polygon points="130,72 152,52 175,72" fill="#090910"/>
-    <rect x="166" y="45"  width="65"  height="115" fill="#0c0c18"/>
-    <polygon points="166,45 198,18 231,45" fill="#090910"/>
-    <rect x="220" y="78"  width="42"  height="82"  fill="#101020"/>
-    <polygon points="220,78 241,58 262,78" fill="#090910"/>
-    <rect x="254" y="58"  width="55"  height="102" fill="#0d0d1a"/>
-    <polygon points="254,58 281,32 309,58" fill="#090910"/>
-    <rect x="300" y="66"  width="50"  height="94"  fill="#0f0f1e"/>
-    <polygon points="300,66 325,42 350,66" fill="#090910"/>
-    <rect x="343" y="52"  width="60"  height="108" fill="#0c0c18"/>
-    <polygon points="343,52 373,26 403,52" fill="#090910"/>
-    <rect x="394" y="70"  width="48"  height="90"  fill="#0e0e1c"/>
-    <polygon points="394,70 418,48 442,70" fill="#090910"/>
-    <rect x="432" y="40"  width="65"  height="120" fill="#0d0d1a"/>
-    <polygon points="432,40 464,12 497,40" fill="#090910"/>
-    <rect x="486" y="62"  width="52"  height="98"  fill="#0f0f1e"/>
-    <polygon points="486,62 512,38 538,62" fill="#090910"/>
-    <rect x="528" y="55"  width="58"  height="105" fill="#0c0c18"/>
-    <polygon points="528,55 557,28 586,55" fill="#090910"/>
-    <rect x="576" y="74"  width="44"  height="86"  fill="#101020"/>
-    <polygon points="576,74 598,54 620,74" fill="#090910"/>
-    <rect x="610" y="48"  width="62"  height="112" fill="#0d0d1a"/>
-    <polygon points="610,48 641,20 672,48" fill="#090910"/>
-    <rect x="663" y="66"  width="50"  height="94"  fill="#0f0f1e"/>
-    <polygon points="663,66 688,44 713,66" fill="#090910"/>
-    <rect x="704" y="42"  width="58"  height="118" fill="#0c0c18"/>
-    <polygon points="704,42 733,16 762,42" fill="#090910"/>
-    <rect x="752" y="70"  width="50"  height="90"  fill="#0e0e1c"/>
-    <polygon points="752,70 777,48 802,70" fill="#090910"/>
-    <!-- Ground line -->
-    <line x1="0" y1="160" x2="800" y2="160" stroke="#4664b4" stroke-width="0.5" opacity="0.35"/>
-    <!-- Lit windows scattered -->
-    <rect x="10"  y="70"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
-    <rect x="25"  y="82"  width="7" height="7" fill="#ffcc55" opacity="0.40"/>
-    <rect x="94"  y="62"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
-    <rect x="110" y="78"  width="7" height="7" fill="#ffcc55" opacity="0.35"/>
-    <rect x="174" y="56"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
-    <rect x="192" y="72"  width="7" height="7" fill="#ffcc55" opacity="0.45"/>
-    <rect x="263" y="68"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
-    <rect x="282" y="84"  width="7" height="7" fill="#ffcc55" opacity="0.40"/>
-    <rect x="355" y="62"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
-    <rect x="370" y="78"  width="7" height="7" fill="#ffcc55" opacity="0.35"/>
-    <rect x="445" y="52"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
-    <rect x="460" y="68"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
-    <rect x="540" y="66"  width="7" height="7" fill="#ffcc55" opacity="0.40"/>
-    <rect x="558" y="80"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
-    <rect x="622" y="58"  width="7" height="7" fill="#ffcc55" opacity="0.55"/>
-    <rect x="638" y="74"  width="7" height="7" fill="#ffcc55" opacity="0.35"/>
-    <rect x="714" y="54"  width="7" height="7" fill="#ffcc55" opacity="0.50"/>
-    <rect x="730" y="70"  width="7" height="7" fill="#ffcc55" opacity="0.45"/>
-</svg>
-
-<!-- Main wrap -->
-<div id="wrap">
-    <div id="title-block">
-        <div id="title-sub">&#x25BA;&nbsp; arcade &nbsp;&#x25C4;</div>
-        <div id="title">Running<br>Boy</div>
-        <div id="title-divider"></div>
-    </div>
-
-    <div id="map-head">
-        <span class="mh-title">&#9678; LAGOS</span>
-        <span class="mh-hint">Tap a place to go there</span>
-    </div>
-    <div id="map"><!-- built from VENUES by map.js --></div>
-
-    <!-- ── Global Leaderboard ── -->
-    <div id="global-lb">
-        <div id="global-lb-header">
-            <span class="lb-title">&#9733; World Leaderboard</span>
-            <span class="lb-live">LIVE</span>
-            <span class="lb-period">TODAY</span>
-            <button class="lb-refresh-btn" id="lb-refresh-btn" onclick="fetchLeaderboard()" title="Refresh">&#8635;</button>
-        </div>
-        <div id="global-lb-list"><div class="lb-loading">Loading&#8230;</div></div>
-        <div id="global-lb-my-rank" style="display:none"></div>
+<div id="hud">
+    <div id="hud-title">
+        <div class="ht-sub">&#x25BA;&nbsp; arcade &nbsp;&#x25C4;</div>
+        <div class="ht-name">Running<br>Boy</div>
+        <div class="ht-hint">Tap a place to go there</div>
     </div>
 
     <div id="skubu-badge">
@@ -123,6 +33,17 @@
         </span>
         <button id="auth-connect-btn" class="auth-connect-btn" onclick="openModal('auth-modal')">Connect</button>
         <button id="auth-disconnect-btn" class="auth-disconnect-btn" style="display:none" onclick="SkubuAuth&&SkubuAuth.disconnect()">Sign Out</button>
+    </div>
+
+    <div id="global-lb">
+        <div id="global-lb-header">
+            <span class="lb-title">&#9733; World Leaderboard</span>
+            <span class="lb-live">LIVE</span>
+            <span class="lb-period">TODAY</span>
+            <button class="lb-refresh-btn" id="lb-refresh-btn" onclick="fetchLeaderboard()" title="Refresh">&#8635;</button>
+        </div>
+        <div id="global-lb-list"><div class="lb-loading">Loading&#8230;</div></div>
+        <div id="global-lb-my-rank" style="display:none"></div>
     </div>
 
     <div id="footer">&#169; Running Boy &nbsp;&#183;&nbsp; v1.0</div>

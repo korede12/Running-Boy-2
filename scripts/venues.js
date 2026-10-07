@@ -16,17 +16,17 @@
 const VENUES = [
     {
         id: 'home', name: 'Your Place', kind: 'open', modal: 'name-modal',
-        x: 120, y: 150, icon: 'home',
+        x: 730, y: 222, icon: 'home',
         blurb: 'Set the name you run under.',
     },
     {
         id: 'hall', name: 'Hall of Fame', kind: 'open', modal: 'hs-modal',
-        x: 400, y: 150, icon: 'cup',
+        x: 400, y: 222, icon: 'cup',
         blurb: 'Who has run the furthest.',
     },
     {
         id: 'bridge', name: 'Third Mainland', kind: 'play', mode: 'chase',
-        x: 1150, y: 200, icon: 'chase', characters: ['portable'],
+        x: 1150, y: 200, vh: 46, icon: 'chase', characters: ['portable'],
         blurb: 'Three lanes, and someone on your heels.',
         tag: 'CHASE',
     },
@@ -39,7 +39,7 @@ const VENUES = [
     },
     {
         id: 'cinema', name: 'Silverbird', kind: 'open', modal: 'about-modal',
-        x: 1070, y: 615, icon: 'film',
+        x: 1010, y: 615, icon: 'film',
         blurb: 'The story so far.',
     },
     {

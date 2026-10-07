@@ -1,39 +1,120 @@
-/* ── City map ─────────────────────────────────────────────────────────────
-   The home screen. Wider than the button column it replaced, so #wrap is
-   widened here rather than in menu.css, which the game page also reads. */
+/* ── The city is the page ─────────────────────────────────────────────────
+   Loaded after menu.css, which still styles the panels and modals. What is
+   overridden here is only the old page frame: the city takes the window and
+   everything else floats on top of it. */
 
-#wrap { max-width: 1180px; }
-
-#map-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin: 4px 2px 8px;
-    font-family: monospace;
-}
-.mh-title {
-    font-size: 12px;
-    letter-spacing: .34em;
-    color: #4488cc;
-}
-.mh-hint {
-    font-size: 10px;
-    letter-spacing: .06em;
-    color: #4a4a5c;
+html, body {
+    margin: 0;
+    height: 100%;
+    background: #15151d;
+    overflow: hidden;              /* the stage does the scrolling, not the page */
 }
 
+/* The city covers the window and is panned rather than shrunk, so a dense
+   map keeps its detail on a phone instead of becoming a thumbnail. The
+   stage scrolls; map.js centres it on the way in. */
+#city-stage {
+    position: fixed;
+    inset: 0;
+    overflow: auto;
+    background: #15151d;
+    -webkit-overflow-scrolling: touch;
+}
 #map {
-    border: 1.5px solid #1e3a6e;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #171720;
-    box-shadow: 0 0 34px rgba(30,80,180,.16), inset 0 0 60px rgba(0,0,0,.5);
-    line-height: 0;                 /* no descender gap under the svg */
+    --city-w: max(100vw, calc(100vh * 1.44), 1040px);
+    width: var(--city-w);
+    height: calc(var(--city-w) / 1.44);
+    line-height: 0;
 }
-#map-svg {
-    display: block;
-    width: 100%;
-    height: auto;
+#map-svg { display: block; width: 100%; height: 100%; }
+
+/* ── Floating UI ──────────────────────────────────────────────────────────
+   One fixed layer that ignores the pointer, so the city underneath stays
+   reachable everywhere the panels are not. */
+#hud {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    pointer-events: none;
+}
+#hud > * { pointer-events: auto; }
+
+#hud-title {
+    position: absolute;
+    top: 18px; left: 22px;
+    font-family: 'Courier New', monospace;
+    text-shadow: 0 2px 18px #000, 0 0 40px #000;
+}
+.ht-sub {
+    font-size: 10px;
+    letter-spacing: .42em;
+    color: #4488cc;
+    margin-bottom: 4px;
+}
+.ht-name {
+    font-size: 40px;
+    line-height: .92;
+    font-weight: bold;
+    letter-spacing: .04em;
+    color: #ccaa44;
+    text-shadow: 0 0 26px rgba(204,170,68,.5), 0 3px 0 #2a2010, 0 2px 20px #000;
+}
+.ht-hint {
+    margin-top: 10px;
+    font-size: 10px;
+    letter-spacing: .1em;
+    color: #8a8aa0;
+    text-shadow: 0 1px 6px #000;
+}
+
+#skubu-badge {
+    position: absolute;
+    top: 18px; right: 20px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid #2a2a3a;
+    border-radius: 10px;
+    background: rgba(8,10,20,.82);
+    backdrop-filter: blur(3px);
+}
+
+#global-lb {
+    position: absolute;
+    right: 20px; bottom: 18px;
+    width: 268px;
+    max-height: 42vh;
+    overflow: hidden;
+    margin: 0;
+    background: rgba(8,10,20,.86);
+    backdrop-filter: blur(3px);
+}
+#global-lb-list { max-height: 30vh; overflow-y: auto; }
+
+#footer {
+    position: absolute;
+    left: 22px; bottom: 16px;
+    margin: 0;
+    text-shadow: 0 1px 6px #000;
+}
+
+/* On a phone the leaderboard would cover the city, so it folds away to its
+   header and opens on a tap. */
+@media (max-width: 760px) {
+    #hud-title { top: 12px; left: 14px; }
+    .ht-name { font-size: 30px; }
+    .ht-hint { display: none; }
+    #skubu-badge { top: 12px; right: 12px; padding: 6px 9px; font-size: 11px; }
+    #global-lb {
+        right: 12px; bottom: 12px; left: 12px;
+        width: auto; max-height: 34px;
+        transition: max-height .22s ease;
+    }
+    #global-lb.open { max-height: 46vh; }
+    #global-lb-list { max-height: 32vh; }
+    #footer { display: none; }
 }
 
 /* ── Venues ───────────────────────────────────────────────────────────── */
@@ -46,48 +127,40 @@
 
 .v-name {
     font-family: monospace;
-    font-size: 12px;
+    font-size: 19px;
     letter-spacing: .05em;
-    fill: #9aa3b4;
+    fill: #cfd6e4;
     paint-order: stroke;
     stroke: #0d0d14;
-    stroke-width: 3px;
+    stroke-width: 5px;
     stroke-linejoin: round;
 }
 .v-tag {
     font-family: monospace;
-    font-size: 8.5px;
-    letter-spacing: .18em;
-    fill: #ccaa44;
+    font-size: 13px;
+    letter-spacing: .2em;
+    fill: #ffd766;
     paint-order: stroke;
     stroke: #0d0d14;
-    stroke-width: 3px;
+    stroke-width: 5px;
 }
 
-/* A place you can play pulses gently, so the map says where the game is
+/* A place you can play pulses gently, so the city says where the game is
    without needing a legend. */
 .venue-play .v-halo { animation: venuePulse 2.6s ease-in-out infinite; transform-origin: center; }
 @keyframes venuePulse {
     0%, 100% { opacity: .30; }
-    50%      { opacity: .62; }
+    50%      { opacity: .66; }
 }
 
 .venue:hover .v-disc,
-.venue:focus-visible .v-disc { stroke-width: 3; }
+.venue:focus-visible .v-disc { stroke-width: 4; }
 .venue:hover .v-name,
-.venue:focus-visible .v-name { fill: #e6ecf6; }
+.venue:focus-visible .v-name { fill: #ffffff; }
 .venue:focus-visible .v-halo { opacity: .9; }
 
-/* SVG children cannot be scaled about their own centre without a transform
-   box, so the lift is done by nudging the whole group instead. */
 .venue { transition: transform .16s ease; transform-box: fill-box; transform-origin: center; }
-.venue:hover, .venue:focus-visible { transform: translateY(-2px); }
-
-@media (max-width: 520px) {
-    .v-name { font-size: 15px; stroke-width: 4px; }
-    .v-tag  { font-size: 11px; stroke-width: 4px; }
-    .mh-hint { display: none; }
-}
+.venue:hover, .venue:focus-visible { transform: translateY(-3px); }
 
 /* ── A city that moves ────────────────────────────────────────────────────
    Traffic crossing the map, because parked traffic makes a map and traffic
@@ -108,8 +181,3 @@
     .drive { display: none; }
     .venue-play .v-halo { animation: none; opacity: .5; }
 }
-
-/* The city is drawn at 1440 wide. Below that it is panned rather than
-   shrunk, so the billboards and the traffic stay legible on a phone. */
-#map { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
-#map-svg { min-width: 860px; }
