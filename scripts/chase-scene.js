@@ -126,6 +126,13 @@ class ChaseScene extends Phaser.Scene {
         this.sessionId    = 'chase-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
         this.over         = false;
 
+        // A theft turns the run into a debt. Every coin is a skubu toward
+        // what the thing cost, and clearing it wins the run — which is the
+        // only ending this mode has had other than being caught.
+        this.theft = (typeof Player !== 'undefined' && Player.exists()) ? Player.theft() : null;
+        this.owed  = this.theft ? this.theft.owed : 0;
+        this.paid  = 0;
+
         this._buildHud();
         this._bindInput();
 
@@ -412,6 +419,10 @@ class ChaseScene extends Phaser.Scene {
             c.got = true;
             this.coinsTaken++;
             this.sound.play('snd_skubu', { volume: 0.22, rate: 1.6 });
+            if (this.theft) {
+                this.paid++;
+                if (this.paid >= this.owed) { this._paidOff(); return; }
+            }
         }
     }
 
@@ -466,7 +477,14 @@ class ChaseScene extends Phaser.Scene {
         const earned = Math.floor(this.playerZ / ChaseScene.SCORE_UNIT) + this.coinsTaken;
         if (earned !== this.score) { this.score = earned; this._checkSkubu(); }
         this.scoreLabel.setText('Score: ' + this.score);
-        this.distLabel.setText(Math.floor(this.metres) + ' m');
+        // While something is owed, the readout is the debt. Distance is not
+        // what this run is about any more.
+        if (this.theft) {
+            this.distLabel.setText(`${this.theft.name}  ${this.paid}/${this.owed}`);
+            this.distLabel.setColor(this.paid >= this.owed * 0.7 ? '#66dd66' : '#ffcc22');
+        } else {
+            this.distLabel.setText(Math.floor(this.metres) + ' m');
+        }
     }
 
     _checkSkubu() {
@@ -654,10 +672,39 @@ class ChaseScene extends Phaser.Scene {
         this.cameras.main.flash(260, 255, 255, 255);
     }
 
+    /// Covered the cost before they caught you. The run ends here rather
+    /// than carrying on, because the thing you were running for is settled.
+    _paidOff() {
+        if (this.over) return;
+        this.over = true;
+        const t = Player.settleTheft(true);
+        this.sound.play('snd_skubu', { volume: 0.7 });
+        this.cameras.main.flash(300, 120, 255, 140);
+
+        this._overlay();
+        this.add.text(GAME_W / 2, this._y(0.26), 'PAID OFF', {
+            fontSize: '32px', color: '#66dd66', fontFamily: 'monospace',
+            fontStyle: 'bold', stroke: '#000', strokeThickness: 5,
+        }).setOrigin(0.5).setDepth(101);
+
+        this.add.text(GAME_W / 2, this._y(0.37),
+            `The ${t.name} is yours.\n${this.owed} skubu covered, ${Math.floor(this.metres)} m run.`, {
+            fontSize: '13px', color: '#ffffff', fontFamily: 'monospace', align: 'center',
+        }).setOrigin(0.5).setDepth(101);
+
+        RunStore.saveScore(this.score);
+        this._menuLink(this._y(0.56));
+    }
+
     _gameOver() {
         if (this.over) return;
         this.over = true;
 
+        // Caught carrying it: it goes back, and the run was for nothing.
+        if (this.theft && typeof Player !== 'undefined') {
+            Player.settleTheft(false);
+            this.lostItem = this.theft.name;
+        }
         RunStore.saveScore(this.score);
         if (typeof Player !== 'undefined' && Player.exists()) {
             Player.payForRun(this.score, Player.cityId());
@@ -672,6 +719,11 @@ class ChaseScene extends Phaser.Scene {
         if (blockedUntil) { this._showCooldown(blockedUntil); return; }
 
         this._overlay();
+        if (this.lostItem) {
+            this.add.text(GAME_W / 2, this._y(0.185), 'They took back the ' + this.lostItem, {
+                fontSize: '13px', color: '#ff8866', fontFamily: 'monospace',
+            }).setOrigin(0.5).setDepth(101);
+        }
         this.add.text(GAME_W / 2, this._y(0.275), 'CAUGHT!', {
             fontSize: '34px', color: '#ff4444', fontFamily: 'monospace',
             fontStyle: 'bold', stroke: '#000', strokeThickness: 5,

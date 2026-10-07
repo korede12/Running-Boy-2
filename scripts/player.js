@@ -33,6 +33,16 @@ const ECONOMY = {
     ],
 
     WEEK_HOURS: 168,
+
+    // What the market sells, priced in Lagos terms. 'wears' means taking it
+    // changes what you have on, which is the point of stealing a shirt.
+    goods: [
+        { id: 'bread',  name: 'Bread and akara', price: 12, wears: null },
+        { id: 'tee',    name: 'T-shirt',         price: 26, wears: 'top' },
+        { id: 'jeans',  name: 'Jeans',           price: 38, wears: 'legs' },
+        { id: 'kicks',  name: 'Trainers',        price: 52, wears: 'shoes' },
+        { id: 'phone',  name: 'Phone',           price: 90, wears: null },
+    ],
 };
 
 const HOUSING_BY_ID = ECONOMY.housing.reduce((m, h) => (m[h.id] = h, m), {});
@@ -71,6 +81,8 @@ const Player = {
             owns:    [],          // houses owned, each { city, tenant }
             land:    [],          // plots bought, each { city, built, stage }
             hours:   0,           // in-game hours elapsed
+            items:   [],          // what you own
+            theft:   null,        // what you took and have not paid for
             rentDue: ECONOMY.WEEK_HOURS,
             history: [],
         };
@@ -223,6 +235,61 @@ const Player = {
         if (paid > 0) this.adjust(paid, 'Purse at the club');
         return paid;
     },
+
+    // ── Things ────────────────────────────────────────────────────────────
+
+    goods() { return ECONOMY.goods; },
+    priceOf(id, cityId) {
+        const g = ECONOMY.goods.find(x => x.id === id);
+        return g ? this.price(g.price, cityId) : 0;
+    },
+
+    buy(id) {
+        const p = this.get(), g = ECONOMY.goods.find(x => x.id === id);
+        if (!p || !g) return false;
+        if (!this.adjust(-this.priceOf(id, p.city), 'Bought ' + g.name)) return false;
+        this._take(g);
+        return true;
+    },
+
+    /// Walking out with it. Nothing is owned yet — that is settled by the
+    /// run, and until it is, the debt is what the chase is about.
+    steal(id) {
+        const p = this.get(), g = ECONOMY.goods.find(x => x.id === id);
+        if (!p || !g || p.theft) return false;
+        p.theft = { id: g.id, name: g.name, owed: this.priceOf(id, p.city), city: p.city };
+        this.save();
+        return p.theft;
+    },
+
+    theft() { const p = this.get(); return p ? p.theft : null; },
+
+    /// Got away with the cost covered: it is yours.
+    settleTheft(kept) {
+        const p = this.get();
+        if (!p || !p.theft) return null;
+        const t = p.theft;
+        p.theft = null;
+        if (kept) {
+            const g = ECONOMY.goods.find(x => x.id === t.id);
+            if (g) this._take(g);
+            p.history.unshift({ amount: 0, why: 'Paid off the ' + t.name, at: p.hours });
+        } else {
+            p.history.unshift({ amount: 0, why: 'Lost the ' + t.name, at: p.hours });
+        }
+        this.save();
+        return t;
+    },
+
+    _take(g) {
+        const p = this.get();
+        p.items.push({ id: g.id, name: g.name, at: p.hours });
+        // Clothes go straight on, so what you took is what you are wearing.
+        if (g.wears && g.colour) { p.avatar[g.wears] = g.colour; }
+        this.save();
+    },
+
+    has(id) { const p = this.get(); return !!(p && p.items.some(i => i.id === id)); },
 
     // ── Change notices ────────────────────────────────────────────────────
 

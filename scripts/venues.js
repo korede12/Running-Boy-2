@@ -64,7 +64,7 @@ const CITIES = [
               blurb: 'Portable is in there, and he does not lose quietly.',
               tag: 'FIGHT PORTABLE' },
 
-            { id: 'market', name: 'Balogun Market', kind: 'open', modal: 'market-modal',
+            { id: 'market', name: 'Balogun Market', kind: 'open', modal: 'shop-modal',
               gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
               blurb: 'Skubu, and what it buys.' },
         ],
@@ -115,7 +115,7 @@ const CITIES = [
               characters: ['portable'],
               blurb: 'Portable tours. Tonight he is here.', tag: 'FIGHT PORTABLE' },
 
-            { id: 'itoku', name: 'Itoku Market', kind: 'open', modal: 'market-modal',
+            { id: 'itoku', name: 'Itoku Market', kind: 'open', modal: 'shop-modal',
               gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
               blurb: 'Adire, skubu, and what it buys.' },
 
@@ -126,12 +126,20 @@ const CITIES = [
     },
 ];
 
+// Not on any map. A theft sends you here, and the chase reads the debt off
+// the player rather than off the venue.
+const THEFT_VENUE = {
+    id: 'theft', name: 'Running from the market', kind: 'play', mode: 'chase',
+    characters: ['portable'], blurb: 'Keep what you took.', tag: 'CHASE',
+};
+
 const CITY_BY_ID  = CITIES.reduce((m, c) => (m[c.id] = c, m), {});
 const VENUE_BY_ID = {};
 const VENUE_CITY  = {};
 for (const c of CITIES) {
     for (const v of c.venues) { VENUE_BY_ID[v.id] = v; VENUE_CITY[v.id] = c.id; }
 }
+VENUE_BY_ID[THEFT_VENUE.id] = THEFT_VENUE;
 
 function getVenue(id) { return VENUE_BY_ID[id] || null; }
 function getCity(id)  { return CITY_BY_ID[id] || CITIES[0]; }

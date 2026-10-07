@@ -184,3 +184,67 @@ document.addEventListener('DOMContentLoaded', () => {
     if (badge && typeof Player !== 'undefined' && Player.exists()) badge.textContent = String(Player.skubu());
     if (typeof Player !== 'undefined' && !Player.exists()) setTimeout(openCreate, 150);
 });
+
+// ── The market ────────────────────────────────────────────────────────────
+// Where the chase comes from. You can pay for a thing, or you can take it,
+// and taking it is not a free option — it starts a run you have to finish.
+
+function openShop() {
+    renderShop();
+    document.getElementById('shop-modal').classList.add('open');
+}
+
+function renderShop() {
+    const host = document.getElementById('shop-body');
+    if (!host) return;
+    const p = Player.get();
+    if (!p) { host.innerHTML = '<div class="est-none">Make a person first.</div>'; return; }
+
+    if (p.theft) {
+        host.innerHTML =
+            `<div class="est-head">Unfinished business</div>` +
+            `<div class="est-row"><span class="est-name">You are carrying a ${p.theft.name}</span>` +
+            `<span class="est-sub">${p.theft.owed} skubu not paid. Finish the run.</span>` +
+            `<button class="est-btn" onclick="runFromMarket()">RUN</button></div>`;
+        return;
+    }
+
+    const rows = Player.goods().map(g => {
+        const cost = Player.priceOf(g.id, p.city);
+        const can  = p.skubu >= cost;
+        const owned = Player.has(g.id);
+        return `<div class="est-row">` +
+            `<span class="est-name">${g.name}${owned ? ' <small>· owned</small>' : ''}</span>` +
+            `<span class="est-sub">${cost} skubu${g.wears ? ' · you would wear it' : ''}</span>` +
+            (can
+                ? `<button class="est-btn" onclick="buyGood('${g.id}')">BUY · ${cost}</button>`
+                : `<button class="est-btn take" onclick="stealGood('${g.id}')">TAKE IT</button>`) +
+            `</div>`;
+    }).join('');
+
+    host.innerHTML =
+        `<div class="est-head">${getCity(p.city).name} market<span class="est-bal">&#10022; ${p.skubu}</span></div>` +
+        rows +
+        `<div class="shop-note">Nothing you cannot afford is locked. It is just not paid for, ` +
+        `and the market will come after you for it.</div>`;
+}
+
+function buyGood(id) {
+    if (Player.buy(id)) { renderShop(); refreshLifeHud(); }
+    else flash('Not enough skubu.');
+}
+
+/// Taking it starts the run immediately — there is no screen between the
+/// decision and the consequence.
+function stealGood(id) {
+    const t = Player.steal(id);
+    if (!t) return;
+    closeModal('shop-modal');
+    runFromMarket();
+}
+
+function runFromMarket() {
+    try { localStorage.setItem('runningboy_venue', 'theft'); } catch (_) {}
+    selectCharacter('portable');
+    startGame();
+}
