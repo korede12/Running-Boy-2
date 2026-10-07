@@ -2,7 +2,7 @@
    The home screen. Wider than the button column it replaced, so #wrap is
    widened here rather than in menu.css, which the game page also reads. */
 
-#wrap { max-width: 760px; }
+#wrap { max-width: 1180px; }
 
 #map-head {
     display: flex;
@@ -88,3 +88,28 @@
     .v-tag  { font-size: 11px; stroke-width: 4px; }
     .mh-hint { display: none; }
 }
+
+/* ── A city that moves ────────────────────────────────────────────────────
+   Traffic crossing the map, because parked traffic makes a map and traffic
+   going somewhere makes a city. Purely decorative, so it is dropped entirely
+   for anyone who has asked for less motion. */
+.drive { will-change: transform; }
+.drive-e { animation: driveE 26s linear infinite; }
+.drive-w { animation: driveW 30s linear infinite; }
+@keyframes driveE {
+    from { transform: translateX(-80px); }
+    to   { transform: translateX(1520px); }
+}
+@keyframes driveW {
+    from { transform: translateX(1520px); }
+    to   { transform: translateX(-80px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .drive { display: none; }
+    .venue-play .v-halo { animation: none; opacity: .5; }
+}
+
+/* The city is drawn at 1440 wide. Below that it is panned rather than
+   shrunk, so the billboards and the traffic stay legible on a phone. */
+#map { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+#map-svg { min-width: 860px; }
