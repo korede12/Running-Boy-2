@@ -8,6 +8,13 @@ const RunStore = {
     LOSS_LIMIT:    5,                      // losses before the gate closes
     COOLDOWN_MS:   5 * 60 * 60 * 1000,     // and how long it stays shut
 
+    /// Where on the map the player last chose to go. The venue decides the
+    /// mode; the character only decides who runs it.
+    venue() {
+        try { return localStorage.getItem('runningboy_venue') || ''; }
+        catch (_) { return ''; }
+    },
+
     character() {
         try { return localStorage.getItem('runningboy_character') || 'skeleton'; }
         catch (_) { return 'skeleton'; }

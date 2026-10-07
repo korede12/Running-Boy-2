@@ -849,6 +849,11 @@ const PROC_ICONS = { stick: STICK_ICON, portable: PORTABLE_ICON };
 // ── Character selection ───────────────────────────────────────────────────
 const LS_CHARACTER = 'runningboy_character';
 
+function getVenueId() {
+    try { return localStorage.getItem('runningboy_venue') || ''; }
+    catch (_) { return ''; }
+}
+
 function getCharacter() {
     try { return localStorage.getItem(LS_CHARACTER) || 'skeleton'; }
     catch (_) { return 'skeleton'; }
@@ -871,7 +876,13 @@ function refreshCharacterCards() {
     if (!grid || typeof THEMES === 'undefined') return;
     const current = getCharacter();
 
-    grid.innerHTML = Object.entries(THEMES).map(([id, t]) => {
+    // Only the characters this place will run with, in the venue's order.
+    const allowed = (typeof venueCharacters === 'function')
+        ? venueCharacters(getVenueId())
+        : Object.keys(THEMES);
+
+    grid.innerHTML = allowed.filter(id => THEMES[id]).map(id => {
+        const t = THEMES[id];
         const sel = id === current ? ' selected' : '';
         // A theme with its own camera is worth saying so on the card; the
         // rest are told apart by how much they throw at you.

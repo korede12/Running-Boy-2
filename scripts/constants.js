@@ -6,10 +6,11 @@
 // width — and it is the shape a phone is already being held in. Every other
 // theme is side-on and needs the width, so it keeps the landscape canvas.
 // This runs before the page body exists; see RunningBoy.html.
-const CHASE_MODE = (() => {
-    try { return getTheme(RunStore.character()).mode === 'chase'; }
-    catch (_) { return false; }
+const GAME_MODE = (() => {
+    try { return resolveMode(RunStore.venue(), RunStore.character()); }
+    catch (_) { return 'run'; }
 })();
+const CHASE_MODE = GAME_MODE === 'chase';
 
 const GAME_W       = CHASE_MODE ? 450 : 800;   // 800x400 landscape; 400x400
 const GAME_H       = CHASE_MODE ? 800 : 400;   // restores the original square

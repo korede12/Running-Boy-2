@@ -114,17 +114,6 @@ const THEMES = {
         obstacles: null,
     },
 
-    // Not a runner at all. One-on-one on a Lagos street, best of three,
-    // drawn from the fight poses on the notebook page.
-    fight: {
-        label: 'Fight',
-        preview: 'assets/previews/fight.png',
-        credit: null,
-        procedural: false,
-        icon: 'portable',
-        mode: 'fight',
-        obstacles: null,
-    },
 };
 
 // ── Obstacle sets ─────────────────────────────────────────────────────────

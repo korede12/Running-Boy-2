@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Running Boy</title>
     <link rel="stylesheet" href="styles/menu.css">
+    <link rel="stylesheet" href="styles/map.css">
 </head>
 <body>
 <!-- Config must load first (defines window.THIRDWEB_CLIENT_ID etc.) -->
@@ -96,33 +97,11 @@
         <div id="title-divider"></div>
     </div>
 
-    <div id="menu">
-        <button class="menu-btn" onclick="openModal('char-modal')">
-            <span class="icon">&#9654;</span>
-            <span class="label">Start Game</span>
-            <span class="arrow">›</span>
-        </button>
-        <button class="menu-btn" onclick="openModal('hs-modal')">
-            <span class="icon">&#9733;</span>
-            <span class="label">High Scores</span>
-            <span class="arrow">›</span>
-        </button>
-        <button class="menu-btn" onclick="openModal('name-modal')">
-            <span class="icon">&#9998;</span>
-            <span class="label">Enter Name</span>
-            <span class="arrow">›</span>
-        </button>
-        <button class="menu-btn" onclick="openModal('about-modal')">
-            <span class="icon">&#9432;</span>
-            <span class="label">About the Game</span>
-            <span class="arrow">›</span>
-        </button>
-        <button class="menu-btn market-menu-btn" onclick="openModal('market-modal')">
-            <span class="icon">&#10022;</span>
-            <span class="label">Run Protection Packs</span>
-            <span class="arrow">›</span>
-        </button>
+    <div id="map-head">
+        <span class="mh-title">&#9678; LAGOS</span>
+        <span class="mh-hint">Tap a place to go there</span>
     </div>
+    <div id="map"><!-- built from VENUES by map.js --></div>
 
     <!-- ── Global Leaderboard ── -->
     <div id="global-lb">
@@ -361,6 +340,8 @@
 </div>
 
 <script src="scripts/themes.js"></script>
+<script src="scripts/venues.js"></script>
 <script src="scripts/menu.js"></script>
+<script src="scripts/map.js"></script>
 </body>
 </html>

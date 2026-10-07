@@ -1,0 +1,90 @@
+/* ── City map ─────────────────────────────────────────────────────────────
+   The home screen. Wider than the button column it replaced, so #wrap is
+   widened here rather than in menu.css, which the game page also reads. */
+
+#wrap { max-width: 760px; }
+
+#map-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 4px 2px 8px;
+    font-family: monospace;
+}
+.mh-title {
+    font-size: 12px;
+    letter-spacing: .34em;
+    color: #4488cc;
+}
+.mh-hint {
+    font-size: 10px;
+    letter-spacing: .06em;
+    color: #4a4a5c;
+}
+
+#map {
+    border: 1.5px solid #1e3a6e;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #171720;
+    box-shadow: 0 0 34px rgba(30,80,180,.16), inset 0 0 60px rgba(0,0,0,.5);
+    line-height: 0;                 /* no descender gap under the svg */
+}
+#map-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+/* ── Venues ───────────────────────────────────────────────────────────── */
+
+.venue { cursor: pointer; outline: none; }
+.venue .v-disc,
+.venue .v-icon,
+.venue .v-halo { transition: transform .16s ease, opacity .16s ease; }
+.venue .v-hit { cursor: pointer; }
+
+.v-name {
+    font-family: monospace;
+    font-size: 12px;
+    letter-spacing: .05em;
+    fill: #9aa3b4;
+    paint-order: stroke;
+    stroke: #0d0d14;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+.v-tag {
+    font-family: monospace;
+    font-size: 8.5px;
+    letter-spacing: .18em;
+    fill: #ccaa44;
+    paint-order: stroke;
+    stroke: #0d0d14;
+    stroke-width: 3px;
+}
+
+/* A place you can play pulses gently, so the map says where the game is
+   without needing a legend. */
+.venue-play .v-halo { animation: venuePulse 2.6s ease-in-out infinite; transform-origin: center; }
+@keyframes venuePulse {
+    0%, 100% { opacity: .30; }
+    50%      { opacity: .62; }
+}
+
+.venue:hover .v-disc,
+.venue:focus-visible .v-disc { stroke-width: 3; }
+.venue:hover .v-name,
+.venue:focus-visible .v-name { fill: #e6ecf6; }
+.venue:focus-visible .v-halo { opacity: .9; }
+
+/* SVG children cannot be scaled about their own centre without a transform
+   box, so the lift is done by nudging the whole group instead. */
+.venue { transition: transform .16s ease; transform-box: fill-box; transform-origin: center; }
+.venue:hover, .venue:focus-visible { transform: translateY(-2px); }
+
+@media (max-width: 520px) {
+    .v-name { font-size: 15px; stroke-width: 4px; }
+    .v-tag  { font-size: 11px; stroke-width: 4px; }
+    .mh-hint { display: none; }
+}
