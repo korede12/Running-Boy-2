@@ -303,6 +303,34 @@ const Player = {
 
     KEY: 'runningboy_player',
 
+    /// Everything a player has, and what it is when they have not got one.
+    /// create() builds from this and _migrate backfills from it, so a field
+    /// added here reaches people who are already playing.
+    BLANK: {
+        social: null, spot: null, skubu: 0, housing: 'none', loan: null,
+        owns: [], land: [], hours: 0, items: [], theft: null, arrest: null,
+        prison: 0, record: 0, health: 100, illness: null, fed: true,
+        rest: 100, mind: 100, commuted: 0, at: null, job: null, exp: 0,
+        dead: null, rentDue: 168, history: [],
+    },
+
+    /// Fill in anything a save predates. Arrays and objects are copied, not
+    /// shared, or every old save would end up pointing at the same list.
+    _migrate(p) {
+        if (!p) return p;
+        let added = 0;
+        for (const [k, v] of Object.entries(this.BLANK)) {
+            if (p[k] !== undefined) continue;
+            p[k] = Array.isArray(v) ? [] : (v && typeof v === 'object' ? Object.assign({}, v) : v);
+            added++;
+        }
+        // These two carry real meaning rather than a neutral default.
+        if (!p.social) p.social = (ECONOMY.classes[0] || {}).id || 'lapo';
+        if (!p.spot)   p.spot   = ECONOMY.SPOTS[0];
+        if (added) { try { localStorage.setItem(this.KEY, JSON.stringify(p)); } catch (_) {} }
+        return p;
+    },
+
     _p: null,
 
     /// The saved player, or null if nobody has been created yet.
@@ -310,7 +338,7 @@ const Player = {
         if (this._p) return this._p;
         try {
             const raw = localStorage.getItem(this.KEY);
-            if (raw) this._p = JSON.parse(raw);
+            if (raw) this._p = this._migrate(JSON.parse(raw));
         } catch (_) {}
         return this._p;
     },
