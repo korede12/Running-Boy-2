@@ -190,11 +190,11 @@ const Studio = {
                   'Play the pads into the loop', 'st-rec' + (this._rec ? ' on' : '')) +
                 b('Edit', 'edit()', 'Open this riff', here ? 'st-hot' : '') +
                 b('New', 'newRiff()', 'New riff here') +
-                b('Copy', 'copy()', 'Copy this riff') +
-                b('Cut', 'cut()', 'Cut this riff') +
-                b('Repeat', 'paste(false)', 'Paste the same riff — edits show everywhere') +
-                b('As new', 'paste(true)', 'Paste an independent copy') +
-                b('Clear', 'clear()', 'Remove the riff here') +
+                b('Copy', 'copy()', 'Copy what is selected') +
+                b('Cut', 'cut()', 'Cut what is selected') +
+                b('Paste', 'paste(false)', 'Paste at the cursor — riffs repeat, so edits show everywhere') +
+                b('As new', 'paste(true)', 'Paste, with independent copies of the riffs') +
+                b('Delete', 'clear()', 'Remove what is selected') +
                 b('&#9679;&rarr;', 'loopFrom()', 'Loop starts here') +
                 b('&rarr;&#9679;', 'loopTo()', 'Loop ends here') +
                 b('+ Track', 'newTrack()', 'Add a track') +
@@ -317,7 +317,8 @@ const Studio = {
             for (let bar = 0; bar < this.BARS; bar++) {
                 const x = c.x0 + bar * c.w;
                 const riff = this.riffAt(t, bar);
-                const sel = ti === this.track && bar === this.bar;
+                const sel = this.picked({ k: 'riff', t: ti, at: bar });
+                const cursor = ti === this.track && bar === this.bar;
 
                 cx.fillStyle = bar === this._playBar ? '#2e2e40' : '#14141c';
                 cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
@@ -344,6 +345,13 @@ const Studio = {
                 if (sel) {
                     cx.strokeStyle = '#ff7a45'; cx.lineWidth = 2;
                     cx.strokeRect(x + 2, y + 2, c.w - 4, c.h - 4);
+                }
+                // The cursor is not a selection — it is where the next paste
+                // lands — so it is drawn as an insertion point down the left
+                // edge rather than as a box round the cell.
+                if (cursor) {
+                    cx.fillStyle = '#ffc83d';
+                    cx.fillRect(x + 1, y + 2, 2, c.h - 4);
                 }
             }
         });
@@ -405,7 +413,7 @@ const Studio = {
         for (const clip of clips) {
             const x0 = c.x0 + clip.at * c.w;
             const span = c.w * clip.bars;
-            const sel = this._sel.indexOf(clip) !== -1;
+            const sel = this.picked({ k: 'clip', id: clip.id });
             cx.fillStyle = !clip.on ? '#1c1c24' : (clip.kind === 'mic' ? '#2a1c3c' : '#15303a');
             cx.fillRect(x0 + 1, y + 1, span - 2, c.h - 2);
 
@@ -526,28 +534,35 @@ const Studio = {
         this.tap(press.ev);
     },
 
-    /// Everything the box touches. A clip counts if it overlaps at all — you
-    /// should not have to enclose a four-bar clip to catch it.
+    /// Everything the box touches, across the whole grid: riffs on the MIDI
+    /// rows and clips on the audio lanes, in one gesture. An object counts if
+    /// it overlaps at all — having to enclose a four-bar clip to catch it is
+    /// a worse rule than it sounds.
     bandSelect(box, add) {
         const c = this.cell;
         if (!c) return;
-        const barFrom = Math.floor((box.x0 - c.x0) / c.w);
-        const barTo = Math.floor((box.x1 - c.x0) / c.w);
-        const rowFrom = Math.floor((box.y0 - c.y0) / c.h) - this.song.tracks.length;
-        const rowTo = Math.floor((box.y1 - c.y0) / c.h) - this.song.tracks.length;
+        const barFrom = Math.max(0, Math.floor((box.x0 - c.x0) / c.w));
+        const barTo = Math.min(this.BARS - 1, Math.floor((box.x1 - c.x0) / c.w));
+        const rowFrom = Math.max(0, Math.floor((box.y0 - c.y0) / c.h));
+        const rowTo = Math.min(this.rowCount() - 1, Math.floor((box.y1 - c.y0) / c.h));
 
-        const caught = Tape.clips.filter(cl =>
-            cl.lane >= rowFrom && cl.lane <= rowTo &&
-            cl.at <= barTo && cl.at + cl.bars - 1 >= barFrom);
+        const caught = [];
+        for (let row = rowFrom; row <= rowTo; row++) {
+            for (let bar = barFrom; bar <= barTo; bar++) {
+                const o = this.objAt(row, bar);
+                // A wide clip answers for every bar it covers, so skip the
+                // ones already in.
+                if (o && !caught.some(x => this.same(x, o))) caught.push(o);
+            }
+        }
 
         if (!add) this._sel = caught;
-        else for (const cl of caught) if (this._sel.indexOf(cl) === -1) this._sel.push(cl);
+        else for (const o of caught) if (!this.picked(o)) this._sel.push(o);
 
-        if (caught.length) this._audio = true;
+        if (caught.some(o => o.k === 'clip')) this._audio = true;
         this.toolbar(); this.layout(); this.refreshAct(); this.draw();
-        this.say(this._sel.length
-            ? this._sel.length + (this._sel.length === 1 ? ' clip selected' : ' clips selected')
-            : (rowTo < 0 ? 'Drag over the audio lanes to pick clips' : 'Nothing in there'));
+        const n = this._sel.length;
+        this.say(n ? n + (n === 1 ? ' object selected' : ' objects selected') : 'Nothing in there');
     },
 
     tap(ev) {
@@ -558,27 +573,30 @@ const Studio = {
         if (this.view === 'arrange') {
             const bar = Math.floor((px - c.x0) / c.w);
             const ti = Math.floor((py - c.y0) / c.h);
-            if (bar < 0 || bar >= this.BARS || ti < 0) return;
-            // Below the tracks are the audio lanes: tapping a clip selects it
-            // and opens the panel on it, tapping empty space offers a drop.
+            if (bar < 0 || bar >= this.BARS || ti < 0 || ti >= this.rowCount()) return;
+
+            // Shift or ctrl adds to the selection; a plain tap replaces it. A
+            // phone has neither, which is what All and Row in the panel are
+            // for, and what dragging a box is for.
+            const add = !!(ev.shiftKey || ev.ctrlKey || ev.metaKey);
+            const hit = this.objAt(ti, bar);
+
             if (ti >= this.song.tracks.length) {
-                const lane = ti - this.song.tracks.length;
-                if (lane >= this.audioRows()) return;
-                // Shift or ctrl adds to the selection; a plain tap replaces
-                // it. On a phone there is neither, which is what the All and
-                // Lane buttons in the panel are for.
-                const hit = Tape.at(lane, bar);
-                if (hit) this.select(hit, ev.shiftKey || ev.ctrlKey || ev.metaKey);
-                else if (!(ev.shiftKey || ev.ctrlKey || ev.metaKey)) this.selectNone();
+                if (this.laneOf(ti) >= this.audioRows()) return;
+                this.select(hit, add);
                 this._audio = true;
-                this.refreshAct(); this.toolbar(); this.draw();
+                this.toolbar(); this.layout(); this.refreshAct(); this.draw();
                 return;
             }
-            // A second tap on the same cell opens it, which saves a trip to
-            // the toolbar for the thing you most often want.
+
+            // On a MIDI row the cursor moves as well as the selection: it is
+            // where a paste lands and what New and Edit act on. A second tap
+            // on the same cell opens the riff, which saves a trip to the
+            // toolbar for the thing you most often want.
             const again = ti === this.track && bar === this.bar;
             this.track = ti; this.bar = bar;
-            if (again && this.riffAt(this.song.tracks[ti], bar)) { this.edit(); return; }
+            this.select(hit, add);
+            if (again && !add && this.riffAt(this.song.tracks[ti], bar)) { this.edit(); return; }
             this.toolbar(); this.draw(); this.refreshAct();
             return;
         }
@@ -639,7 +657,7 @@ const Studio = {
             const spb = this.song.stepsPerRiff * (15 / this.song.tempo);
             const clip = await Tape.take(f, bar, spb);
             if (!clip) continue;
-            this.select(clip, got > 0);        // everything just dropped in
+            this.selectClip(clip, got > 0);    // everything just dropped in
             bar = Math.min(this.BARS - 1, clip.at + clip.bars);
             got++;
         }
@@ -699,46 +717,18 @@ const Studio = {
         this.toolbar(); this.layout(); this.refreshAct();
     },
 
-    copy() {
-        const riff = this.riffAt(this.song.tracks[this.track], this.bar);
-        if (!riff) return;
-        this.clip = riff;
-        this.say('Copied ' + riff.name);
-    },
-
-    cut() {
-        const t = this.song.tracks[this.track];
-        const riff = this.riffAt(t, this.bar);
-        if (!riff) return;
-        this.mark('Cut');
-        this.clip = riff;
-        this.clear(true);
-        this.say('Cut ' + riff.name);
-    },
-
-    /// Repeat places the same riff, so editing it changes every repeat. As
-    /// new places an independent copy. That distinction is the whole reason
-    /// Vibe's paste has two commands.
-    paste(asNew) {
-        if (!this.clip) { this.say('Nothing copied yet'); return; }
-        this.mark(asNew ? 'Paste a copy' : 'Repeat');
-        const t = this.song.tracks[this.track];
-        const riff = asNew ? this.song.addRiff(Riff.copy(this.clip)) : this.clip;
-        this.place(t, this.bar, riff);
-        this.toolbar(); this.draw(); this.refreshAct();
-        this.say(asNew ? 'Pasted a copy' : 'Repeated ' + riff.name);
-    },
-
+    /// Delete whatever is selected — riffs, audio, or both. With nothing
+    /// selected it takes the cursor cell, which is what Clear always did.
     clear(quiet) {
-        const t = this.song.tracks[this.track];
-        const i = t.placements.findIndex(p => p.at === this.bar);
-        if (i === -1) return;
-        // Cut has already marked — one command, one step of history.
-        if (!quiet) this.mark('Clear bar');
-        t.placements.splice(i, 1);
-        this.tidy();
-        this.toolbar(); this.draw(); this.refreshAct();
-        if (!quiet) this.say('Cleared bar ' + (this.bar + 1));
+        if (!this._orCursor()) return;
+        const n = this._sel.length;
+        if (!n) return;
+        if (!quiet) this.mark(n === 1 ? 'Delete' : 'Delete ' + n);
+        this._wipe();
+        this.selectNone();
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
+        if (!quiet) this.say('Deleted ' + n + (n === 1 ? ' object' : ' objects'));
     },
 
     clearRiff() {
@@ -753,7 +743,9 @@ const Studio = {
     tidy() {
         const live = new Set();
         for (const t of this.song.tracks) for (const p of t.placements) live.add(p.riff);
-        if (this.clip) live.add(this.clip);
+        // The clipboard counts as pointing at a riff, or cutting one and
+        // pasting it back would paste an empty bar.
+        if (this._board) for (const it of this._board.items) if (it.riff) live.add(it.riff);
         this.song.riffs = this.song.riffs.filter(r => live.has(r));
     },
 
@@ -1098,149 +1090,320 @@ const Studio = {
         }
 
         if (!Tape.add(clip, take.at, take.bars)) { this.say(Tape.error); return; }
-        this.select(clip);
+        this.selectClip(clip);
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct();
         this.say('Take kept');
     },
 
-    /// The clip the dials point at: the last one picked. With one selected
-    /// that is simply the one selected.
+    // ── Rows, and the objects on them ─────────────────────────────────────
+    // The arrangement is one grid: the MIDI tracks, then the audio lanes. A
+    // row index runs through both, which is what lets one selection, one
+    // marquee and one clipboard cover the lot.
+
+    rowCount() { return this.song.tracks.length + this.audioRows(); },
+    laneOf(row) { return row - this.song.tracks.length; },
+
+    /// The object at a row and bar, as a selection item, or null.
+    objAt(row, bar) {
+        if (row < 0 || bar < 0) return null;
+        if (row < this.song.tracks.length) {
+            const t = this.song.tracks[row];
+            return t && t.placements.some(p => p.at === bar)
+                ? { k: 'riff', t: row, at: bar } : null;
+        }
+        const c = Tape.at(this.laneOf(row), bar);
+        return c ? { k: 'clip', id: c.id } : null;
+    },
+
+    same(a, b) {
+        return !!a && !!b && a.k === b.k &&
+            (a.k === 'clip' ? a.id === b.id : a.t === b.t && a.at === b.at);
+    },
+
+    picked(o) { return this._sel.some(x => this.same(x, o)); },
+
+    /// The last object picked — what the single-object controls act on.
     focus() { return this._sel[this._sel.length - 1] || null; },
 
-    /// Pick a clip. `add` toggles it in or out of the selection instead of
-    /// replacing it, which is what shift-tap does.
-    select(clip, add) {
-        if (!clip) { if (!add) this.selectNone(); return; }
-        if (!add) { this._sel = [clip]; return; }
-        const i = this._sel.indexOf(clip);
-        if (i === -1) this._sel.push(clip); else this._sel.splice(i, 1);
+    /// The focused object as an audio clip, or null when it is a riff. The
+    /// clip dials need a clip and should not guess.
+    focusClip() { return this.clipOf(this.focus()); },
+
+    clipOf(o) {
+        return o && o.k === 'clip' ? Tape.clips.find(c => c.id === o.id) || null : null;
+    },
+
+    /// An audio clip as a selection item. The selection holds plain data so
+    /// that an undo snapshot can store it, which means a clip has to be
+    /// turned into one rather than dropped in whole.
+    asItem(clip) { return clip ? { k: 'clip', id: clip.id } : null; },
+    selectClip(clip, add) { this.select(this.asItem(clip), add); },
+
+    selClips() {
+        const out = [];
+        for (const o of this._sel) { const c = this.clipOf(o); if (c) out.push(c); }
+        return out;
+    },
+
+    /// The selected riff placements, resolved. Anything that has gone since
+    /// is left out rather than crashing whatever asked for it.
+    selPlaces() {
+        const out = [];
+        for (const o of this._sel) {
+            if (o.k !== 'riff') continue;
+            const t = this.song.tracks[o.t];
+            const p = t && t.placements.find(x => x.at === o.at);
+            if (p) out.push({ ti: o.t, track: t, p });
+        }
+        return out;
+    },
+
+    /// Pick an object. `add` toggles it in or out instead of replacing the
+    /// selection, which is what shift-tap and shift-drag do.
+    select(o, add) {
+        if (!o) { if (!add) this.selectNone(); return; }
+        if (!add) { this._sel = [o]; return; }
+        const i = this._sel.findIndex(x => this.same(x, o));
+        if (i === -1) this._sel.push(o); else this._sel.splice(i, 1);
     },
 
     selectNone() { this._sel = []; },
 
+    /// Everything in the playlist — riffs and audio alike.
     selectAll() {
-        this._sel = Tape.clips.slice();
-        this._audio = true;
-        this.refreshAct(); this.toolbar(); this.draw();
-        this.say(this._sel.length ? this._sel.length + ' clips selected' : 'No clips yet');
+        const out = [];
+        this.song.tracks.forEach((t, ti) =>
+            t.placements.forEach(p => out.push({ k: 'riff', t: ti, at: p.at })));
+        for (const c of Tape.clips) out.push({ k: 'clip', id: c.id });
+        this._sel = out;
+        if (Tape.clips.length) this._audio = true;
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        this.say(out.length ? out.length + ' selected' : 'The playlist is empty');
     },
 
-    /// Everything in the focused clip's lane — the quick way to grab a part
-    /// without a keyboard.
-    selectLane() {
-        const c = this.focus();
-        if (!c) return;
-        this._sel = Tape.inLane(c.lane);
+    /// Everything in the focused object's row.
+    selectRow() {
+        const o = this.focus();
+        if (!o) return;
+        const row = o.k === 'clip'
+            ? this.song.tracks.length + (this.clipOf(o) || { lane: 0 }).lane
+            : o.t;
+        const out = [];
+        for (let bar = 0; bar < this.BARS; bar++) {
+            const x = this.objAt(row, bar);
+            // A four-bar clip answers for all four of them, so skip repeats.
+            if (x && !out.some(y => this.same(x, y))) out.push(x);
+        }
+        this._sel = out;
         this.refreshAct(); this.draw();
-        this.say(this._sel.length + ' in this lane');
+        this.say(out.length + (out.length === 1 ? ' object' : ' objects') + ' in this row');
     },
 
-    // ── Copy and paste ────────────────────────────────────────────────────
-    // The clipboard holds the shape of the selection, not its position, so a
-    // paste lands at the bar you are on and keeps the spacing between clips.
+    selectLane() { this.selectRow(); },
 
-    clipCopy() {
-        if (!this._sel.length) { this.say('Nothing selected'); return; }
-        this._board = Tape.lift(this._sel);
-        this.refreshAct();
+    // ── One clipboard ─────────────────────────────────────────────────────
+    // It holds the SHAPE of a selection, not its position: every object keeps
+    // its row and its distance from the leftmost bar of the group. A paste
+    // lands at the cursor bar, so the spacing survives and everything stays on
+    // the track or lane it came from — which is what you want when you copy
+    // four bars of a song and drop them in again later.
+
+    clipCopy() { this.copy(); },
+    clipCut() { this.cut(); },
+    clipPaste(asNew) { this.paste(asNew); },
+
+    /// With nothing selected, the cursor cell is the selection: tapping a
+    /// cell and pressing Copy should do the obvious thing.
+    _orCursor() {
+        if (this._sel.length) return true;
+        const here = this.objAt(this.track, this.bar);
+        if (!here) return false;
+        this._sel = [here];
+        return true;
+    },
+
+    copy() {
+        if (!this._orCursor()) { this.say('Nothing selected'); return; }
+        const places = this.selPlaces(), clips = this.selClips();
+        if (!places.length && !clips.length) { this.say('Nothing selected'); return; }
+
+        let bar0 = Infinity;
+        for (const x of places) bar0 = Math.min(bar0, x.p.at);
+        for (const c of clips) bar0 = Math.min(bar0, c.at);
+
+        this._board = {
+            count: places.length + clips.length,
+            riffs: places.length,
+            clips: clips.length,
+            items: places.map(x => ({ k: 'riff', t: x.ti, dBar: x.p.at - bar0, riff: x.p.riff }))
+                .concat(clips.map(c => ({ k: 'clip', lane: c.lane, dBar: c.at - bar0, clip: c }))),
+        };
+        this.toolbar(); this.refreshAct();
         this.say('Copied ' + this._board.count +
-                 (this._board.count === 1 ? ' clip' : ' clips'));
+                 (this._board.count === 1 ? ' object' : ' objects'));
     },
 
-    clipCut() {
-        if (!this._sel.length) { this.say('Nothing selected'); return; }
-        this.mark('Cut clips');
-        // The clipboard keeps the clip objects, so they survive being taken
-        // off the tape and can be pasted back.
-        this._board = Tape.lift(this._sel);
-        const count = this._sel.length;
-        Tape.removeMany(this._sel);
+    cut() {
+        if (!this._orCursor()) { this.say('Nothing selected'); return; }
+        this.mark('Cut');
+        this.copy();
+        const n = this._board ? this._board.count : 0;
+        if (!n) { this._undo.pop(); return; }
+        this._wipe();
         this.selectNone();
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct();
-        this.say('Cut ' + count + (count === 1 ? ' clip' : ' clips'));
+        this.say('Cut ' + n + (n === 1 ? ' object' : ' objects'));
     },
 
-    clipPaste() {
+    /// Take the selection off the arrangement. Riffs stay in the song until
+    /// tidy() finds nothing pointing at them — and the clipboard counts as
+    /// pointing at them, which is what lets a cut be pasted back.
+    _wipe() {
+        for (const x of this.selPlaces()) {
+            const i = x.track.placements.indexOf(x.p);
+            if (i !== -1) x.track.placements.splice(i, 1);
+        }
+        Tape.removeMany(this.selClips());
+        this.tidy();
+    },
+
+    /// Paste at the cursor bar. `asNew` is Vibe's distinction: without it a
+    /// riff is REPEATED — the same riff object, so editing it changes every
+    /// repeat — and with it each one is an independent copy.
+    paste(asNew) {
         if (!this._board) { this.say('Nothing copied yet'); return; }
-        this.mark('Paste clips');
-        const made = Tape.drop(this._board, this.bar);
+        this.mark(asNew ? 'Paste as new' : 'Paste');
+
+        const made = [];
+        let short = 0;
+        for (const it of this._board.items) {
+            const at = this.bar + it.dBar;
+            if (at < 0 || at >= this.BARS) { short++; continue; }
+
+            if (it.k === 'riff') {
+                const t = this.song.tracks[it.t];
+                if (!t) { short++; continue; }
+                const riff = asNew ? this.song.addRiff(Riff.copy(it.riff)) : it.riff;
+                this.place(t, at, riff);
+                made.push({ k: 'riff', t: it.t, at });
+            } else {
+                const twin = Tape.twin(it.clip);
+                twin.at = at;
+                const lane = Tape.roomNear(at, twin.bars, it.lane);
+                if (lane === -1) { short++; continue; }
+                twin.lane = lane;
+                Tape.clips.push(twin);
+                Tape._json = undefined;
+                made.push({ k: 'clip', id: twin.id });
+            }
+        }
+
         if (!made.length) {
             this._undo.pop();                  // nothing happened, no history
-            this.say(Tape.error || 'No room to paste that');
+            this.say('No room to paste that');
             return;
         }
         this._sel = made;
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct();
-        this.say('Pasted ' + made.length + (made.length === 1 ? ' clip' : ' clips') +
+        this.say('Pasted ' + made.length + (made.length === 1 ? ' object' : ' objects') +
                  ' at bar ' + (this.bar + 1) +
-                 (made.length < this._board.count ? ' — the rest had no room' : ''));
+                 (asNew ? ' as copies' : '') +
+                 (short ? ' — ' + short + ' had nowhere to go' : ''));
     },
 
     /// A clip called "Take 3" tells you nothing a month later.
+    /// Riffs have names too, and "Riff 7" is no more use than "Take 3".
     clipRename() {
-        const c = this.focus();
-        if (!c) return;
-        const name = (prompt('Name this clip', c.name) || '').trim();
+        const o = this.focus();
+        if (!o) return;
+        const clip = this.clipOf(o);
+        const riff = clip ? null : (this.song.tracks[o.t] || { placements: [] })
+            .placements.filter(p => p.at === o.at).map(p => p.riff)[0];
+        const thing = clip || riff;
+        if (!thing) return;
+
+        const name = (prompt('Name this ' + (clip ? 'clip' : 'riff'), thing.name) || '').trim();
         if (!name) return;
-        this.mark('Rename clip');
-        Tape.set(c, 'name', name.slice(0, 18));
+        this.mark('Rename');
+        // A riff name over 20 characters writes a file the original cannot
+        // read back the same way, which is why Vibe caps it there.
+        if (clip) Tape.set(clip, 'name', name.slice(0, 18));
+        else riff.name = name.slice(0, 20);
         this.keep();
         this.refreshAct(); this.draw();
     },
 
-    clipDrop() {
-        if (!this._sel.length) return;
-        const count = this._sel.length;
-        this.mark(count > 1 ? 'Delete clips' : 'Delete clip');
-        Tape.removeMany(this._sel);
-        this.selectNone();
-        this.keep();
-        this.toolbar(); this.layout(); this.refreshAct();
-        this.say('Clip deleted');
-    },
+    clipDrop() { this.clear(); },
 
     clipSet(field, value) {
-        if (!this._sel.length) return;
+        const clips = this.selClips();
+        if (!clips.length) return;
         this.mark(field === 'on' ? (value ? 'Unmute' : 'Mute')
                 : field === 'loop' ? 'Loop' : field === 'fit' ? 'Fit' : 'Clip');
-        for (const c of this._sel) Tape.set(c, field, value);
+        for (const c of clips) Tape.set(c, field, value);
         this.keep();
         this.refreshAct(); this.draw();
     },
 
+    /// Move the selection along the bars — riffs and audio together, in one
+    /// step of history. Nothing moves unless everything can.
     clipMove(by) {
-        if (!this._sel.length) return;
-        this.mark(this._sel.length > 1 ? 'Move clips' : 'Move clip', 'move');
+        if (!this._sel.length || !by) return;
+        const places = this.selPlaces(), clips = this.selClips();
+        if (!places.length && !clips.length) return;
+
         // Never off the left end, never past the last bar.
-        const far = Math.max.apply(null, this._sel.map(c => c.at + c.bars));
-        const near = Math.min.apply(null, this._sel.map(c => c.at));
-        if ((by < 0 && near === 0) || (by > 0 && far >= this.BARS)) { this._undo.pop(); return; }
-        if (Tape.shift(this._sel, by)) { this.keep(); this.toolbar(); this.layout(); }
-        else this._undo.pop();
-        this.refreshAct(); this.draw();
-        if (Tape.error) this.say(Tape.error);
+        let near = Infinity, far = 0;
+        for (const x of places) { near = Math.min(near, x.p.at); far = Math.max(far, x.p.at + 1); }
+        for (const c of clips) { near = Math.min(near, c.at); far = Math.max(far, c.at + c.bars); }
+        if ((by < 0 && near + by < 0) || (by > 0 && far + by > this.BARS)) return;
+
+        // A placement in the selection is not an obstacle to another one, and
+        // the order matters for the same reason it does on the tape: going
+        // right, the rightmost has to move first or it blocks its neighbour.
+        const mine = new Set(places.map(x => x.p));
+        for (const x of places) {
+            const want = x.p.at + by;
+            if (x.track.placements.some(p => !mine.has(p) && p.at === want)) {
+                this.say('Something is in the way');
+                return;
+            }
+        }
+        if (clips.length && !Tape.canShift(clips, by)) { this.say(Tape.error); return; }
+
+        this.mark(this._sel.length > 1 ? 'Move' : 'Move one', 'move');
+        const order = places.slice().sort((a, b) => by > 0 ? b.p.at - a.p.at : a.p.at - b.p.at);
+        for (const x of order) x.p.at += by;
+        if (clips.length) Tape.shift(clips, by);
+
+        // The selection names riffs by where they are, so it moves with them.
+        this._sel = this._sel.map(o => o.k === 'riff' ? { k: 'riff', t: o.t, at: o.at + by } : o);
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
     },
 
+    /// Only audio has a length to change: a riff is one bar, by definition.
     clipSpan(by) {
-        if (!this._sel.length) return;
-        this.mark(this._sel.length > 1 ? 'Resize clips' : 'Resize clip', 'span');
-        if (Tape.stretch(this._sel, by, this.BARS)) { this.keep(); this.toolbar(); this.layout(); }
+        const clips = this.selClips();
+        if (!clips.length) { this.say('A riff is one bar — only audio stretches'); return; }
+        this.mark(clips.length > 1 ? 'Resize' : 'Resize one', 'span');
+        if (Tape.stretch(clips, by, this.BARS)) { this.keep(); this.toolbar(); this.layout(); }
         else this._undo.pop();
         this.refreshAct(); this.draw();
         if (Tape.error) this.say(Tape.error);
     },
 
     async clipHear() {
-        if (!this._sel.length) return;
+        if (!this.focusClip()) return;
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
         await Tape.ready(this.synth.ctx);
         // One at a time would be a mess; the focused clip is the one you
         // just touched, which is the one you meant.
-        Tape.audition(this.focus(), this.song.stepsPerRiff * (15 / this.song.tempo));
+        Tape.audition(this.focusClip(), this.song.stepsPerRiff * (15 / this.song.tempo));
     },
 
     clipGain(v) {
@@ -1259,9 +1422,9 @@ const Studio = {
     /// A slider fires on every pixel of movement, so it updates its own
     /// read-out and the clip, and leaves the panel alone.
     clipQuiet(field, value, id, text) {
-        if (!this._sel.length) return;
+        if (!this.selClips().length) return;
         this.mark(field === 'gain' ? 'Clip level' : 'Clip nudge', 'clip-' + field);
-        for (const c of this._sel) Tape.set(c, field, value);
+        for (const c of this.selClips()) Tape.set(c, field, value);
         const n = document.getElementById(id);
         if (n) n.textContent = text;
         this.keep();
@@ -1280,7 +1443,7 @@ const Studio = {
         const esc = t => String(t).replace(/[<>&"]/g, ch =>
             ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[ch]));
         const why = Mic.why();
-        const c = this.focus();
+        const c = this.focusClip();
         let html = '';
 
         // The microphone half.
@@ -1320,26 +1483,36 @@ const Studio = {
                 '<button onclick="Studio.audioClose()">Done</button>' +
             '</div>';
 
-        // The clip half.
+        // What is selected. It can be riffs, audio, or a mixture, and the
+        // heading should say which rather than calling everything a clip.
         const many = this._sel.length;
         if (many) {
-            const title = many === 1
+            const nClips = this._sel.filter(o => o.k === 'clip').length;
+            const nRiffs = many - nClips;
+            const bits = [];
+            if (nRiffs) bits.push(nRiffs + (nRiffs === 1 ? ' riff' : ' riffs'));
+            if (nClips) bits.push(nClips + (nClips === 1 ? ' clip' : ' clips'));
+
+            const title = (many === 1 && c)
                 ? '<b>' + esc(c.name) + '</b><span>' + (Tape.KINDS[c.kind] || 'Clip') +
                   ' &middot; ' + Tape.label(c) + ' &middot; bar ' + (c.at + 1) + '</span>'
-                : '<b>' + many + ' clips</b><span>' +
-                  Tape.label({ bars: this._sel.reduce((n, x) => n + x.bars, 0) }) +
-                  ' in all &middot; moves and dials apply to every one</span>';
+                : '<b>' + bits.join(' and ') + '</b><span>' +
+                  'copy, move and delete take the lot' +
+                  (nClips ? '' : ' &middot; the dials below need audio') + '</span>';
 
             html +=
                 '<div class="clip-head">' + title + '</div>' +
                 '<div class="mic-row mic-btns">' +
-                    '<button onclick="Studio.selectAll()" title="Every clip on the tape">All</button>' +
-                    '<button onclick="Studio.selectLane()" title="Everything in this lane">Lane</button>' +
-                    '<button onclick="Studio.clipCopy()">Copy</button>' +
-                    '<button onclick="Studio.clipCut()">Cut</button>' +
-                    (this._board ? '<button class="st-hot" onclick="Studio.clipPaste()" ' +
-                        'title="Paste at bar ' + (this.bar + 1) + '">Paste &rarr; bar ' +
-                        (this.bar + 1) + '</button>' : '') +
+                    '<button onclick="Studio.selectAll()" title="Everything in the playlist">All</button>' +
+                    '<button onclick="Studio.selectRow()" title="Everything in this row">Row</button>' +
+                    '<button onclick="Studio.copy()">Copy</button>' +
+                    '<button onclick="Studio.cut()">Cut</button>' +
+                    (this._board ? '<button class="st-hot" onclick="Studio.paste(false)" ' +
+                        'title="Repeat the same riffs at bar ' + (this.bar + 1) + '">Paste &rarr; bar ' +
+                        (this.bar + 1) + '</button>' +
+                        (this._board.riffs ? '<button onclick="Studio.paste(true)" ' +
+                            'title="Paste independent copies of the riffs">As new</button>' : '')
+                        : '') +
                     (many === 1 ? '<button onclick="Studio.clipRename()">Rename</button>' : '') +
                     '<button onclick="Studio.selectNone();Studio.refreshAct();Studio.draw()">Deselect</button>' +
                 '</div>' +
@@ -1349,17 +1522,17 @@ const Studio = {
                     '<button onclick="Studio.clipSpan(-1)" title="Cover fewer bars">&minus;</button>' +
                     '<button onclick="Studio.clipSpan(1)" title="Cover more bars">+</button>' +
                     '<button onclick="Studio.clipHear()">Hear</button>' +
-                    '<button class="' + (c.loop ? 'st-hot' : '') +
+                    (c ? '<button class="' + (c.loop ? 'st-hot' : '') +
                         '" onclick="Studio.clipSet(\'loop\', ' + (!c.loop) +
                         ')" title="Repeat it to fill its bars">Loop</button>' +
                     '<button class="' + (c.fit ? 'st-hot' : '') +
                         '" onclick="Studio.clipSet(\'fit\', ' + (!c.fit) +
                         ')" title="Squeeze it into its bars — this moves the pitch">Fit</button>' +
                     '<button onclick="Studio.clipSet(\'on\', ' + (!c.on) + ')">' +
-                        (c.on ? 'Mute' : 'Unmute') + '</button>' +
-                    '<button onclick="Studio.clipDrop()" title="Delete">&#10005;</button>' +
+                        (c.on ? 'Mute' : 'Unmute') + '</button>' : '') +
+                    '<button onclick="Studio.clear()" title="Delete">&#10005;</button>' +
                 '</div>' +
-                '<div class="mic-row mic-dials">' +
+                (c ? '<div class="mic-row mic-dials">' +
                     '<label>Level <input type="range" min="0" max="2" step="0.05" value="' +
                         (c.gain == null ? 1 : c.gain) +
                         '" oninput="Studio.clipGain(+this.value)">' +
@@ -1369,7 +1542,7 @@ const Studio = {
                         (c.nudge || 0) + '" oninput="Studio.clipNudge(+this.value)">' +
                         '<b id="clip-nudge-n">' + ((c.nudge || 0) > 0 ? '+' : '') +
                         (c.nudge || 0) + 'ms</b></label>' +
-                '</div>';
+                '</div>' : '');
         }
 
         // Only where there is a mouse and a keyboard to use.
@@ -1383,11 +1556,11 @@ const Studio = {
 
         const hint = state
             || ((this._sel.length > 1
-                    ? 'Shift-tap to add or drop one. Copy, then move the cursor and paste.'
+                    ? 'Riffs and audio select together. Copy, move the cursor, paste.'
               : c ? (c.fit ? 'Fit changes the speed, so it moves the pitch too.'
-                           : 'Shift-tap another clip to work on both at once.')
+                           : 'Shift-tap anything else to work on both at once.')
                   : 'Drag a loop onto a bar, or record over the loop. ' +
-                    'Tap a clip to work on it, shift-tap to pick several.') + keys);
+                    'Tap anything in the playlist to pick it up.') + keys);
         html += '<div class="st-note">' + hint +
             (Mic.error ? ' &middot; ' + esc(Mic.error) : '') +
             (Tape.error ? ' &middot; ' + esc(Tape.error) : '') +
@@ -1420,7 +1593,7 @@ const Studio = {
                 // one is found again by the id the format keeps for exactly
                 // this sort of reason.
                 riff: this.editing ? String(this.editing.id) : null,
-                sel: this._sel.map(c => c.id),
+                sel: this._sel.map(o => Object.assign({}, o)),
             },
         };
     },
@@ -1471,8 +1644,11 @@ const Studio = {
         this.view = this.editing ? snap.where.view : 'arrange';
         this.track = Math.max(0, Math.min(snap.where.track, this.song.tracks.length - 1));
         this.bar = Math.max(0, Math.min(snap.where.bar, this.BARS - 1));
-        const want = new Set(snap.where.sel || []);
-        this._sel = Tape.clips.filter(c => want.has(c.id));
+        // Keep only what is still there — a snapshot taken before something
+        // was deleted should not bring back a selection pointing at it.
+        this._sel = (snap.where.sel || []).filter(o =>
+            o.k === 'clip' ? Tape.clips.some(c => c.id === o.id)
+                           : !!this.objAt(o.t, o.at));
 
         for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
         const grid = document.getElementById('st-grid');

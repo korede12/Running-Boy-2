@@ -163,6 +163,19 @@ const Tape = {
         for (const c of (clips || []).slice()) this.remove(c);
     },
 
+    /// Could this move be made? The studio asks before it marks history, so
+    /// a refused move leaves no empty undo step behind.
+    canShift(clips, by) {
+        if (!clips || !clips.length) return true;
+        const mine = new Set(clips);
+        if (clips.some(c => c.at + by < 0)) { this.error = 'Not past the start.'; return false; }
+        const blocked = (c, want) => this.clips.some(o =>
+            !mine.has(o) && o.lane === c.lane && want < o.at + o.bars && o.at < want + c.bars);
+        if (clips.some(c => blocked(c, c.at + by))) { this.error = 'Something is in the way.'; return false; }
+        this.error = '';
+        return true;
+    },
+
     /// Move a whole selection together. The rightmost goes first when moving
     /// right, or a clip bumps into its own neighbour on the way; and clips in
     /// the selection are not obstacles to each other.
