@@ -1225,3 +1225,23 @@ body.in-place { overflow: hidden; }
     font-family: monospace; font-size: 10.5px; color: #c9a6ff;
     min-height: 14px; margin-top: 7px;
 }
+
+/* The saved-beats list */
+.st-list { max-height: 46vh; overflow-y: auto; }
+.st-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 10px; margin-bottom: 7px;
+    border: 1px solid #23232e; border-radius: 9px; background: #15151e;
+}
+.st-row-t { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.st-row-t b {
+    font-family: monospace; font-size: 12.5px; font-weight: normal; color: #e8edf6;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.st-row-t span { font-family: monospace; font-size: 9.5px; color: #7f8aa0; }
+.st-row button {
+    flex: 0 0 auto; font-family: monospace; font-size: 11px; color: #e8edf6;
+    background: #1d1d27; border: 1px solid #2d2d3a; border-radius: 7px;
+    padding: 7px 11px; cursor: pointer;
+}
+.st-row button:active { background: #272734; }

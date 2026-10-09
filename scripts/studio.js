@@ -48,7 +48,7 @@ const Studio = {
         const host = document.getElementById('studio');
         if (!host) return;
 
-        if (!this.song) this.fresh();
+        if (!this.song) this.restore() || this.fresh();
         if (!this.synth) this.synth = new Synth();
         for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
 
@@ -61,6 +61,7 @@ const Studio = {
 
     close() {
         this.stop();
+        this.keep();                 // never lose what is on the bench
         window.removeEventListener('resize', this._resize);
         const host = document.getElementById('studio');
         if (host) { host.classList.remove('on'); host.innerHTML = ''; }
@@ -146,7 +147,9 @@ const Studio = {
                 b('&#9679;&rarr;', 'loopFrom()', 'Loop starts here') +
                 b('&rarr;&#9679;', 'loopTo()', 'Loop ends here') +
                 b('+ Track', 'newTrack()', 'Add a track') +
-                b('&minus;', 'dropTrack()', 'Remove this track');
+                b('&minus;', 'dropTrack()', 'Remove this track') +
+                b('Save', 'saveSong()', 'Save this beat') +
+                b('Beats', 'beats()', 'Your saved beats');
         } else {
             const t = this.song.tracks[this.track];
             let inst = '<select onchange="Studio.setInst(+this.value)"' +
@@ -193,7 +196,10 @@ const Studio = {
         this.draw();
     },
 
-    draw() { this.view === 'arrange' ? this.drawArrange() : this.drawEdit(); },
+    draw() {
+        if (this.view === 'beats') return;          // that screen is HTML
+        this.view === 'arrange' ? this.drawArrange() : this.drawEdit();
+    },
 
     // ── The arrangement ───────────────────────────────────────────────────
 
@@ -325,6 +331,7 @@ const Studio = {
         }
         this.draw();
         this.refreshAct();
+        this.keep();
     },
 
     preview(channel, pitch) {
@@ -346,6 +353,8 @@ const Studio = {
     back() {
         this.view = 'arrange';
         this.editing = null;
+        const grid = document.getElementById('st-grid');
+        if (grid) grid.style.display = '';
         this.toolbar(); this.layout(); this.refreshAct();
     },
 
@@ -497,6 +506,167 @@ const Studio = {
         this._step = -1; this._playBar = -1;
         if (this.synth) this.synth.allOff();
         this.toolbar(); this.draw();
+    },
+
+    // ── Keeping beats ─────────────────────────────────────────────────────
+    // A song is stored as its own .vbm bytes, base64'd — the same format the
+    // 2010 app used, so anything saved here can be exported and opened by it.
+
+    KEY: 'runningboy_vibe_songs',
+    BENCH: 'runningboy_vibe_bench',
+
+    _b64(bytes) {
+        let s = '';
+        // A chunk at a time: spreading a whole array into fromCharCode blows
+        // the argument limit on anything but a tiny song.
+        for (let i = 0; i < bytes.length; i += 0x8000)
+            s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return btoa(s);
+    },
+
+    _bytes(b64) {
+        const raw = atob(b64), out = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+        return out;
+    },
+
+    songs() {
+        try { return JSON.parse(localStorage.getItem(this.KEY)) || []; }
+        catch (_) { return []; }
+    },
+
+    _writeSongs(list) {
+        try { localStorage.setItem(this.KEY, JSON.stringify(list)); return true; }
+        catch (_) { this.say('No room left to save'); return false; }
+    },
+
+    /// Stash whatever is on the bench, so leaving and coming back — or a
+    /// reload — does not lose it.
+    keep() {
+        if (!this.song) return;
+        try { localStorage.setItem(this.BENCH, this._b64(writeVbm(this.song))); } catch (_) {}
+    },
+
+    restore() {
+        try {
+            const b = localStorage.getItem(this.BENCH);
+            if (!b) return false;
+            this.song = readVbm(this._bytes(b));
+            this.track = 0; this.bar = 0;
+            this.view = 'arrange'; this.editing = null; this.clip = null;
+            return true;
+        } catch (_) { return false; }
+    },
+
+    saveSong() {
+        const now = this.song;
+        const name = (prompt('Name this beat', now.name === 'Beat' ? '' : now.name) || '').trim();
+        if (!name) return;
+        now.name = name.slice(0, 20);
+        const list = this.songs();
+        const at = list.findIndex(x => x.name === now.name);
+        const row = { name: now.name, data: this._b64(writeVbm(now)), at: Date.now() };
+        if (at !== -1) list[at] = row; else list.push(row);
+        if (list.length > 24) list.shift();
+        if (this._writeSongs(list)) { this.keep(); this.say('Saved "' + now.name + '"'); }
+    },
+
+    loadSong(i) {
+        const row = this.songs()[i];
+        if (!row) return;
+        try {
+            this.stop();
+            this.song = readVbm(this._bytes(row.data));
+            this.track = 0; this.bar = 0;
+            this.editing = null; this.clip = null;
+            for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
+            this.keep();
+            this.view = 'arrange';
+            this.toolbar(); this.layout(); this.refreshAct();
+            this.say('Opened "' + row.name + '"');
+        } catch (_) { this.say('That beat will not open'); }
+    },
+
+    deleteSong(i) {
+        const list = this.songs();
+        if (!list[i]) return;
+        const name = list[i].name;
+        list.splice(i, 1);
+        this._writeSongs(list);
+        this.beats();
+        this.say('Deleted "' + name + '"');
+    },
+
+    /// A beat you made is a real MIDI file, and you should be able to take it
+    /// out of the game.
+    exportMid() {
+        const s = this.song;
+        const from = s.loopStart * s.stepsPerRiff;
+        const to = (s.loopEnd + 1) * s.stepsPerRiff - 1;
+        const bytes = writeMid(s, from, to);
+        try {
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/midi' }));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (s.name || 'beat').replace(/[^\w -]/g, '') + '.mid';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            this.say('Exported ' + a.download);
+        } catch (_) { this.say('Could not export'); }
+    },
+
+    /// The saved-beats screen. HTML rather than canvas, because it is a list.
+    beats() {
+        this.stop();
+        this.view = 'beats';
+        const list = this.songs();
+        const bar = document.getElementById('st-bar');
+        if (bar) bar.innerHTML =
+            '<button class="st-hot" onclick="Studio.back()">&lsaquo; Back</button>' +
+            '<button onclick="Studio.exportMid()">Export .mid</button>' +
+            '<button onclick="Studio.newBeat()">New beat</button>';
+
+        const act = document.getElementById('st-act');
+        const grid = document.getElementById('st-grid');
+        if (grid) grid.style.display = 'none';
+
+        let html = '<div class="st-list">';
+        if (!list.length) {
+            html += '<div class="st-note">Nothing saved yet. Make something, ' +
+                    'then press Save.</div>';
+        } else {
+            list.slice().reverse().forEach((row, k) => {
+                const i = list.length - 1 - k;
+                let note = '';
+                try {
+                    const sng = readVbm(this._bytes(row.data));
+                    const bars = new Set();
+                    let notes = 0;
+                    for (const t of sng.tracks) for (const p of t.placements) {
+                        bars.add(p.at);
+                        notes += p.riff.events.filter(e => e.isNote).length;
+                    }
+                    note = sng.tracks.length + ' tracks · ' + bars.size + ' bars · ' +
+                           notes + ' notes · ' + sng.tempo + ' bpm';
+                } catch (_) { note = 'unreadable'; }
+                html += '<div class="st-row">' +
+                    '<div class="st-row-t"><b>' + row.name + '</b><span>' + note + '</span></div>' +
+                    '<button onclick="Studio.loadSong(' + i + ')">Open</button>' +
+                    '<button onclick="Studio.deleteSong(' + i + ')">&#10005;</button>' +
+                    '</div>';
+            });
+        }
+        html += '</div><div class="st-say"></div>';
+        if (act) act.innerHTML = html;
+    },
+
+    newBeat() {
+        this.stop();
+        this.fresh();
+        this.keep();
+        const grid = document.getElementById('st-grid');
+        if (grid) grid.style.display = '';
+        this.toolbar(); this.layout(); this.refreshAct();
     },
 
     // ── Selling it ────────────────────────────────────────────────────────
