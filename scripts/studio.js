@@ -19,7 +19,15 @@ const Studio = {
     SESSION_HOURS: 3,
     MIN_TRACKS: 2,
     MIN_NOTES: 10,
-    BARS: 8,                 // how far the arrangement runs
+    BARS: 32,                // how far the arrangement runs
+    BAR_MIN: 38,             // a bar narrower than this cannot show a name
+    BAR_MAX: 76,
+    ROW_H: 54,
+    GUTTER: 9,               // where the scrollbars live
+
+    bar0: 0,                 // leftmost bar on screen
+    row0: 0,                 // topmost row on screen
+    _follow: true,           // keep the playhead in view until told otherwise
 
     song: null,
     synth: null,
@@ -138,7 +146,11 @@ const Studio = {
         cv.addEventListener('pointerdown', e => this.down(e));
         cv.addEventListener('pointermove', e => this.move(e));
         cv.addEventListener('pointerup', e => this.up(e));
-        cv.addEventListener('pointercancel', () => { this._press = null; this._band = null; this.draw(); });
+        cv.addEventListener('pointercancel', () => {
+            this._press = null; this._band = null; this._scroll = null; this.draw();
+        });
+
+        cv.addEventListener('wheel', e => this.wheel(e), { passive: false });
         this._resize = () => this.layout();
         window.addEventListener('resize', this._resize);
         this._keys = e => this.key(e);
@@ -261,10 +273,20 @@ const Studio = {
         cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
         if (this.view === 'arrange') {
-            const rows = Math.max(this.song.tracks.length + this.audioRows(), 1);
-            this.cell = { x0: 58, y0: 18,
-                          w: (w - 64) / this.BARS,
-                          h: Math.min(54, (h - 26) / rows) };
+            const x0 = 58, y0 = 18, g = this.GUTTER;
+            const total = Math.max(this.rowCount(), 1);
+
+            // Aim for about eight bars across, but never so narrow that a
+            // name will not fit and never so wide it looks empty.
+            const across = Math.max(40, w - x0 - g);
+            const cw = Math.min(this.BAR_MAX, Math.max(this.BAR_MIN, across / 8));
+            const cols = Math.max(1, Math.min(this.BARS, Math.floor(across / cw)));
+
+            const down = Math.max(30, h - y0 - g);
+            const rows = Math.max(1, Math.min(total, Math.floor(down / this.ROW_H)));
+
+            this.cell = { x0, y0, w: cw, h: this.ROW_H, cols, rows, total };
+            this.clampView();
         } else {
             this.cell = { x0: 52, y0: 4,
                           w: (w - 58) / this.song.stepsPerRiff,
@@ -279,6 +301,79 @@ const Studio = {
         const used = Tape.lanes();
         const spare = (this._audio || Mic.rolling()) && used < Tape.MAX_LANES ? 1 : 0;
         return used + spare;
+    },
+
+    // ── Scrolling ─────────────────────────────────────────────────────────
+
+    cols() { return this.cell && this.cell.cols ? this.cell.cols : this.BARS; },
+    visRows() { return this.cell && this.cell.rows ? this.cell.rows : this.rowCount(); },
+    maxBar0() { return Math.max(0, this.BARS - this.cols()); },
+    maxRow0() { return Math.max(0, this.rowCount() - this.visRows()); },
+
+    clampView() {
+        this.bar0 = Math.max(0, Math.min(this.maxBar0(), this.bar0 | 0));
+        this.row0 = Math.max(0, Math.min(this.maxRow0(), this.row0 | 0));
+    },
+
+    /// Move the window. Anything the user does to it stops the playhead
+    /// dragging it around underneath them.
+    scrollBy(dBar, dRow, byHand) {
+        const was = this.bar0 + ':' + this.row0;
+        this.bar0 += dBar || 0;
+        this.row0 += dRow || 0;
+        this.clampView();
+        if (byHand) this._follow = false;
+        if (was === this.bar0 + ':' + this.row0) return false;
+        this.draw();
+        return true;
+    },
+
+    scrollTo(bar0, row0, byHand) {
+        if (bar0 != null) this.bar0 = bar0;
+        if (row0 != null) this.row0 = row0;
+        this.clampView();
+        if (byHand) this._follow = false;
+        this.draw();
+    },
+
+    /// Bring a bar and a row into view, moving as little as possible.
+    reveal(row, bar) {
+        let moved = false;
+        if (bar != null) {
+            if (bar < this.bar0) { this.bar0 = bar; moved = true; }
+            else if (bar > this.bar0 + this.cols() - 1) { this.bar0 = bar - this.cols() + 1; moved = true; }
+        }
+        if (row != null) {
+            if (row < this.row0) { this.row0 = row; moved = true; }
+            else if (row > this.row0 + this.visRows() - 1) { this.row0 = row - this.visRows() + 1; moved = true; }
+        }
+        if (moved) { this.clampView(); this.draw(); }
+        return moved;
+    },
+
+    /// Where a bar and a row land on the glass — or off it.
+    colX(bar) { return this.cell.x0 + (bar - this.bar0) * this.cell.w; },
+    rowY(row) { return this.cell.y0 + (row - this.row0) * this.cell.h; },
+    onScreen(bar) { return bar >= this.bar0 && bar < this.bar0 + this.cols(); },
+    rowOn(row) { return row >= this.row0 && row < this.row0 + this.visRows(); },
+
+    /// The scrollbar tracks, in canvas pixels. Null when everything fits —
+    /// a scrollbar for something that does not scroll is just clutter.
+    scrollbars() {
+        const c = this.cell;
+        if (!c || !c.cols) return { h: null, v: null };
+        const gridW = c.cols * c.w, gridH = c.rows * c.h;
+        const h = this.BARS > c.cols
+            ? { x: c.x0, y: c.y0 + gridH + 1, w: gridW, h: this.GUTTER - 2,
+                from: c.x0 + (this.bar0 / this.BARS) * gridW,
+                len: Math.max(18, (c.cols / this.BARS) * gridW) }
+            : null;
+        const v = this.rowCount() > c.rows
+            ? { x: c.x0 + gridW + 1, y: c.y0, w: this.GUTTER - 2, h: gridH,
+                from: c.y0 + (this.row0 / this.rowCount()) * gridH,
+                len: Math.max(18, (c.rows / this.rowCount()) * gridH) }
+            : null;
+        return { h, v };
     },
 
     draw() {
@@ -297,8 +392,9 @@ const Studio = {
 
         // Bar numbers, and the loop span across the top.
         cx.font = '9px monospace';
-        for (let bar = 0; bar < this.BARS; bar++) {
-            const x = c.x0 + bar * c.w;
+        for (let i = 0; i < c.cols; i++) {
+            const bar = this.bar0 + i;
+            const x = c.x0 + i * c.w;
             const inLoop = bar >= this.song.loopStart && bar <= this.song.loopEnd;
             cx.fillStyle = inLoop ? '#ffc83d' : '#4a5160';
             cx.fillText(String(bar + 1), x + 3, 8);
@@ -306,7 +402,8 @@ const Studio = {
         }
 
         this.song.tracks.forEach((t, ti) => {
-            const y = c.y0 + ti * c.h;
+            if (!this.rowOn(ti)) return;
+            const y = this.rowY(ti);
             cx.font = '10px monospace';
             cx.fillStyle = ti === this.track ? '#e8edf6' : '#6a7183';
             cx.fillText(t.name.slice(0, 7), 5, y + c.h / 2 - 5);
@@ -314,8 +411,9 @@ const Studio = {
             cx.font = '8px monospace';
             cx.fillText('ch' + (t.channel + 1), 5, y + c.h / 2 + 7);
 
-            for (let bar = 0; bar < this.BARS; bar++) {
-                const x = c.x0 + bar * c.w;
+            for (let i = 0; i < c.cols; i++) {
+                const bar = this.bar0 + i;
+                const x = c.x0 + i * c.w;
                 const riff = this.riffAt(t, bar);
                 const sel = this.picked({ k: 'riff', t: ti, at: bar });
                 const cursor = ti === this.track && bar === this.bar;
@@ -356,15 +454,15 @@ const Studio = {
             }
         });
 
-        for (let lane = 0; lane < this.audioRows(); lane++) this.drawLane(cx, c, lane);
+        for (let lane = 0; lane < this.audioRows(); lane++)
+            if (this.rowOn(this.song.tracks.length + lane)) this.drawLane(cx, c, lane);
+        this.drawScrollbars(cx, c);
 
         // The bar a dragged file will land on. This was being worked out and
         // then not drawn, which is the same as not working it out.
-        if (this._drag != null) {
-            const x = c.x0 + this._drag * c.w;
+        if (this._drag != null && this.onScreen(this._drag)) {
             cx.strokeStyle = '#4cc9d9'; cx.lineWidth = 2;
-            cx.strokeRect(x + 1, c.y0,
-                          c.w - 2, (this.song.tracks.length + this.audioRows()) * c.h);
+            cx.strokeRect(this.colX(this._drag) + 1, c.y0, c.w - 2, c.rows * c.h);
         }
 
         if (this._band) {
@@ -381,7 +479,7 @@ const Studio = {
     /// arrangement because that is where they play from, even though the
     /// audio itself lives outside the .vbm.
     drawLane(cx, c, lane) {
-        const y = c.y0 + (this.song.tracks.length + lane) * c.h;
+        const y = this.rowY(this.song.tracks.length + lane);
         const clips = Tape.inLane(lane);
         const arming = Mic.rolling() && lane === Tape.lanes();
 
@@ -393,8 +491,9 @@ const Studio = {
         cx.fillText(arming ? 'rec' : (clips.length ? clips.length + ' clip' + (clips.length > 1 ? 's' : '') : 'drop here'),
                     5, y + c.h / 2 + 7);
 
-        for (let bar = 0; bar < this.BARS; bar++) {
-            const x = c.x0 + bar * c.w;
+        for (let i = 0; i < c.cols; i++) {
+            const bar = this.bar0 + i;
+            const x = c.x0 + i * c.w;
             cx.fillStyle = bar === this._playBar ? '#2e2e40' : '#14141c';
             cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
         }
@@ -404,14 +503,16 @@ const Studio = {
             const from = this.song.loopStart;
             const bars = this.song.loopEnd - from + 1;
             cx.fillStyle = '#3a1620';
-            cx.fillRect(c.x0 + from * c.w + 1, y + 1, c.w * bars - 2, c.h - 2);
+            cx.fillRect(this.colX(from) + 1, y + 1, c.w * bars - 2, c.h - 2);
             const w = (c.w * bars - 4) * Math.min(1, Mic.level);
             cx.fillStyle = '#e8384f';
-            cx.fillRect(c.x0 + from * c.w + 2, y + c.h / 2 - 1, Math.max(1, w), 2);
+            cx.fillRect(this.colX(from) + 2, y + c.h / 2 - 1, Math.max(1, w), 2);
         }
 
         for (const clip of clips) {
-            const x0 = c.x0 + clip.at * c.w;
+            // A clip can start off the left of the window and still be on it.
+            if (clip.at + clip.bars <= this.bar0 || clip.at >= this.bar0 + c.cols) continue;
+            const x0 = this.colX(clip.at);
             const span = c.w * clip.bars;
             const sel = this.picked({ k: 'clip', id: clip.id });
             cx.fillStyle = !clip.on ? '#1c1c24' : (clip.kind === 'mic' ? '#2a1c3c' : '#15303a');
@@ -439,6 +540,34 @@ const Studio = {
                 cx.strokeStyle = '#ff7a45'; cx.lineWidth = 2;
                 cx.strokeRect(x0 + 2, y + 2, span - 4, c.h - 4);
             }
+        }
+    },
+
+    /// Drawn on the canvas rather than made of HTML, because the thing they
+    /// scroll is a canvas and a real scrollbar would sit outside it and
+    /// measure the wrong box. They appear only when there is something past
+    /// the edge — a scrollbar for something that does not scroll is clutter.
+    drawScrollbars(cx, c) {
+        const sb = this.scrollbars();
+        for (const b of [sb.h, sb.v]) {
+            if (!b) continue;
+            cx.fillStyle = '#14141c';
+            cx.fillRect(b.x, b.y, b.w, b.h);
+            cx.fillStyle = this._scroll ? '#ff7a45' : '#3a3a4a';
+            if (b === sb.h) cx.fillRect(b.from, b.y + 1, b.len, b.h - 2);
+            else cx.fillRect(b.x + 1, b.from, b.w - 2, b.len);
+        }
+        // A reminder that there is more song off to the right, for anyone
+        // who has not noticed the scrollbar.
+        if (sb.h && this.bar0 + c.cols < this.BARS) {
+            cx.fillStyle = '#4a5160';
+            cx.font = '8px monospace';
+            cx.fillText('\u203a', c.x0 + c.cols * c.w - 6, 8);
+        }
+        if (sb.h && this.bar0 > 0) {
+            cx.fillStyle = '#4a5160';
+            cx.font = '8px monospace';
+            cx.fillText('\u2039', c.x0 - 6, 8);
         }
     },
 
@@ -482,6 +611,7 @@ const Studio = {
 
     _press: null,
     _band: null,             // the box being dragged, in canvas pixels
+    _scroll: null,           // a scrollbar being dragged
 
     /// Canvas-relative coordinates.
     point(ev) {
@@ -491,11 +621,83 @@ const Studio = {
         return { x: ev.clientX - r.left, y: ev.clientY - r.top };
     },
 
+    /// A wheel moves the window: down the rows, or along the bars with shift
+    /// held — or with a trackpad that swipes sideways of its own accord.
+    wheel(ev) {
+        if (this.view !== 'arrange') return false;
+        const dx = ev.deltaX || 0, dy = ev.deltaY || 0;
+        const sideways = ev.shiftKey || Math.abs(dx) > Math.abs(dy);
+        const amount = sideways ? (dx || dy) : dy;
+        if (!amount) return false;
+        const step = amount > 0 ? 1 : -1;
+        const moved = this.scrollBy(sideways ? step : 0, sideways ? 0 : step, true);
+        if (moved && ev.preventDefault) ev.preventDefault();
+        return moved;
+    },
+
+    /// Keep the playhead in view while it runs — but only until the window
+    /// is moved by hand, or playing a long arrangement would drag the view
+    /// away from whoever is trying to look at bar 2.
+    followPlayhead(bar) {
+        if (!this._follow) return false;
+        return this.reveal(null, bar);
+    },
+
+    /// Which scrollbar a point is on, if either.
+    onScrollbar(p) {
+        const sb = this.scrollbars();
+        const hit = (b) => b && p.x >= b.x - 3 && p.x <= b.x + b.w + 3 &&
+                           p.y >= b.y - 3 && p.y <= b.y + b.h + 3;
+        if (hit(sb.h)) return 'h';
+        if (hit(sb.v)) return 'v';
+        return null;
+    },
+
+    /// Drag the bar, or tap the track to jump a page.
+    scrollGrab(which, p) {
+        const sb = this.scrollbars();
+        const b = which === 'h' ? sb.h : sb.v;
+        if (!b) return;
+        const along = which === 'h' ? p.x : p.y;
+        const start = which === 'h' ? b.x : b.y;
+        const length = which === 'h' ? b.w : b.h;
+        const total = which === 'h' ? this.BARS : this.rowCount();
+
+        // Grabbed the bar itself: remember where, so it does not jump.
+        if (along >= b.from && along <= b.from + b.len) {
+            this._scroll = { which, grip: along - b.from, start, length, total };
+            this.draw();
+            return;
+        }
+        // Tapped the track: centre the bar on the tap, which is what a page
+        // jump amounts to when the whole thing is this small.
+        this._scroll = { which, grip: b.len / 2, start, length, total };
+        this.scrollDrag(p);
+    },
+
+    scrollDrag(p) {
+        const d = this._scroll;
+        if (!d) return;
+        const along = (d.which === 'h' ? p.x : p.y) - d.grip - d.start;
+        const at = Math.round((along / d.length) * d.total);
+        if (d.which === 'h') this.scrollTo(at, null, true);
+        else this.scrollTo(null, at, true);
+    },
+
     down(ev) {
         // Inside a riff a tap is a note and should land immediately; there is
         // nothing to drag, so there is nothing to wait for.
         if (this.view !== 'arrange') { this.tap(ev); return; }
         const p = this.point(ev);
+
+        const bar = this.onScrollbar(p);
+        if (bar) {
+            this.scrollGrab(bar, p);
+            const cv0 = document.getElementById('st-grid');
+            if (cv0 && cv0.setPointerCapture) { try { cv0.setPointerCapture(ev.pointerId); } catch (_) {} }
+            return;
+        }
+
         this._press = {
             x: p.x, y: p.y,
             add: !!(ev.shiftKey || ev.ctrlKey || ev.metaKey),
@@ -510,6 +712,7 @@ const Studio = {
     },
 
     move(ev) {
+        if (this._scroll) { this.scrollDrag(this.point(ev)); return; }
         if (!this._press) return;
         const p = this.point(ev);
         const dx = p.x - this._press.x, dy = p.y - this._press.y;
@@ -522,6 +725,7 @@ const Studio = {
     },
 
     up() {
+        if (this._scroll) { this._scroll = null; this.draw(); return; }
         const press = this._press;
         this._press = null;
         if (!press) return;
@@ -541,10 +745,11 @@ const Studio = {
     bandSelect(box, add) {
         const c = this.cell;
         if (!c) return;
-        const barFrom = Math.max(0, Math.floor((box.x0 - c.x0) / c.w));
-        const barTo = Math.min(this.BARS - 1, Math.floor((box.x1 - c.x0) / c.w));
-        const rowFrom = Math.max(0, Math.floor((box.y0 - c.y0) / c.h));
-        const rowTo = Math.min(this.rowCount() - 1, Math.floor((box.y1 - c.y0) / c.h));
+        const barFrom = Math.max(0, this.bar0 + Math.floor((box.x0 - c.x0) / c.w));
+        const barTo = Math.min(this.BARS - 1, this.bar0 + Math.floor((box.x1 - c.x0) / c.w));
+        const rowFrom = Math.max(0, this.row0 + Math.floor((box.y0 - c.y0) / c.h));
+        const rowTo = Math.min(this.rowCount() - 1,
+                              this.row0 + Math.floor((box.y1 - c.y0) / c.h));
 
         const caught = [];
         for (let row = rowFrom; row <= rowTo; row++) {
@@ -571,8 +776,8 @@ const Studio = {
         const px = ev.clientX - r.left, py = ev.clientY - r.top;
 
         if (this.view === 'arrange') {
-            const bar = Math.floor((px - c.x0) / c.w);
-            const ti = Math.floor((py - c.y0) / c.h);
+            const bar = this.bar0 + Math.floor((px - c.x0) / c.w);
+            const ti = this.row0 + Math.floor((py - c.y0) / c.h);
             if (bar < 0 || bar >= this.BARS || ti < 0 || ti >= this.rowCount()) return;
 
             // Shift or ctrl adds to the selection; a plain tap replaces it. A
@@ -624,7 +829,7 @@ const Studio = {
         const cv = document.getElementById('st-grid');
         if (!cv || !this.cell) return 0;
         const r = cv.getBoundingClientRect();
-        const bar = Math.floor((ev.clientX - r.left - this.cell.x0) / this.cell.w);
+        const bar = this.bar0 + Math.floor((ev.clientX - r.left - this.cell.x0) / this.cell.w);
         return Math.max(0, Math.min(this.BARS - 1, bar));
     },
 
@@ -798,6 +1003,7 @@ const Studio = {
     /// On the arrange screen this plays the loop across bars; inside a riff
     /// it loops that one bar, which is what you want while editing it.
     async play() {
+        this._follow = true;         // a fresh start earns the view back
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
         await Tape.ready(this.synth.ctx);
@@ -836,6 +1042,7 @@ const Studio = {
                                            Math.max(1, e.dur) * (15 / this.song.tempo));
                 }
             }
+            if (!editing && step === 0) this.followPlayhead(bar);
             this.draw();
             step++;
             if (step >= steps) { step = 0; if (!editing) bar = bar >= to ? from : bar + 1; }
@@ -977,6 +1184,38 @@ const Studio = {
             }
             return;
         }
+        // The arrows move the cursor a cell at a time and drag the window
+        // along behind it, so you can walk off the edge of the screen and
+        // the screen comes with you. Shift extends the selection as it goes.
+        const STEP = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (STEP[ev.key] && this.view === 'arrange' && !this._rec) {
+            ev.preventDefault();
+            const [dx, dy] = STEP[ev.key];
+            this.bar = Math.max(0, Math.min(this.BARS - 1, this.bar + dx));
+            const rows = this.rowCount();
+            let row = Math.max(0, Math.min(rows - 1, this.cursorRow() + dy));
+            // The cursor lives on a track; stepping onto an audio lane moves
+            // the window there without pretending the cursor went too.
+            if (row < this.song.tracks.length) this.track = row;
+            this.reveal(row, this.bar);
+            const here = this.objAt(row, this.bar);
+            if (ev.shiftKey) { if (here) this.select(here, true); }
+            else this.select(here, false);
+            this.toolbar(); this.draw(); this.refreshAct();
+            return;
+        }
+        if (ev.key === 'Home' && this.view === 'arrange') {
+            ev.preventDefault();
+            this.bar = 0; this.scrollTo(0, null, true);
+            this.toolbar(); this.draw();
+            return;
+        }
+        if (ev.key === 'End' && this.view === 'arrange') {
+            ev.preventDefault();
+            this.bar = this.BARS - 1; this.scrollTo(this.maxBar0(), null, true);
+            this.toolbar(); this.draw();
+            return;
+        }
         if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._sel.length && !this._rec) {
             ev.preventDefault();
             this.clipDrop();
@@ -1102,6 +1341,10 @@ const Studio = {
     // marquee and one clipboard cover the lot.
 
     rowCount() { return this.song.tracks.length + this.audioRows(); },
+
+    /// The row the cursor is on. It only ever sits on a track, but moving
+    /// through the grid has to count rows, not tracks.
+    cursorRow() { return Math.min(this.track, this.song.tracks.length - 1); },
     laneOf(row) { return row - this.song.tracks.length; },
 
     /// The object at a row and bar, as a selection item, or null.

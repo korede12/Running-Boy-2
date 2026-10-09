@@ -1368,5 +1368,7 @@ body.in-place { overflow: hidden; }
    gets a ceiling and scrolls past it, and the grid keeps a floor — so what
    you are editing is always visible, whatever is open. */
 .st-bar { max-height: 27vh; overflow-y: auto; }
-.st-act { max-height: 48vh; overflow-y: auto; }
-#st-grid { min-height: 120px; }
+.st-act { max-height: 44vh; overflow-y: auto; }
+/* Enough for two rows and a scrollbar: below that the arrangement stops
+   being an arrangement. Anything further down is reached by scrolling. */
+#st-grid { min-height: 150px; }
