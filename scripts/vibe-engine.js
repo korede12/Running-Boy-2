@@ -102,15 +102,25 @@ class Synth {
         this._noise = null;
     }
 
+    /// Take over a context and build the output chain on it. Live playback
+    /// passes a real AudioContext; a bounce passes an offline one, and gets
+    /// the same compressor and the same headroom — which is why an export
+    /// sounds like what you were listening to.
+    adopt(ctx) {
+        this.ctx = ctx;
+        this._noise = null;                             // tied to a sample rate
+        this.out = ctx.createGain();
+        this.out.gain.value = 0.22;                     // headroom for chords
+        const squash = ctx.createDynamicsCompressor();
+        this.out.connect(squash).connect(ctx.destination);
+        return ctx;
+    }
+
     /// Browsers will not make a sound until a gesture starts the context.
     async start() {
         if (!this.ctx) {
             const AC = window.AudioContext || window.webkitAudioContext;
-            this.ctx = new AC();
-            this.out = this.ctx.createGain();
-            this.out.gain.value = 0.22;                 // headroom for chords
-            const squash = this.ctx.createDynamicsCompressor();
-            this.out.connect(squash).connect(this.ctx.destination);
+            this.adopt(new AC());
         }
         if (this.ctx.state === 'suspended') await this.ctx.resume();
         return this.ctx;
@@ -128,10 +138,12 @@ class Synth {
         return (this._noise = buf);
     }
 
-    /// Play a note. `seconds` is how long it is held.
-    hit(channel, note, velocity = 100, seconds = 0.25) {
+    /// Play a note. `seconds` is how long it is held; `when` is the context
+    /// time it starts, which only a bounce needs to say — live, now is the
+    /// only answer there is.
+    hit(channel, note, velocity = 100, seconds = 0.25, when = null) {
         if (!this.ctx) return;
-        const t = this.ctx.currentTime;
+        const t = when == null ? this.ctx.currentTime : when;
         const gain = Math.min(1, velocity / 127) * 0.9;
         if (channel === 9) this.drum(note, gain, t);
         else this.voice(this.programs.get(channel) ?? 0, note, gain, seconds, t);

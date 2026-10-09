@@ -1361,3 +1361,12 @@ body.in-place { overflow: hidden; }
 /* A history button with nothing behind it: still there, so the toolbar does
    not reflow every time you undo, but visibly not worth pressing. */
 .st-dim { opacity: .34; }
+
+/* The studio has grown a lot of controls. On a phone the toolbar wraps to
+   several rows and the audio panel can run to four rows of buttons, which
+   between them could squeeze the arrangement off the screen entirely. Each
+   gets a ceiling and scrolls past it, and the grid keeps a floor — so what
+   you are editing is always visible, whatever is open. */
+.st-bar { max-height: 27vh; overflow-y: auto; }
+.st-act { max-height: 48vh; overflow-y: auto; }
+#st-grid { min-height: 120px; }

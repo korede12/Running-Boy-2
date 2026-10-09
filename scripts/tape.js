@@ -107,6 +107,192 @@ const Tape = {
         return clip;
     },
 
+    /// A copy that shares its audio. Two placements of one recording are not
+    /// two recordings; the bytes and the decoded buffer are the same objects,
+    /// so a paste costs one small object and no decoding.
+    twin(clip) {
+        const out = Object.assign({}, clip);
+        out.id = this._id++;
+        return out;
+    },
+
+    /// The lowest free lane, but try the one asked for first — so pasting a
+    /// two-lane selection keeps its two lanes instead of collapsing them.
+    roomNear(at, bars, prefer, except) {
+        const free = lane => lane >= 0 && lane < this.MAX_LANES && !this.clips.some(c =>
+            c !== except && c.lane === lane && at < c.at + c.bars && c.at < at + bars);
+        if (prefer != null && free(prefer)) return prefer;
+        return this.room(at, bars, except);
+    },
+
+    /// Lift a selection into a clipboard, keeping its shape: where each clip
+    /// sits relative to the earliest bar and the topmost lane of the group.
+    lift(clips) {
+        if (!clips || !clips.length) return null;
+        const at = Math.min.apply(null, clips.map(c => c.at));
+        const lane = Math.min.apply(null, clips.map(c => c.lane));
+        return {
+            count: clips.length,
+            bars: Math.max.apply(null, clips.map(c => c.at + c.bars)) - at,
+            items: clips.map(c => ({ clip: c, dAt: c.at - at, dLane: c.lane - lane })),
+        };
+    },
+
+    /// Drop a clipboard at a bar. Every clip keeps its offset and tries for
+    /// its own lane. Returns what landed — which may be less than was on the
+    /// clipboard, if the tape ran out of room.
+    drop(board, at) {
+        if (!board) return [];
+        const made = [];
+        for (const it of board.items) {
+            const want = Math.max(0, (at || 0) + it.dAt);
+            const clip = this.twin(it.clip);
+            clip.at = want;
+            const lane = this.roomNear(want, clip.bars, it.dLane);
+            if (lane === -1) { this.error = 'The tape ran out of free lanes.'; break; }
+            clip.lane = lane;
+            this.clips.push(clip);
+            made.push(clip);
+        }
+        if (made.length) { this.error = made.length === board.items.length ? '' : this.error; }
+        this._json = undefined;
+        return made;
+    },
+
+    removeMany(clips) {
+        for (const c of (clips || []).slice()) this.remove(c);
+    },
+
+    /// Move a whole selection together. The rightmost goes first when moving
+    /// right, or a clip bumps into its own neighbour on the way; and clips in
+    /// the selection are not obstacles to each other.
+    shift(clips, by) {
+        if (!clips || !clips.length || !by) return false;
+        const mine = new Set(clips);
+        const order = clips.slice().sort((a, b) => by > 0 ? b.at - a.at : a.at - b.at);
+        if (order.some(c => c.at + by < 0)) return false;
+        const blocked = (c, want) => this.clips.some(o =>
+            !mine.has(o) && o.lane === c.lane && want < o.at + o.bars && o.at < want + c.bars);
+        if (order.some(c => blocked(c, c.at + by))) {
+            this.error = 'Something is in the way.';
+            return false;
+        }
+        for (const c of order) { c.at += by; this.stopOne(c); }
+        this.error = '';
+        this._json = undefined;
+        return true;
+    },
+
+    /// Grow or shrink a selection. Same rule about not blocking itself.
+    stretch(clips, by, maxBars) {
+        if (!clips || !clips.length || !by) return false;
+        const mine = new Set(clips);
+        const blocked = (c, span) => this.clips.some(o =>
+            !mine.has(o) && o.lane === c.lane && c.at < o.at + o.bars && o.at < c.at + span);
+        const wants = clips.map(c => Math.max(1, Math.min((maxBars || 99) - c.at, c.bars + by)));
+        if (clips.some((c, i) => blocked(c, wants[i]))) {
+            this.error = 'Something is in the way.';
+            return false;
+        }
+        clips.forEach((c, i) => { c.bars = wants[i]; this.stopOne(c); });
+        this.error = '';
+        this._json = undefined;
+        return true;
+    },
+
+    /// A copy that shares its audio. Two placements of one recording are not
+    /// two recordings; the bytes and the decoded buffer are the same objects,
+    /// so a paste costs one small object and no decoding.
+    twin(clip) {
+        const out = Object.assign({}, clip);
+        out.id = this._id++;
+        return out;
+    },
+
+    /// The lowest free lane, but try the one asked for first — so pasting a
+    /// two-lane selection keeps its two lanes instead of collapsing them.
+    roomNear(at, bars, prefer, except) {
+        const free = lane => lane >= 0 && lane < this.MAX_LANES && !this.clips.some(c =>
+            c !== except && c.lane === lane && at < c.at + c.bars && c.at < at + bars);
+        if (prefer != null && free(prefer)) return prefer;
+        return this.room(at, bars, except);
+    },
+
+    /// Lift a selection into a clipboard, keeping its shape: where each clip
+    /// sits relative to the earliest bar and the topmost lane of the group.
+    lift(clips) {
+        if (!clips || !clips.length) return null;
+        const at = Math.min.apply(null, clips.map(c => c.at));
+        const lane = Math.min.apply(null, clips.map(c => c.lane));
+        return {
+            count: clips.length,
+            bars: Math.max.apply(null, clips.map(c => c.at + c.bars)) - at,
+            items: clips.map(c => ({ clip: c, dAt: c.at - at, dLane: c.lane - lane })),
+        };
+    },
+
+    /// Drop a clipboard at a bar. Every clip keeps its offset and tries for
+    /// its own lane. Returns what landed — which may be less than was on the
+    /// clipboard, if the tape ran out of room.
+    drop(board, at) {
+        if (!board) return [];
+        const made = [];
+        for (const it of board.items) {
+            const want = Math.max(0, (at || 0) + it.dAt);
+            const clip = this.twin(it.clip);
+            clip.at = want;
+            const lane = this.roomNear(want, clip.bars, it.dLane);
+            if (lane === -1) { this.error = 'The tape ran out of free lanes.'; break; }
+            clip.lane = lane;
+            this.clips.push(clip);
+            made.push(clip);
+        }
+        if (made.length) { this.error = made.length === board.items.length ? '' : this.error; }
+        this._json = undefined;
+        return made;
+    },
+
+    removeMany(clips) {
+        for (const c of (clips || []).slice()) this.remove(c);
+    },
+
+    /// Move a whole selection together. The rightmost goes first when moving
+    /// right, or a clip bumps into its own neighbour on the way; and clips in
+    /// the selection are not obstacles to each other.
+    shift(clips, by) {
+        if (!clips || !clips.length || !by) return false;
+        const mine = new Set(clips);
+        const order = clips.slice().sort((a, b) => by > 0 ? b.at - a.at : a.at - b.at);
+        if (order.some(c => c.at + by < 0)) return false;
+        const blocked = (c, want) => this.clips.some(o =>
+            !mine.has(o) && o.lane === c.lane && want < o.at + o.bars && o.at < want + c.bars);
+        if (order.some(c => blocked(c, c.at + by))) {
+            this.error = 'Something is in the way.';
+            return false;
+        }
+        for (const c of order) { c.at += by; this.stopOne(c); }
+        this.error = '';
+        this._json = undefined;
+        return true;
+    },
+
+    /// Grow or shrink a selection. Same rule about not blocking itself.
+    stretch(clips, by, maxBars) {
+        if (!clips || !clips.length || !by) return false;
+        const mine = new Set(clips);
+        const blocked = (c, span) => this.clips.some(o =>
+            !mine.has(o) && o.lane === c.lane && c.at < o.at + o.bars && o.at < c.at + span);
+        const wants = clips.map(c => Math.max(1, Math.min((maxBars || 99) - c.at, c.bars + by)));
+        if (clips.some((c, i) => blocked(c, wants[i]))) {
+            this.error = 'Something is in the way.';
+            return false;
+        }
+        clips.forEach((c, i) => { c.bars = wants[i]; this.stopOne(c); });
+        this.error = '';
+        this._json = undefined;
+        return true;
+    },
+
     remove(clip) {
         const i = this.clips.indexOf(clip);
         if (i === -1) return;
@@ -230,40 +416,51 @@ const Tape = {
         for (const c of this.clips) if (c.at === bar && c.on) this.fire(c, when, barSeconds);
     },
 
-    fire(clip, when, barSeconds) {
-        if (!this.ctx || !clip.buffer) return;
-        this.stopOne(clip);
-        const ctx = this.ctx;
+    /// Build one clip's audio graph against ANY context, at a given time.
+    /// Live playback and the offline bounce both come through here, so what
+    /// gets exported is what was heard. `buffer` overrides the clip's own,
+    /// which a bounce uses because it decodes at its own sample rate.
+    voice(ctx, clip, when, barSeconds, buffer, dest) {
+        const buf = buffer || clip.buffer;
+        if (!ctx || !buf) return null;
         const rate = this.rate(clip, barSeconds);
         const off = Math.max(0, clip.lead + (clip.nudge || 0) / 1000);
         const span = clip.bars * barSeconds;
-        const own = Math.max(0, clip.buffer.duration - off);
-        if (own <= 0.01) return;
+        const own = Math.max(0, buf.duration - off);
+        if (own <= 0.01) return null;
 
         const g = ctx.createGain();
         g.gain.value = clip.gain == null ? 1 : clip.gain;
-        g.connect(ctx.destination);
+        g.connect(dest || ctx.destination);
 
         const src = ctx.createBufferSource();
-        src.buffer = clip.buffer;
+        src.buffer = buf;
         src.playbackRate.value = rate;
         if (clip.loop) {
             // A one-bar loop across four bars: repeat the clip rather than
             // leaving three bars of silence.
             src.loop = true;
             src.loopStart = off;
-            src.loopEnd = Math.min(clip.buffer.duration, off + (clip.seconds || own));
+            src.loopEnd = Math.min(buf.duration, off + (clip.seconds || own));
             if (src.loopEnd - src.loopStart < 0.02) src.loop = false;
         }
         src.connect(g);
 
-        const start = Math.max(when, ctx.currentTime);
         // Never run past the bars the clip claims — that is what its span
         // means, and a clip bleeding into the next one is a bug, not a vibe.
         const len = clip.loop ? span : Math.min(span, own / rate);
-        try { src.start(start, off, len); } catch (_) { return; }
-        src.onended = () => { this._drop(src); };
-        this._playing.push({ clip, src, g });
+        try { src.start(Math.max(when, ctx.currentTime), off, len); }
+        catch (_) { return null; }
+        return { src, g };
+    },
+
+    fire(clip, when, barSeconds) {
+        if (!this.ctx || !clip.buffer) return;
+        this.stopOne(clip);
+        const v = this.voice(this.ctx, clip, when, barSeconds);
+        if (!v) return;
+        v.src.onended = () => { this._drop(v.src); };
+        this._playing.push({ clip, src: v.src, g: v.g });
     },
 
     _drop(src) {

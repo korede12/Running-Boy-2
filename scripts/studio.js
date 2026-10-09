@@ -30,7 +30,8 @@ const Studio = {
     clip: null,              // { riff } held by copy or cut
     _timer: null,
     _audio: false,            // the audio panel is open
-    _clip: null,              // the clip the panel is working on
+    _sel: [],                 // the selected clips, in the order picked
+    _board: null,             // what Copy or Cut is holding
     _rec: false,              // a take is running
     _recMade: null,           // riffs the take created, so empty ones can go
     _recHits: 0,
@@ -95,7 +96,7 @@ const Studio = {
         this.editing = null;
         this.clip = null;
         Tape.clear();
-        this._clip = null;
+        this.selectNone();
         const lead = this.newTrackOn(0, 'Lead');
         const drums = this.newTrackOn(9, 'Drums');
         this.place(lead, 0, this.song.addRiff(new Riff('Lead 1', 1)));
@@ -196,6 +197,7 @@ const Studio = {
                 b('&minus;', 'dropTrack()', 'Remove this track') +
                 b('Save', 'saveSong()', 'Save this beat') +
                 b('Beats', 'beats()', 'Your saved beats') +
+                b('&#8595;', 'exportAs(\'mp3\')', 'Export an mp3 of the loop') +
                 b(Mic.rolling() ? '&#9632; Audio' : '&#127908; Audio', 'audioPanel()',
                   'Microphone and samples',
                   this._audio ? 'st-hot' : (Mic.rolling() ? 'st-rec on' : '')) +
@@ -382,7 +384,7 @@ const Studio = {
         for (const clip of clips) {
             const x0 = c.x0 + clip.at * c.w;
             const span = c.w * clip.bars;
-            const sel = clip === this._clip;
+            const sel = this._sel.indexOf(clip) !== -1;
             cx.fillStyle = !clip.on ? '#1c1c24' : (clip.kind === 'mic' ? '#2a1c3c' : '#15303a');
             cx.fillRect(x0 + 1, y + 1, span - 2, c.h - 2);
 
@@ -461,7 +463,12 @@ const Studio = {
             if (ti >= this.song.tracks.length) {
                 const lane = ti - this.song.tracks.length;
                 if (lane >= this.audioRows()) return;
-                this._clip = Tape.at(lane, bar);
+                // Shift or ctrl adds to the selection; a plain tap replaces
+                // it. On a phone there is neither, which is what the All and
+                // Lane buttons in the panel are for.
+                const hit = Tape.at(lane, bar);
+                if (hit) this.select(hit, ev.shiftKey || ev.ctrlKey || ev.metaKey);
+                else if (!(ev.shiftKey || ev.ctrlKey || ev.metaKey)) this.selectNone();
                 this._audio = true;
                 this.refreshAct(); this.toolbar(); this.draw();
                 return;
@@ -528,7 +535,7 @@ const Studio = {
             const spb = this.song.stepsPerRiff * (15 / this.song.tempo);
             const clip = await Tape.take(f, bar, spb);
             if (!clip) continue;
-            this._clip = clip;
+            this.select(clip, got > 0);        // everything just dropped in
             bar = Math.min(this.BARS - 1, clip.at + clip.bars);
             got++;
         }
@@ -548,7 +555,7 @@ const Studio = {
         inp.multiple = true;
         inp.onchange = () => {
             if (inp.files && inp.files.length)
-                this.addSamples(inp.files, this._clip ? this._clip.at : this.bar);
+                this.addSamples(inp.files, this.focus() ? this.focus().at : this.bar);
         };
         inp.click();
     },
@@ -863,6 +870,24 @@ const Studio = {
             const k = (ev.key || '').toLowerCase();
             if (k === 'z') { ev.preventDefault(); ev.shiftKey ? this.redo() : this.undo(); }
             else if (k === 'y') { ev.preventDefault(); this.redo(); }
+            // Copy, cut and paste go to the clips when clips are what you are
+            // holding, and to the riffs otherwise.
+            else if (k === 'a' && this.view === 'arrange') { ev.preventDefault(); this.selectAll(); }
+            else if (k === 'c') { ev.preventDefault(); this._sel.length ? this.clipCopy() : this.copy(); }
+            else if (k === 'x') { ev.preventDefault(); this._sel.length ? this.clipCut() : this.cut(); }
+            else if (k === 'v') {
+                ev.preventDefault();
+                if (this._board) this.clipPaste(); else this.paste(ev.shiftKey);
+            }
+            return;
+        }
+        if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._sel.length && !this._rec) {
+            ev.preventDefault();
+            this.clipDrop();
+            return;
+        }
+        if (ev.key === 'Escape' && this._sel.length) {
+            this.selectNone(); this.refreshAct(); this.draw();
             return;
         }
         if (!this._rec || ev.metaKey || ev.ctrlKey || ev.altKey) return;
@@ -969,54 +994,149 @@ const Studio = {
         }
 
         if (!Tape.add(clip, take.at, take.bars)) { this.say(Tape.error); return; }
-        this._clip = clip;
+        this.select(clip);
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct();
         this.say('Take kept');
     },
 
+    /// The clip the dials point at: the last one picked. With one selected
+    /// that is simply the one selected.
+    focus() { return this._sel[this._sel.length - 1] || null; },
+
+    /// Pick a clip. `add` toggles it in or out of the selection instead of
+    /// replacing it, which is what shift-tap does.
+    select(clip, add) {
+        if (!clip) { if (!add) this.selectNone(); return; }
+        if (!add) { this._sel = [clip]; return; }
+        const i = this._sel.indexOf(clip);
+        if (i === -1) this._sel.push(clip); else this._sel.splice(i, 1);
+    },
+
+    selectNone() { this._sel = []; },
+
+    selectAll() {
+        this._sel = Tape.clips.slice();
+        this._audio = true;
+        this.refreshAct(); this.toolbar(); this.draw();
+        this.say(this._sel.length ? this._sel.length + ' clips selected' : 'No clips yet');
+    },
+
+    /// Everything in the focused clip's lane — the quick way to grab a part
+    /// without a keyboard.
+    selectLane() {
+        const c = this.focus();
+        if (!c) return;
+        this._sel = Tape.inLane(c.lane);
+        this.refreshAct(); this.draw();
+        this.say(this._sel.length + ' in this lane');
+    },
+
+    // ── Copy and paste ────────────────────────────────────────────────────
+    // The clipboard holds the shape of the selection, not its position, so a
+    // paste lands at the bar you are on and keeps the spacing between clips.
+
+    clipCopy() {
+        if (!this._sel.length) { this.say('Nothing selected'); return; }
+        this._board = Tape.lift(this._sel);
+        this.refreshAct();
+        this.say('Copied ' + this._board.count +
+                 (this._board.count === 1 ? ' clip' : ' clips'));
+    },
+
+    clipCut() {
+        if (!this._sel.length) { this.say('Nothing selected'); return; }
+        this.mark('Cut clips');
+        // The clipboard keeps the clip objects, so they survive being taken
+        // off the tape and can be pasted back.
+        this._board = Tape.lift(this._sel);
+        const count = this._sel.length;
+        Tape.removeMany(this._sel);
+        this.selectNone();
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
+        this.say('Cut ' + count + (count === 1 ? ' clip' : ' clips'));
+    },
+
+    clipPaste() {
+        if (!this._board) { this.say('Nothing copied yet'); return; }
+        this.mark('Paste clips');
+        const made = Tape.drop(this._board, this.bar);
+        if (!made.length) {
+            this._undo.pop();                  // nothing happened, no history
+            this.say(Tape.error || 'No room to paste that');
+            return;
+        }
+        this._sel = made;
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
+        this.say('Pasted ' + made.length + (made.length === 1 ? ' clip' : ' clips') +
+                 ' at bar ' + (this.bar + 1) +
+                 (made.length < this._board.count ? ' — the rest had no room' : ''));
+    },
+
+    /// A clip called "Take 3" tells you nothing a month later.
+    clipRename() {
+        const c = this.focus();
+        if (!c) return;
+        const name = (prompt('Name this clip', c.name) || '').trim();
+        if (!name) return;
+        this.mark('Rename clip');
+        Tape.set(c, 'name', name.slice(0, 18));
+        this.keep();
+        this.refreshAct(); this.draw();
+    },
+
     clipDrop() {
-        if (!this._clip) return;
-        this.mark('Delete clip');
-        Tape.remove(this._clip);
-        this._clip = null;
+        if (!this._sel.length) return;
+        const count = this._sel.length;
+        this.mark(count > 1 ? 'Delete clips' : 'Delete clip');
+        Tape.removeMany(this._sel);
+        this.selectNone();
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct();
         this.say('Clip deleted');
     },
 
     clipSet(field, value) {
-        if (!this._clip) return;
+        if (!this._sel.length) return;
         this.mark(field === 'on' ? (value ? 'Unmute' : 'Mute')
                 : field === 'loop' ? 'Loop' : field === 'fit' ? 'Fit' : 'Clip');
-        Tape.set(this._clip, field, value);
+        for (const c of this._sel) Tape.set(c, field, value);
         this.keep();
         this.refreshAct(); this.draw();
     },
 
     clipMove(by) {
-        if (!this._clip) return;
-        this.mark('Move clip', 'move');
-        const to = Math.max(0, Math.min(this.BARS - this._clip.bars, this._clip.at + by));
-        if (Tape.place(this._clip, to, null)) { this.keep(); this.toolbar(); this.layout(); }
+        if (!this._sel.length) return;
+        this.mark(this._sel.length > 1 ? 'Move clips' : 'Move clip', 'move');
+        // Never off the left end, never past the last bar.
+        const far = Math.max.apply(null, this._sel.map(c => c.at + c.bars));
+        const near = Math.min.apply(null, this._sel.map(c => c.at));
+        if ((by < 0 && near === 0) || (by > 0 && far >= this.BARS)) { this._undo.pop(); return; }
+        if (Tape.shift(this._sel, by)) { this.keep(); this.toolbar(); this.layout(); }
+        else this._undo.pop();
         this.refreshAct(); this.draw();
         if (Tape.error) this.say(Tape.error);
     },
 
     clipSpan(by) {
-        if (!this._clip) return;
-        this.mark('Resize clip', 'span');
-        const want = Math.max(1, Math.min(this.BARS - this._clip.at, this._clip.bars + by));
-        if (Tape.place(this._clip, null, want)) { this.keep(); this.toolbar(); this.layout(); }
+        if (!this._sel.length) return;
+        this.mark(this._sel.length > 1 ? 'Resize clips' : 'Resize clip', 'span');
+        if (Tape.stretch(this._sel, by, this.BARS)) { this.keep(); this.toolbar(); this.layout(); }
+        else this._undo.pop();
         this.refreshAct(); this.draw();
+        if (Tape.error) this.say(Tape.error);
     },
 
     async clipHear() {
-        if (!this._clip) return;
+        if (!this._sel.length) return;
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
         await Tape.ready(this.synth.ctx);
-        Tape.audition(this._clip, this.song.stepsPerRiff * (15 / this.song.tempo));
+        // One at a time would be a mess; the focused clip is the one you
+        // just touched, which is the one you meant.
+        Tape.audition(this.focus(), this.song.stepsPerRiff * (15 / this.song.tempo));
     },
 
     clipGain(v) {
@@ -1035,9 +1155,9 @@ const Studio = {
     /// A slider fires on every pixel of movement, so it updates its own
     /// read-out and the clip, and leaves the panel alone.
     clipQuiet(field, value, id, text) {
-        if (!this._clip) return;
+        if (!this._sel.length) return;
         this.mark(field === 'gain' ? 'Clip level' : 'Clip nudge', 'clip-' + field);
-        Tape.set(this._clip, field, value);
+        for (const c of this._sel) Tape.set(c, field, value);
         const n = document.getElementById(id);
         if (n) n.textContent = text;
         this.keep();
@@ -1056,7 +1176,7 @@ const Studio = {
         const esc = t => String(t).replace(/[<>&"]/g, ch =>
             ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[ch]));
         const why = Mic.why();
-        const c = this._clip;
+        const c = this.focus();
         let html = '';
 
         // The microphone half.
@@ -1088,15 +1208,37 @@ const Studio = {
                     '" onclick="Studio.micTake()">' +
                     (Mic.rolling() ? '&#9632; Stop' : '&#9679; Record') + '</button>') +
                 '<button onclick="Studio.pickSamples()">+ Sample</button>' +
+                (!this._sel.length && this._board
+                    ? '<button class="st-hot" onclick="Studio.clipPaste()">Paste ' +
+                      this._board.count + ' &rarr; bar ' + (this.bar + 1) + '</button>' : '') +
+                (!this._sel.length && Tape.has()
+                    ? '<button onclick="Studio.selectAll()">Select all</button>' : '') +
                 '<button onclick="Studio.audioClose()">Done</button>' +
             '</div>';
 
         // The clip half.
-        if (c) {
+        const many = this._sel.length;
+        if (many) {
+            const title = many === 1
+                ? '<b>' + esc(c.name) + '</b><span>' + (Tape.KINDS[c.kind] || 'Clip') +
+                  ' &middot; ' + Tape.label(c) + ' &middot; bar ' + (c.at + 1) + '</span>'
+                : '<b>' + many + ' clips</b><span>' +
+                  Tape.label({ bars: this._sel.reduce((n, x) => n + x.bars, 0) }) +
+                  ' in all &middot; moves and dials apply to every one</span>';
+
             html +=
-                '<div class="clip-head"><b>' + esc(c.name) + '</b>' +
-                    '<span>' + (Tape.KINDS[c.kind] || 'Clip') + ' &middot; ' +
-                    Tape.label(c) + ' &middot; bar ' + (c.at + 1) + '</span></div>' +
+                '<div class="clip-head">' + title + '</div>' +
+                '<div class="mic-row mic-btns">' +
+                    '<button onclick="Studio.selectAll()" title="Every clip on the tape">All</button>' +
+                    '<button onclick="Studio.selectLane()" title="Everything in this lane">Lane</button>' +
+                    '<button onclick="Studio.clipCopy()">Copy</button>' +
+                    '<button onclick="Studio.clipCut()">Cut</button>' +
+                    (this._board ? '<button class="st-hot" onclick="Studio.clipPaste()" ' +
+                        'title="Paste at bar ' + (this.bar + 1) + '">Paste &rarr; bar ' +
+                        (this.bar + 1) + '</button>' : '') +
+                    (many === 1 ? '<button onclick="Studio.clipRename()">Rename</button>' : '') +
+                    '<button onclick="Studio.selectNone();Studio.refreshAct();Studio.draw()">Deselect</button>' +
+                '</div>' +
                 '<div class="mic-row mic-btns">' +
                     '<button onclick="Studio.clipMove(-1)" title="Earlier">&lsaquo; Bar</button>' +
                     '<button onclick="Studio.clipMove(1)" title="Later">Bar &rsaquo;</button>' +
@@ -1111,7 +1253,7 @@ const Studio = {
                         ')" title="Squeeze it into its bars — this moves the pitch">Fit</button>' +
                     '<button onclick="Studio.clipSet(\'on\', ' + (!c.on) + ')">' +
                         (c.on ? 'Mute' : 'Unmute') + '</button>' +
-                    '<button onclick="Studio.clipDrop()">&#10005;</button>' +
+                    '<button onclick="Studio.clipDrop()" title="Delete">&#10005;</button>' +
                 '</div>' +
                 '<div class="mic-row mic-dials">' +
                     '<label>Level <input type="range" min="0" max="2" step="0.05" value="' +
@@ -1126,10 +1268,13 @@ const Studio = {
                 '</div>';
         }
 
-        const hint = state || (c ? (c.fit ? 'Fit changes the speed, so it moves the pitch too.'
-                                          : 'Tap a clip in the arrangement to work on it.')
-                                 : 'Drag a loop onto a bar, or record over the loop. ' +
-                                   'Tap a clip to move it, stretch it or mute it.');
+        const hint = state
+            || (this._sel.length > 1
+                    ? 'Shift-tap to add or drop one. Copy, then move the cursor and paste.'
+              : c ? (c.fit ? 'Fit changes the speed, so it moves the pitch too.'
+                           : 'Shift-tap another clip to work on both at once.')
+                  : 'Drag a loop onto a bar, or record over the loop. ' +
+                    'Tap a clip to work on it, shift-tap to pick several.');
         html += '<div class="st-note">' + hint +
             (Mic.error ? ' &middot; ' + esc(Mic.error) : '') +
             (Tape.error ? ' &middot; ' + esc(Tape.error) : '') +
@@ -1162,7 +1307,7 @@ const Studio = {
                 // one is found again by the id the format keeps for exactly
                 // this sort of reason.
                 riff: this.editing ? String(this.editing.id) : null,
-                clip: this._clip ? this._clip.id : null,
+                sel: this._sel.map(c => c.id),
             },
         };
     },
@@ -1213,9 +1358,8 @@ const Studio = {
         this.view = this.editing ? snap.where.view : 'arrange';
         this.track = Math.max(0, Math.min(snap.where.track, this.song.tracks.length - 1));
         this.bar = Math.max(0, Math.min(snap.where.bar, this.BARS - 1));
-        this._clip = snap.where.clip
-            ? Tape.clips.find(c => c.id === snap.where.clip) || null
-            : null;
+        const want = new Set(snap.where.sel || []);
+        this._sel = Tape.clips.filter(c => want.has(c.id));
 
         for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
         const grid = document.getElementById('st-grid');
@@ -1279,7 +1423,7 @@ const Studio = {
             this.track = 0; this.bar = 0;
             this.view = 'arrange'; this.editing = null; this.clip = null;
             try { Tape.fromJSON(JSON.parse(localStorage.getItem(this.BENCH_AUDIO))); } catch (_) {}
-            this._clip = null;
+            this.selectNone();
             return true;
         } catch (_) { return false; }
     },
@@ -1308,7 +1452,7 @@ const Studio = {
             this.track = 0; this.bar = 0;
             this.editing = null; this.clip = null;
             Tape.fromJSON(row.audio);
-            this._clip = null;
+            this.selectNone();
             for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
             this.keep();
             this.view = 'arrange';
@@ -1325,6 +1469,56 @@ const Studio = {
         this._writeSongs(list);
         this.beats();
         this.say('Deleted "' + name + '"');
+    },
+
+    // ── Taking it out of the game ─────────────────────────────────────────
+    // Three formats, because they are three different things. A .mid is the
+    // notes — tiny, editable in any DAW, and silent about everything the tape
+    // holds. A .wav is exactly what you heard. An .mp3 is that, small enough
+    // to send someone.
+
+    _busy: false,
+
+    async exportAs(kind) {
+        if (this._busy) return;
+        if (kind === 'mid') { this.exportMid(); return; }
+
+        const w = this.worth();
+        if (!w.notes && !w.audio) { this.say('There is nothing to render yet'); return; }
+
+        this._busy = true;
+        this.stop();
+        const say = m => this.say(m);
+        try {
+            say('Rendering…');
+            await this.synth.start();              // a gesture has happened: we are here
+            const buffer = await Bounce.render(this.song, say);
+            const name = Bounce.tidy(this.song.name);
+
+            if (kind === 'mp3') {
+                say('Fetching the encoder…');
+                const bytes = await Bounce.mp3(buffer, Bounce.KBPS, say);
+                if (!bytes) {
+                    // No encoder, no network. A WAV is the honest fallback
+                    // and it is already rendered.
+                    const wav = Bounce.wav(buffer);
+                    Bounce.save(wav, name + '.wav', 'audio/wav');
+                    say('No MP3 encoder could be fetched — saved ' + name + '.wav (' +
+                        Bounce.size(wav) + ') instead');
+                } else {
+                    Bounce.save(bytes, name + '.mp3', 'audio/mpeg');
+                    say('Exported ' + name + '.mp3 · ' + Bounce.size(bytes) +
+                        ' · ' + Bounce.KBPS + ' kbps');
+                }
+            } else {
+                const bytes = Bounce.wav(buffer);
+                Bounce.save(bytes, name + '.wav', 'audio/wav');
+                say('Exported ' + name + '.wav · ' + Bounce.size(bytes));
+            }
+        } catch (e) {
+            this.say('Could not render that: ' + ((e && e.message) || 'unknown'));
+        }
+        this._busy = false;
     },
 
     /// A beat you made is a real MIDI file, and you should be able to take it
@@ -1354,7 +1548,12 @@ const Studio = {
         const bar = document.getElementById('st-bar');
         if (bar) bar.innerHTML =
             '<button class="st-hot" onclick="Studio.back()">&lsaquo; Back</button>' +
-            '<button onclick="Studio.exportMid()">Export .mid</button>' +
+            '<button onclick="Studio.exportAs(\'mp3\')" title="The sound, small enough to send">' +
+                '&#8595; .mp3</button>' +
+            '<button onclick="Studio.exportAs(\'wav\')" title="The sound, uncompressed">' +
+                '&#8595; .wav</button>' +
+            '<button onclick="Studio.exportAs(\'mid\')" title="The notes only — no audio">' +
+                '&#8595; .mid</button>' +
             '<button onclick="Studio.newBeat()">New beat</button>';
 
         const act = document.getElementById('st-act');
@@ -1362,6 +1561,9 @@ const Studio = {
         if (grid) grid.style.display = 'none';
 
         let html = '<div class="st-list">';
+        html += '<div class="st-note">A .mid is the notes — small, editable, and ' +
+                'silent about anything on the tape. A .wav or an .mp3 is what you ' +
+                'actually hear, the whole loop mixed down.</div>';
         if (!list.length) {
             html += '<div class="st-note">Nothing saved yet. Make something, ' +
                     'then press Save.</div>';
