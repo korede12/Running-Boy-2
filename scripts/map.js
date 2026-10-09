@@ -603,6 +603,7 @@ const CityMap = {
             return;
         }
 
+        if (v.kind === 'studio') { Studio.open(); return; }
         if (v.kind === 'open')   { openModal(v.modal); return; }
         if (v.kind === 'hotel')  { openHotel(v); return; }
         if (v.kind === 'clinic') { openClinic(v); return; }

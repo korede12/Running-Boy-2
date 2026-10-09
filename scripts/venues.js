@@ -50,9 +50,9 @@ const CITIES = [
               gx: 11, gy: 0,  gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Out of town, north.', tag: 'TRAVEL' },
 
-            { id: 'studio', name: 'Naijabeats', kind: 'open', open: [11, 22], modal: 'about-modal',
+            { id: 'studio', name: 'Naijabeats', kind: 'studio', open: [11, 22],
               gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
-              blurb: 'Where the story got told. And who is telling it.' },
+              blurb: 'Make a beat, sell a beat.', tag: 'STUDIO' },
 
             { id: 'game_lag', name: 'Oshodi Game House', kind: 'play', open: [10, 26], mode: 'run',
               gx: 6,  gy: 6,  gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
@@ -214,6 +214,7 @@ function findVenue(job, cityId) {
         agent: v => v.modal === 'estate-modal',
         work:  v => v.kind === 'work',
         play:  v => v.kind === 'play',
+        studio: v => v.kind === 'studio',
         travel: v => v.kind === 'travel',
     }[job];
     return want ? (c.venues.find(want) || null) : null;
