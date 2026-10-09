@@ -758,13 +758,29 @@ const Studio = {
                     cx.fillStyle = t.channel === 9 ? '#6a5316' : '#1f5c2c';
                     cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
                     // A little picture of what is in the riff.
-                    const rows = this.rows(t);
+                    //
+                    // Mapped by the riff's OWN range rather than by row
+                    // index. `r / 8` was right when the grid had eight
+                    // rows; it has eighty-five now, so a note near the top
+                    // of the range was drawn ten cell-heights below its
+                    // cell — a scatter of dots floating under the
+                    // arrangement, belonging to nothing.
+                    //
+                    // Its own range is also the better picture: a
+                    // thumbnail this size cannot show seven octaves, but
+                    // it can show the shape of what is in this bar.
+                    let lo = Infinity, hi = -Infinity;
                     for (const e of notes) {
-                        const r = rows.indexOf(e.data[0]);
-                        if (r < 0) continue;
+                        if (e.data[0] < lo) lo = e.data[0];
+                        if (e.data[0] > hi) hi = e.data[0];
+                    }
+                    const span = Math.max(1, hi - lo);
+                    cx.fillStyle = t.channel === 9 ? '#ffc83d' : '#4cd964';
+                    for (const e of notes) {
                         const nx = x + 3 + (e.tick / riff.steps) * (c.w - 6);
-                        const ny = y + 4 + (r / 8) * (c.h - 8);
-                        cx.fillStyle = t.channel === 9 ? '#ffc83d' : '#4cd964';
+                        // High notes up the top, which is the way round
+                        // every other grid in the app draws them.
+                        const ny = y + 5 + (1 - (e.data[0] - lo) / span) * (c.h - 12);
                         cx.fillRect(nx, ny, Math.max(1.5, (c.w - 6) / riff.steps - 0.5), 2);
                     }
                     cx.fillStyle = '#9fb0a2';
