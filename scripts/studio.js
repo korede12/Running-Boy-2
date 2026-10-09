@@ -27,6 +27,10 @@ const Studio = {
 
     bar0: 0,                 // leftmost bar on screen
     row0: 0,                 // topmost row on screen
+    zoom: 1,                 // how big a cell is
+    ZOOM_MIN: 0.6,
+    ZOOM_MAX: 2.4,
+    solo: null,              // rows being soloed, or null for none
     _follow: true,           // keep the playhead in view until told otherwise
 
     song: null,
@@ -38,6 +42,7 @@ const Studio = {
     clip: null,              // { riff } held by copy or cut
     _timer: null,
     _audio: false,            // the audio panel is open
+    _mixOpen: false,          // the mix panel is open
     _sel: [],                 // the selected clips, in the order picked
     _board: null,             // what Copy or Cut is holding
     _rec: false,              // a take is running
@@ -48,8 +53,53 @@ const Studio = {
     _playBar: -1,
     _sold: null,
 
-    PITCHES: [72, 71, 69, 67, 65, 64, 62, 60],
-    DRUM_ROWS: [49, 46, 42, 39, 38, 37, 36, 35],
+    // C1 to C8. Every semitone, highest at the top, the way a piano roll
+    // has always been drawn.
+    NOTE_LOW: 24,
+    NOTE_HIGH: 108,
+    BLACK: [1, 3, 6, 8, 10],
+    ROW_MIN: 13,             // below this a row cannot be hit reliably
+    ROW_BIG: 20,
+
+    // Every sound the synth's kit actually makes, loud-and-high to
+    // low-and-fundamental, which is the order a drum machine has always
+    // laid them out.
+    DRUM_ROWS: [51, 49, 46, 44, 42, 40, 39, 38, 37, 36, 35],
+
+    /// What sort of grid a track wants. `at` is where the window opens, as
+    /// a pitch; the full range stays reachable by scrolling, because a grid
+    /// that refuses a note on the grounds that a bass should not play it is
+    /// a grid that is wrong about your song.
+    GRIDS: {
+        drums:  { name: 'Kit',    rowH: 26, at: null },
+        bass:   { name: 'Bass',   rowH: 20, at: 40,  span: 24 },   // E1 up
+        guitar: { name: 'Guitar', rowH: 17, at: 52,  span: 30 },
+        keys:   { name: 'Keys',   rowH: 15, at: 60,  span: 38 },   // round C4
+        lead:   { name: 'Lead',   rowH: 16, at: 67,  span: 32 },
+        pad:    { name: 'Pad',    rowH: 15, at: 60,  span: 38 },
+        tuned:  { name: 'Tuned',  rowH: 16, at: 60,  span: 34 },
+    },
+
+    /// Which profile a track gets. The GM programs are laid out in families
+    /// of eight, which is what makes this a lookup rather than a list.
+    gridFor(t) {
+        if (!t) return this.GRIDS.tuned;
+        if (t.channel === 9) return this.GRIDS.drums;
+        const p = t.program | 0;
+        if (p < 8)   return this.GRIDS.keys;      // piano
+        if (p < 16)  return this.GRIDS.keys;      // tuned percussion
+        if (p < 24)  return this.GRIDS.keys;      // organ
+        if (p < 32)  return this.GRIDS.guitar;
+        if (p < 40)  return this.GRIDS.bass;
+        if (p < 56)  return this.GRIDS.pad;       // strings
+        if (p < 80)  return this.GRIDS.lead;      // brass and reeds
+        if (p < 96)  return this.GRIDS.lead;      // synth lead
+        if (p < 104) return this.GRIDS.pad;
+        return this.GRIDS.tuned;
+    },
+    erow0: 0,                // topmost pitch row on screen
+    ecol0: 0,                // leftmost step on screen
+    _keys: null,
     DRUM_NAMES: { 35: 'Kick', 36: 'Kick2', 37: 'Rim', 38: 'Snare',
                   39: 'Clap', 42: 'HiHat', 46: 'Open', 49: 'Crash' },
 
@@ -104,6 +154,9 @@ const Studio = {
         this.editing = null;
         this.clip = null;
         Tape.clear();
+        this.solo = null;
+        this.mixSet = Mixer.fresh();
+        this._mix = null;
         this.selectNone();
         const lead = this.newTrackOn(0, 'Lead');
         const drums = this.newTrackOn(9, 'Drums');
@@ -213,6 +266,10 @@ const Studio = {
                 b('&minus;', 'dropTrack()', 'Remove this track') +
                 b('Save', 'saveSong()', 'Save this beat') +
                 b('Beats', 'beats()', 'Your saved beats') +
+                b('&minus;', 'zoomBy(-1)', 'Zoom out', this.zoom <= this.ZOOM_MIN ? 'st-dim' : '') +
+                b('+', 'zoomBy(1)', 'Zoom in', this.zoom >= this.ZOOM_MAX ? 'st-dim' : '') +
+                (this.solo ? b('Unsolo', 'clearSolo()', 'Hear everything again', 'st-go on') : '') +
+                b('&#9707;', 'mixPanel()', 'The mix', this._mixOpen ? 'st-hot' : '') +
                 b('&#8595;', 'exportAs(\'mp3\')', 'Export an mp3 of the loop') +
                 b(Mic.rolling() ? '&#9632; Audio' : '&#127908; Audio', 'audioPanel()',
                   'Microphone and samples',
@@ -230,6 +287,8 @@ const Studio = {
                 b(this._rec ? '&#9632; Done' : '&#9679; Rec', 'record()',
                   'Play the pads into this riff', 'st-rec' + (this._rec ? ' on' : '')) +
                 history +
+                b('&minus;', 'zoomBy(-1)', 'Zoom out', this.zoom <= this.ZOOM_MIN ? 'st-dim' : '') +
+                b('+', 'zoomBy(1)', 'Zoom in', this.zoom >= this.ZOOM_MAX ? 'st-dim' : '') +
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
                 b('Clear', 'clearRiff()', 'Empty this riff') +
@@ -254,7 +313,26 @@ const Studio = {
         this.keep();
     },
 
-    rows(t) { return t.channel === 9 ? this.DRUM_ROWS : this.PITCHES; },
+    /// Every pitch, highest first. Built once — it never changes.
+    keys() {
+        if (!this._keys) {
+            this._keys = [];
+            for (let p = this.NOTE_HIGH; p >= this.NOTE_LOW; p--) this._keys.push(p);
+        }
+        return this._keys;
+    },
+
+    rows(t) { return t.channel === 9 ? this.DRUM_ROWS : this.keys(); },
+
+    /// Which row a pitch is on, or -1. The range is contiguous for pitched
+    /// tracks, so this does not need a search.
+    rowOf(t, pitch) {
+        if (t.channel === 9) return this.DRUM_ROWS.indexOf(pitch);
+        if (pitch > this.NOTE_HIGH || pitch < this.NOTE_LOW) return -1;
+        return this.NOTE_HIGH - pitch;
+    },
+
+    isBlack(pitch) { return this.BLACK.indexOf(((pitch % 12) + 12) % 12) !== -1; },
 
     label(t, row) {
         const n = this.rows(t)[row];
@@ -273,24 +351,48 @@ const Studio = {
         cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
         if (this.view === 'arrange') {
-            const x0 = 58, y0 = 18, g = this.GUTTER;
+            // Wide enough for a name and the two little buttons after it.
+            const x0 = 82, y0 = 18, g = this.GUTTER;
             const total = Math.max(this.rowCount(), 1);
 
             // Aim for about eight bars across, but never so narrow that a
             // name will not fit and never so wide it looks empty.
             const across = Math.max(40, w - x0 - g);
-            const cw = Math.min(this.BAR_MAX, Math.max(this.BAR_MIN, across / 8));
+            // Zoom scales the cell, and the window follows — the arrangement
+            // has worked in bars and rows rather than pixels since it learned
+            // to scroll, so this is one multiplier and nothing else changes.
+            const z = this.zoom;
+            const cw = Math.min(this.BAR_MAX * z, Math.max(this.BAR_MIN * z, (across / 8) * z));
+            const rh = Math.max(26, this.ROW_H * z);
             const cols = Math.max(1, Math.min(this.BARS, Math.floor(across / cw)));
 
             const down = Math.max(30, h - y0 - g);
-            const rows = Math.max(1, Math.min(total, Math.floor(down / this.ROW_H)));
+            const rows = Math.max(1, Math.min(total, Math.floor(down / rh)));
 
-            this.cell = { x0, y0, w: cw, h: this.ROW_H, cols, rows, total };
+            this.cell = { x0, y0, w: cw, h: rh, cols, rows, total };
             this.clampView();
         } else {
-            this.cell = { x0: 52, y0: 4,
-                          w: (w - 58) / this.song.stepsPerRiff,
-                          h: (h - 8) / 8 };
+            const t = this.song.tracks[this.track];
+            const grid = this.gridFor(t);
+            const g = this.GUTTER;
+            const x0 = t.channel === 9 ? 58 : 44;      // names need more room
+            const y0 = 4;
+
+            const total = this.rows(t).length;
+            const steps = this.editing ? this.editing.steps : this.song.stepsPerRiff;
+
+            const rowH = Math.max(this.ROW_MIN, grid.rowH * this.zoom);
+            const across = Math.max(40, w - x0 - g);
+            const down = Math.max(26, h - y0 - g);
+
+            // Aim to show a bar at a time across; a riff that is longer than
+            // one scrolls rather than squeezing into illegibility.
+            const cw = Math.max(14, Math.min(across / Math.min(steps, 16), 64 * this.zoom));
+            const cols = Math.max(1, Math.min(steps, Math.floor(across / cw)));
+            const rows = Math.max(1, Math.min(total, Math.floor(down / rowH)));
+
+            this.cell = { x0, y0, w: cw, h: rowH, cols, rows, total };
+            this.clampView();
         }
         this.draw();
     },
@@ -310,6 +412,72 @@ const Studio = {
     maxBar0() { return Math.max(0, this.BARS - this.cols()); },
     maxRow0() { return Math.max(0, this.rowCount() - this.visRows()); },
 
+    /// What the window is onto, whichever screen is up. Everything that
+    /// scrolls asks this instead of knowing about bars or about steps —
+    /// which is what stops the two screens drifting apart.
+    span() {
+        const c = this.cell || {};
+        if (this.view === 'edit' && this.editing) {
+            const t = this.song.tracks[this.track];
+            return {
+                edit: true,
+                cols: c.cols || 16, rows: c.rows || 8,
+                totalCols: this.editing.steps,
+                totalRows: this.rows(t).length,
+                col0: this.ecol0, row0: this.erow0,
+            };
+        }
+        return {
+            edit: false,
+            cols: c.cols || this.BARS, rows: c.rows || this.rowCount(),
+            totalCols: this.BARS, totalRows: this.rowCount(),
+            col0: this.bar0, row0: this.row0,
+        };
+    },
+
+    /// Write a window position back to whichever screen owns it.
+    putSpan(col0, row0) {
+        if (this.view === 'edit' && this.editing) {
+            if (col0 != null) this.ecol0 = col0;
+            if (row0 != null) this.erow0 = row0;
+        } else {
+            if (col0 != null) this.bar0 = col0;
+            if (row0 != null) this.row0 = row0;
+        }
+        this.clampView();
+    },
+
+    clampView() {
+        const v = this.span();
+        const col = Math.max(0, Math.min(Math.max(0, v.totalCols - v.cols), v.col0 | 0));
+        const row = Math.max(0, Math.min(Math.max(0, v.totalRows - v.rows), v.row0 | 0));
+        if (v.edit) { this.ecol0 = col; this.erow0 = row; }
+        else { this.bar0 = col; this.row0 = row; }
+    },
+
+    /// Zoom, keeping whatever is under the cursor roughly where it was —
+    /// zooming somewhere you are not looking is disorienting.
+    setZoom(z) {
+        const was = this.zoom;
+        this.zoom = Math.max(this.ZOOM_MIN, Math.min(this.ZOOM_MAX, Math.round(z * 20) / 20));
+        if (this.zoom === was) return false;
+        this.layout();
+        this._afterZoom();
+        this.toolbar();
+        return true;
+    },
+
+    zoomBy(by) {
+        if (this.setZoom(this.zoom * (by > 0 ? 1.25 : 0.8)))
+            this.say('Zoom ' + Math.round(this.zoom * 100) + '%');
+    },
+
+    /// Zoom has to keep the cursor in view on whichever screen is up.
+    _afterZoom() {
+        if (this.view === 'edit' && this.editing) this.clampView();
+        else this.reveal(this.cursorRow(), this.bar);
+    },
+
     clampView() {
         this.bar0 = Math.max(0, Math.min(this.maxBar0(), this.bar0 | 0));
         this.row0 = Math.max(0, Math.min(this.maxRow0(), this.row0 | 0));
@@ -317,38 +485,44 @@ const Studio = {
 
     /// Move the window. Anything the user does to it stops the playhead
     /// dragging it around underneath them.
-    scrollBy(dBar, dRow, byHand) {
-        const was = this.bar0 + ':' + this.row0;
-        this.bar0 += dBar || 0;
-        this.row0 += dRow || 0;
-        this.clampView();
+    scrollBy(dCol, dRow, byHand) {
+        const v = this.span();
+        const was = v.col0 + ':' + v.row0;
+        this.putSpan(v.col0 + (dCol || 0), v.row0 + (dRow || 0));
         if (byHand) this._follow = false;
-        if (was === this.bar0 + ':' + this.row0) return false;
+        const now = this.span();
+        if (was === now.col0 + ':' + now.row0) return false;
         this.draw();
         return true;
     },
 
-    scrollTo(bar0, row0, byHand) {
-        if (bar0 != null) this.bar0 = bar0;
-        if (row0 != null) this.row0 = row0;
-        this.clampView();
+    scrollTo(col0, row0, byHand) {
+        this.putSpan(col0, row0);
         if (byHand) this._follow = false;
         this.draw();
     },
 
     /// Bring a bar and a row into view, moving as little as possible.
-    reveal(row, bar) {
-        let moved = false;
-        if (bar != null) {
-            if (bar < this.bar0) { this.bar0 = bar; moved = true; }
-            else if (bar > this.bar0 + this.cols() - 1) { this.bar0 = bar - this.cols() + 1; moved = true; }
+    reveal(row, col) {
+        const v = this.span();
+        let col0 = v.col0, row0 = v.row0, moved = false;
+        if (col != null) {
+            if (col < col0) { col0 = col; moved = true; }
+            else if (col > col0 + v.cols - 1) { col0 = col - v.cols + 1; moved = true; }
         }
         if (row != null) {
-            if (row < this.row0) { this.row0 = row; moved = true; }
-            else if (row > this.row0 + this.visRows() - 1) { this.row0 = row - this.visRows() + 1; moved = true; }
+            if (row < row0) { row0 = row; moved = true; }
+            else if (row > row0 + v.rows - 1) { row0 = row - v.rows + 1; moved = true; }
         }
-        if (moved) { this.clampView(); this.draw(); }
+        if (moved) { this.putSpan(col0, row0); this.draw(); }
         return moved;
+    },
+
+    /// Put a row in the middle rather than just on screen — right when
+    /// jumping somewhere, where landing at the very edge is disorienting.
+    centre(row) {
+        const v = this.span();
+        this.putSpan(null, Math.round(row - v.rows / 2));
     },
 
     /// Where a bar and a row land on the glass — or off it.
@@ -357,23 +531,69 @@ const Studio = {
     onScreen(bar) { return bar >= this.bar0 && bar < this.bar0 + this.cols(); },
     rowOn(row) { return row >= this.row0 && row < this.row0 + this.visRows(); },
 
+    // The same, for the piano roll.
+    stepX(step) { return this.cell.x0 + (step - this.ecol0) * this.cell.w; },
+    keyY(row) { return this.cell.y0 + (row - this.erow0) * this.cell.h; },
+    stepOn(step) { return step >= this.ecol0 && step < this.ecol0 + this.cell.cols; },
+    keyOn(row) { return row >= this.erow0 && row < this.erow0 + this.cell.rows; },
+
     /// The scrollbar tracks, in canvas pixels. Null when everything fits —
     /// a scrollbar for something that does not scroll is just clutter.
     scrollbars() {
         const c = this.cell;
         if (!c || !c.cols) return { h: null, v: null };
-        const gridW = c.cols * c.w, gridH = c.rows * c.h;
-        const h = this.BARS > c.cols
+        const s = this.span();
+        const gridW = s.cols * c.w, gridH = s.rows * c.h;
+        const h = s.totalCols > s.cols
             ? { x: c.x0, y: c.y0 + gridH + 1, w: gridW, h: this.GUTTER - 2,
-                from: c.x0 + (this.bar0 / this.BARS) * gridW,
-                len: Math.max(18, (c.cols / this.BARS) * gridW) }
+                from: c.x0 + (s.col0 / s.totalCols) * gridW,
+                len: Math.max(18, (s.cols / s.totalCols) * gridW) }
             : null;
-        const v = this.rowCount() > c.rows
+        const v = s.totalRows > s.rows
             ? { x: c.x0 + gridW + 1, y: c.y0, w: this.GUTTER - 2, h: gridH,
-                from: c.y0 + (this.row0 / this.rowCount()) * gridH,
-                len: Math.max(18, (c.rows / this.rowCount()) * gridH) }
+                from: c.y0 + (s.row0 / s.totalRows) * gridH,
+                len: Math.max(18, (s.rows / s.totalRows) * gridH) }
             : null;
         return { h, v };
+    },
+
+    /// Two little letters at the end of the row label. Drawn rather than
+    /// made of HTML because the row is drawn, and a button floating over a
+    /// canvas never lines up with it for long.
+    drawRowState(cx, c, row, y) {
+        const muted = this.rowMuted(row);
+        const solo = this.rowSolo(row);
+        const dim = this.solo && !solo;
+        const box = 11, pad = 2;
+        const x = c.x0 - box * 2 - pad - 3;
+        const mid = y + c.h / 2 - box / 2;
+
+        cx.font = '8px monospace';
+        cx.textBaseline = 'middle';
+
+        cx.fillStyle = muted ? '#e8384f' : (dim ? '#1a1a22' : '#1d1d27');
+        cx.fillRect(x, mid, box, box);
+        cx.fillStyle = muted ? '#fff' : '#6a7183';
+        cx.fillText('M', x + 2.5, mid + box / 2);
+
+        cx.fillStyle = solo ? '#ffc83d' : '#1d1d27';
+        cx.fillRect(x + box + pad, mid, box, box);
+        cx.fillStyle = solo ? '#11111a' : '#6a7183';
+        cx.fillText('S', x + box + pad + 3, mid + box / 2);
+    },
+
+    /// Which of the two little boxes a point is on, if either.
+    rowButton(px, py) {
+        const c = this.cell;
+        if (!c || this.view !== 'arrange') return null;
+        const box = 11, pad = 2;
+        const x = c.x0 - box * 2 - pad - 3;
+        if (px < x - 2 || px > x + box * 2 + pad + 2) return null;
+        const row = this.row0 + Math.floor((py - c.y0) / c.h);
+        if (row < 0 || row >= this.rowCount()) return null;
+        const mid = this.rowY(row) + c.h / 2 - box / 2;
+        if (py < mid - 3 || py > mid + box + 3) return null;
+        return { row, which: px < x + box + pad / 2 ? 'mute' : 'solo' };
     },
 
     draw() {
@@ -404,6 +624,9 @@ const Studio = {
         this.song.tracks.forEach((t, ti) => {
             if (!this.rowOn(ti)) return;
             const y = this.rowY(ti);
+            const heard = this.rowHeard(ti);
+            this.drawRowState(cx, c, ti, y);
+            cx.globalAlpha = heard ? 1 : 0.38;      // off is visibly off
             cx.font = '10px monospace';
             cx.fillStyle = ti === this.track ? '#e8edf6' : '#6a7183';
             cx.fillText(t.name.slice(0, 7), 5, y + c.h / 2 - 5);
@@ -452,6 +675,7 @@ const Studio = {
                     cx.fillRect(x + 1, y + 2, 2, c.h - 4);
                 }
             }
+            cx.globalAlpha = 1;
         });
 
         for (let lane = 0; lane < this.audioRows(); lane++)
@@ -479,7 +703,10 @@ const Studio = {
     /// arrangement because that is where they play from, even though the
     /// audio itself lives outside the .vbm.
     drawLane(cx, c, lane) {
-        const y = this.rowY(this.song.tracks.length + lane);
+        const row = this.song.tracks.length + lane;
+        const y = this.rowY(row);
+        this.drawRowState(cx, c, row, y);
+        cx.globalAlpha = this.rowHeard(row) ? 1 : 0.38;
         const clips = Tape.inLane(lane);
         const arming = Mic.rolling() && lane === Tape.lanes();
 
@@ -541,6 +768,7 @@ const Studio = {
                 cx.strokeRect(x0 + 2, y + 2, span - 4, c.h - 4);
             }
         }
+        cx.globalAlpha = 1;
     },
 
     /// Drawn on the canvas rather than made of HTML, because the thing they
@@ -578,31 +806,70 @@ const Studio = {
         if (!cv || !this.cell || !this.editing) return;
         const cx = cv.getContext('2d'), c = this.cell;
         const t = this.song.tracks[this.track];
-        const rows = this.rows(t), steps = this.editing.steps;
+        const drums = t.channel === 9;
+        const rows = this.rows(t);
         cx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
-        cx.font = '10px monospace';
         cx.textBaseline = 'middle';
 
-        for (let r = 0; r < 8; r++) {
-            const y = c.y0 + r * c.h;
-            cx.fillStyle = '#6a7183';
-            cx.fillText(this.label(t, r), 5, y + c.h / 2);
-            for (let s = 0; s < steps; s++) {
-                cx.fillStyle = s === this._step ? '#2e2e40'
-                             : (s % 4 === 0 ? '#191922' : '#14141c');
-                cx.fillRect(c.x0 + s * c.w + 1, y + 1, c.w - 2, c.h - 2);
+        const bigEnough = c.h >= this.ROW_MIN + 2;
+        const roomy = c.h >= this.ROW_BIG;
+
+        for (let i = 0; i < c.rows; i++) {
+            const r = this.erow0 + i;
+            if (r >= rows.length) break;
+            const y = c.y0 + i * c.h;
+            const pitch = rows[r];
+            const black = !drums && this.isBlack(pitch);
+            const isC = !drums && pitch % 12 === 0;
+
+            // The label. Over seven octaves there is no room to name every
+            // row, so the Cs are named and the rest are shown by shade —
+            // which is what the black keys on a keyboard are for.
+            if (drums || roomy || isC) {
+                cx.font = (isC && !drums) ? 'bold 9px monospace' : '9px monospace';
+                cx.fillStyle = isC ? '#8b93a6' : '#5a6172';
+                cx.fillText(this.label(t, r), 4, y + c.h / 2);
+            }
+
+            for (let j = 0; j < c.cols; j++) {
+                const st = this.ecol0 + j;
+                const x = c.x0 + j * c.w;
+                cx.fillStyle = st === this._step ? '#2e2e40'
+                    : black ? '#101016'
+                    : (isC ? '#1d1d26' : (st % 4 === 0 ? '#191922' : '#14141c'));
+                cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
+            }
+
+            // A line under every C, so the octave you are in is readable
+            // without counting rows.
+            if (isC) {
+                cx.fillStyle = '#2a2a38';
+                cx.fillRect(c.x0, y + c.h - 1, c.cols * c.w, 1);
             }
         }
+
         for (const e of this.editing.events) {
             if (!e.isNote) continue;
-            const r = rows.indexOf(e.data[0]);
-            if (r < 0) continue;
+            const r = this.rowOf(t, e.data[0]);
+            if (r < 0 || !this.keyOn(r)) continue;
+            const from = Math.max(e.tick, this.ecol0);
+            const to = Math.min(e.tick + Math.max(1, e.dur), this.ecol0 + c.cols);
+            if (to <= from) continue;
             cx.globalAlpha = 0.35 + 0.65 * (e.data[1] / 127);
-            cx.fillStyle = t.channel === 9 ? '#ffc83d' : '#4cd964';
-            cx.fillRect(c.x0 + e.tick * c.w + 1, c.y0 + r * c.h + 2,
-                        Math.max(1, e.dur) * c.w - 2, c.h - 4);
+            cx.fillStyle = drums ? '#ffc83d' : '#4cd964';
+            cx.fillRect(this.stepX(from) + 1, this.keyY(r) + 2,
+                        (to - from) * c.w - 2, c.h - 4);
             cx.globalAlpha = 1;
         }
+
+        if (!bigEnough) {
+            // Zoomed out past the point of being able to hit a row.
+            cx.font = '9px monospace';
+            cx.fillStyle = '#5a6172';
+            cx.fillText('zoom in to edit', c.x0 + 6, c.y0 + 8);
+        }
+
+        this.drawScrollbars(cx, c);
     },
 
     // ── Touch ─────────────────────────────────────────────────────────────
@@ -624,8 +891,14 @@ const Studio = {
     /// A wheel moves the window: down the rows, or along the bars with shift
     /// held — or with a trackpad that swipes sideways of its own accord.
     wheel(ev) {
-        if (this.view !== 'arrange') return false;
+        if (this.view === 'beats') return false;
         const dx = ev.deltaX || 0, dy = ev.deltaY || 0;
+        if (ev.ctrlKey || ev.metaKey) {
+            if (!dy) return false;
+            const moved = this.setZoom(this.zoom * (dy < 0 ? 1.12 : 0.89));
+            if (moved && ev.preventDefault) ev.preventDefault();
+            return moved;
+        }
         const sideways = ev.shiftKey || Math.abs(dx) > Math.abs(dy);
         const amount = sideways ? (dx || dy) : dy;
         if (!amount) return false;
@@ -661,7 +934,8 @@ const Studio = {
         const along = which === 'h' ? p.x : p.y;
         const start = which === 'h' ? b.x : b.y;
         const length = which === 'h' ? b.w : b.h;
-        const total = which === 'h' ? this.BARS : this.rowCount();
+        const s = this.span();
+        const total = which === 'h' ? s.totalCols : s.totalRows;
 
         // Grabbed the bar itself: remember where, so it does not jump.
         if (along >= b.from && along <= b.from + b.len) {
@@ -685,16 +959,25 @@ const Studio = {
     },
 
     down(ev) {
-        // Inside a riff a tap is a note and should land immediately; there is
-        // nothing to drag, so there is nothing to wait for.
-        if (this.view !== 'arrange') { this.tap(ev); return; }
         const p = this.point(ev);
-
-        const bar = this.onScrollbar(p);
-        if (bar) {
-            this.scrollGrab(bar, p);
+        const grab = () => {
             const cv0 = document.getElementById('st-grid');
             if (cv0 && cv0.setPointerCapture) { try { cv0.setPointerCapture(ev.pointerId); } catch (_) {} }
+        };
+
+        // A scrollbar is a scrollbar on either screen, and has to be caught
+        // before anything reads the press as a note or as a box.
+        const bar = this.onScrollbar(p);
+        if (bar) { this.scrollGrab(bar, p); grab(); return; }
+
+        // Inside a riff a tap is a note and should land immediately; there is
+        // nothing to drag there, so there is nothing to wait for.
+        if (this.view !== 'arrange') { this.tap(ev); return; }
+
+        // M and S come before the marquee, or it swallows them.
+        const btn = this.rowButton(p.x, p.y);
+        if (btn) {
+            if (btn.which === 'mute') this.muteRow(btn.row); else this.soloRow(btn.row);
             return;
         }
 
@@ -806,10 +1089,11 @@ const Studio = {
             return;
         }
 
-        const s = Math.floor((px - c.x0) / c.w);
-        const row = Math.floor((py - c.y0) / c.h);
-        if (s < 0 || s >= this.editing.steps || row < 0 || row > 7) return;
+        const s = this.ecol0 + Math.floor((px - c.x0) / c.w);
+        const row = this.erow0 + Math.floor((py - c.y0) / c.h);
         const t = this.song.tracks[this.track];
+        if (px < c.x0 || s < 0 || s >= this.editing.steps ||
+            row < 0 || row >= this.rows(t).length) return;
         const pitch = this.rows(t)[row];
         const found = this.editing.events.find(e => e.isNote && e.tick === s && e.data[0] === pitch);
         this.mark(found ? 'Note off' : 'Note on');
@@ -856,20 +1140,45 @@ const Studio = {
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
         this.mark('Add sample');
+        this._ask = null;            // a question about the last import is stale
         this._audio = true;
-        let got = 0, bar = at || 0;
+        let got = 0, stretched = 0, bar = at || 0, asked = null;
         for (const f of Array.from(files).slice(0, 6)) {
             const spb = this.song.stepsPerRiff * (15 / this.song.tempo);
             const clip = await Tape.take(f, bar, spb);
             if (!clip) continue;
+
+            // Work out what arrived before deciding what to do with it.
+            const heard = Listen.read(clip.buffer, this.context());
+            if (heard) {
+                clip.kind2 = heard.kind;
+                if (heard.tempo) clip.grid = { bpm: heard.tempo, downbeat: heard.downbeat || 0,
+                                               conf: heard.pulse };
+                if (heard.kind === 'vocal' || heard.kind === 'keys' || heard.kind === 'bass')
+                    clip.name = clip.name;        // the file name is better than a guess
+            }
+
+            const plan = Listen.plan(heard, this.context());
+            if (plan && plan.action === 'ask') {
+                // A whole record. Stretching it into eight bars would be
+                // vandalism, so it is placed as it is and the question of
+                // what to do about the tempo is put to the person.
+                asked = { clip, heard };
+            } else if (plan && plan.action === 'fit') {
+                if (await this.syncClip(clip, true)) stretched++;
+            }
             this.selectClip(clip, got > 0);    // everything just dropped in
             bar = Math.min(this.BARS - 1, clip.at + clip.bars);
             got++;
         }
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct();
-        this.say(got ? 'Added ' + got + (got === 1 ? ' sample' : ' samples')
-                     : (Tape.error || 'Nothing to add'));
+        this._ask = asked;
+        this.refreshAct();
+        this.say(got
+            ? 'Added ' + got + (got === 1 ? ' sample' : ' samples') +
+              (stretched ? ' · ' + stretched + ' beat-synced' : '')
+            : (Tape.error || 'Nothing to add'));
     },
 
     pickSamples() {
@@ -889,8 +1198,12 @@ const Studio = {
 
     preview(channel, pitch) {
         if (!this.synth) return;
-        if (this.synth.ctx) this.synth.hit(channel, pitch, 100, 0.25);
-        else this.synth.start().then(() => this.synth.hit(channel, pitch, 100, 0.25));
+        const go = () => {
+            if (!this._mix) this.wire(this.synth.ctx, this.context());
+            this.synth.hit(channel, pitch, 100, 0.25);
+        };
+        if (this.synth.ctx) go();
+        else this.synth.start().then(go);
     },
 
     // ── Arrangement commands, in Vibe's own words ─────────────────────────
@@ -900,7 +1213,29 @@ const Studio = {
         if (!riff) { this.newRiff(); return; }
         this.editing = riff;
         this.view = 'edit';
-        this.toolbar(); this.layout(); this.refreshAct();
+        this.ecol0 = 0;
+        this.toolbar(); this.layout();
+        this.lookAtNotes();
+        this.refreshAct();
+    },
+
+    /// Open the roll where the music is: centred on what is already in the
+    /// riff, or on the register the instrument lives in when it is empty.
+    /// Landing on C1 every time and scrolling up is not a piano roll, it is
+    /// a filing cabinet.
+    lookAtNotes() {
+        const t = this.song.tracks[this.track];
+        if (!t || t.channel === 9) { this.erow0 = 0; this.clampView(); return; }
+        const notes = (this.editing ? this.editing.events : []).filter(e => e.isNote);
+        let at;
+        if (notes.length) {
+            let lo = 127, hi = 0;
+            for (const e of notes) { lo = Math.min(lo, e.data[0]); hi = Math.max(hi, e.data[0]); }
+            at = (lo + hi) / 2;
+        } else {
+            at = this.gridFor(t).at || 60;
+        }
+        this.centre(this.rowOf(t, Math.round(at)));
     },
 
     back() {
@@ -994,6 +1329,13 @@ const Studio = {
         const t = this.song.tracks[this.track];
         t.program = p;
         this.synth.setProgram(t.channel, p);
+        // A bass and a piccolo do not want the same grid, and the one you
+        // just chose is a better guess than the one you had.
+        if (this.view === 'edit') {
+            this.layout();
+            this.lookAtNotes();
+            this.draw();
+        }
     },
 
     // ── Playing ───────────────────────────────────────────────────────────
@@ -1006,6 +1348,8 @@ const Studio = {
         this._follow = true;         // a fresh start earns the view back
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
+        this.context();              // the tape rebuilds its processing against this
+        if (!this._mix) this.wire(this.synth.ctx, Tape.ctxInfo);
         await Tape.ready(this.synth.ctx);
         const editing = this.view === 'edit' && this.editing;
         const from = editing ? 0 : this.song.loopStart;
@@ -1023,7 +1367,14 @@ const Studio = {
                 const now = this.synth.ctx.currentTime;
                 const spb = steps * (15 / this.song.tempo);
                 if (bar === from) Mic.passStart(now);
-                if (!Mic.rolling()) Tape.barStart(bar, now, spb);
+                // A soloed or muted lane is handled here rather than inside
+                // the tape, which knows about clips and not about rows.
+                if (!Mic.rolling()) {
+                    const heard = [];
+                    for (let l = 0; l < this.audioRows(); l++)
+                        if (this.rowHeard(this.song.tracks.length + l)) heard.push(l);
+                    Tape.barStart(bar, now, spb, heard);
+                }
             }
             this._playBar = editing ? -1 : bar;
             if (editing) {
@@ -1033,7 +1384,9 @@ const Studio = {
                         this.synth.hit(t.channel, e.data[0], e.data[1],
                                        Math.max(1, e.dur) * (15 / this.song.tempo));
             } else {
-                for (const t of this.song.tracks) {
+                for (let ti = 0; ti < this.song.tracks.length; ti++) {
+                    if (!this.rowHeard(ti)) continue;
+                    const t = this.song.tracks[ti];
                     const riff = this.riffAt(t, bar);
                     if (!riff) continue;
                     for (const e of riff.events)
@@ -1058,6 +1411,68 @@ const Studio = {
         if (this._timer) clearTimeout(this._timer);     // never two clocks
         tick();
         this.toolbar();
+    },
+
+    /// Which tracks are off. Not in the .vbm, because the .vbm is the 2010
+    /// format and has to stay readable by the app it came from.
+    mutes() { return this.song.tracks.map(t => !!t.muted); },
+
+    applyMutes(list) {
+        if (!Array.isArray(list)) return;
+        this.song.tracks.forEach((t, i) => { t.muted = !!list[i]; });
+    },
+
+    /// The mix settings. Part of the beat, so they travel with it.
+    mixSet: null,
+    _mix: null,
+
+    mix() {
+        if (!this.mixSet) this.mixSet = Mixer.fresh();
+        return this.mixSet;
+    },
+
+    /// Build the buses and put everything on them. Called once the context
+    /// exists, and again whenever a setting changes — a Web Audio graph is
+    /// not adjustable in shape, so changing it means building it.
+    wire(actx, ctxInfo) {
+        // A mixer is a nicety; undo and playback are not. If this context
+        // cannot build one — an old browser missing a node, a stub — the
+        // sound goes out the way it did before and nothing else notices.
+        try {
+            this._mix = Mixer.build(actx, this.mix(), ctxInfo);
+        } catch (_) {
+            this._mix = null;
+            Tape.bus = null;
+            if (this.synth && this.synth.route) this.synth.route(null, null);
+            return null;
+        }
+        if (this.synth && this.synth.route)
+            this.synth.route(this._mix.in.drums, this._mix.in.music);
+        Tape.bus = this._mix.in.audio;
+        return this._mix;
+    },
+
+    /// A changed fader has to reach the graph, and the cheapest correct way
+    /// is to build a new one. Rebuilding mid-note would cut it off, so it
+    /// waits for the transport to be stopped — or takes the cut, which at a
+    /// fader move is what you would expect anyway.
+    remix(quiet) {
+        if (!this.synth || !this.synth.ctx) return;
+        const playing = !!this._timer;
+        if (playing) this._halt();
+        this.wire(this.synth.ctx, this.context());
+        this.keep();
+        if (playing) this.play();
+        if (!quiet) { this.refreshAct(); this.draw(); }
+    },
+
+    /// What the song is: tempo, key, groove. Everything automatic reads it,
+    /// and it is worked out fresh rather than cached, because it is cheap
+    /// and a stale key is worse than no key.
+    context() {
+        const c = Ctx.read(this.song, Tape);
+        Tape.ctxInfo = c;
+        return c;
     },
 
     /// Kill the clock and leave everything else alone. Changing tempo in the
@@ -1149,10 +1564,50 @@ const Studio = {
         return { step, bar };
     },
 
-    /// A pad hit: sound it now, write it where it belongs.
-    pad(row) {
+    /// What is under your thumbs. Not the grid rows — the grid is seven
+    /// octaves and your thumbs are not.
+    ///
+    /// Low to high, left to right, so pad one is the kick and pad one is
+    /// also the tonic. For a tuned track these are the notes of the song's
+    /// key, which is why a part played in here lands in tune before the
+    /// tuner has done anything.
+    padPitches() {
         const t = this.song.tracks[this.track];
-        const pitch = this.rows(t)[row];
+        if (!t) return [];
+        if (t.channel === 9) return this.DRUM_ROWS.slice().reverse();
+
+        const mus = this.context();
+        const home = (this.gridFor(t).at || 60);
+        const scale = mus.notes.slice().sort((a, b) => a - b);
+        const base = Math.floor(home / 12) * 12;
+
+        // Seven degrees and the octave above, starting at or below home.
+        const out = [];
+        for (let oct = 0; out.length < 8; oct++) {
+            for (const pc of scale) {
+                const p = base + pc + oct * 12;
+                if (p < this.NOTE_LOW || p > this.NOTE_HIGH) continue;
+                if (out.length < 8) out.push(p);
+            }
+            if (oct > 8) break;
+        }
+        return out;
+    },
+
+    padName(i) {
+        const t = this.song.tracks[this.track];
+        const p = this.padPitches()[i];
+        if (p == null) return '';
+        if (t.channel === 9) return this.DRUM_NAMES[p] || String(p);
+        return ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][p % 12]
+             + (Math.floor(p / 12) - 1);
+    },
+
+    /// A pad hit: sound it now, write it where it belongs.
+    pad(i) {
+        const t = this.song.tracks[this.track];
+        const pitch = this.padPitches()[i];
+        if (pitch == null) return;
         this.preview(t.channel, pitch);
         if (!this._rec || this._step < 0) return;
 
@@ -1176,6 +1631,10 @@ const Studio = {
             // Copy, cut and paste go to the clips when clips are what you are
             // holding, and to the riffs otherwise.
             else if (k === 'a' && this.view === 'arrange') { ev.preventDefault(); this.selectAll(); }
+            // Ctrl and the zoom keys, which is what every other app uses.
+            else if (k === '=' || ev.key === '+') { ev.preventDefault(); this.zoomBy(1); }
+            else if (k === '-') { ev.preventDefault(); this.zoomBy(-1); }
+            else if (k === '0') { ev.preventDefault(); this.setZoom(1); this.draw(); }
             else if (k === 'c') { ev.preventDefault(); this._sel.length ? this.clipCopy() : this.copy(); }
             else if (k === 'x') { ev.preventDefault(); this._sel.length ? this.clipCut() : this.cut(); }
             else if (k === 'v') {
@@ -1221,15 +1680,22 @@ const Studio = {
             this.clipDrop();
             return;
         }
+        if ((ev.key === 'm' || ev.key === 'M') && this.view === 'arrange' && !this._rec) {
+            ev.preventDefault(); this.muteRow(this.cursorRow()); return;
+        }
+        if ((ev.key === 's' || ev.key === 'S') && this.view === 'arrange' && !this._rec) {
+            ev.preventDefault(); this.soloRow(this.cursorRow()); return;
+        }
+        if (ev.key === 'Escape' && this.solo) { this.clearSolo(); return; }
         if (ev.key === 'Escape' && this._sel.length) {
             this.selectNone(); this.refreshAct(); this.draw();
             return;
         }
         if (!this._rec || ev.metaKey || ev.ctrlKey || ev.altKey) return;
         const n = '12345678'.indexOf(ev.key);
-        if (n === -1) return;
+        if (n === -1 || n >= this.padPitches().length) return;
         ev.preventDefault();
-        this.pad(7 - n);
+        this.pad(n);
     },
 
     /// The pads, in place of the earnings panel while a take is running.
@@ -1239,18 +1705,22 @@ const Studio = {
         const act = document.getElementById('st-act');
         if (!act) return;
         const t = this.song.tracks[this.track];
+        const pitches = this.padPitches();
         let pads = '';
-        for (let r = 7; r >= 0; r--)
-            pads += '<button class="st-pad" onpointerdown="Studio.pad(' + r + ')">' +
-                this.label(t, r) + '<i>' + (8 - r) + '</i></button>';
+        pitches.forEach((p, i) => {
+            pads += '<button class="st-pad" onpointerdown="Studio.pad(' + i + ')">' +
+                this.padName(i) + (i < 8 ? '<i>' + (i + 1) + '</i>' : '') + '</button>';
+        });
 
         const where = this.view === 'edit'
             ? this.editing.name
             : t.name + ', bars ' + (this.song.loopStart + 1) + '&ndash;' + (this.song.loopEnd + 1);
+        const inKey = t.channel === 9 ? '' :
+            ' The pads are ' + this.context().name + ', so what you play is in key.';
         act.innerHTML =
             '<div class="st-note">Recording onto ' + where + '. Hit the pads in time, ' +
                 'or keys 1&ndash;8 &mdash; each one lands on the nearest step. The loop keeps ' +
-                'going, so you can build the part up over a few passes.</div>' +
+                'going, so you can build the part up over a few passes.' + inKey + '</div>' +
             '<div class="st-pads">' + pads + '</div>' +
             '<div class="st-say"></div>';
     },
@@ -1341,6 +1811,68 @@ const Studio = {
     // marquee and one clipboard cover the lot.
 
     rowCount() { return this.song.tracks.length + this.audioRows(); },
+
+    // ── Turning things off ────────────────────────────────────────────────
+
+    /// Is this row muted in its own right?
+    rowMuted(row) {
+        if (row < this.song.tracks.length) return !!this.song.tracks[row].muted;
+        const clips = Tape.inLane(this.laneOf(row));
+        return clips.length > 0 && clips.every(c => !c.on);
+    },
+
+    rowSolo(row) { return !!(this.solo && this.solo.indexOf(row) !== -1); },
+
+    /// What actually gets heard. A solo anywhere silences everything that is
+    /// not in it, which is the whole point of a solo.
+    rowHeard(row) {
+        if (this.solo && this.solo.length) return this.rowSolo(row);
+        return !this.rowMuted(row);
+    },
+
+    /// Mute is a property of the song and saves with it. Audio has no
+    /// per-lane flag, so a lane is muted by muting what is on it — which is
+    /// also what the clip panel's Mute does, so the two agree.
+    muteRow(row) {
+        if (row < 0 || row >= this.rowCount()) return;
+        this.mark('Mute');
+        const on = !this.rowMuted(row);
+        if (row < this.song.tracks.length) {
+            this.song.tracks[row].muted = on;
+        } else {
+            for (const c of Tape.inLane(this.laneOf(row))) Tape.set(c, 'on', !on);
+        }
+        this.keep();
+        this.toolbar(); this.draw(); this.refreshAct();
+        this.say((on ? 'Muted ' : 'Unmuted ') + this.rowName(row));
+    },
+
+    /// Solo is not stored. It is something you do while working, and a beat
+    /// that opened silent because of a solo left on last week would look
+    /// like data loss rather than a setting.
+    soloRow(row) {
+        if (row < 0 || row >= this.rowCount()) return;
+        const list = this.solo ? this.solo.slice() : [];
+        const at = list.indexOf(row);
+        if (at === -1) list.push(row); else list.splice(at, 1);
+        this.solo = list.length ? list : null;
+        this.toolbar(); this.draw(); this.refreshAct();
+        this.say(this.solo
+            ? 'Soloing ' + this.solo.map(r => this.rowName(r)).join(' and ')
+            : 'Everything back on');
+    },
+
+    clearSolo() {
+        if (!this.solo) return;
+        this.solo = null;
+        this.toolbar(); this.draw(); this.refreshAct();
+        this.say('Everything back on');
+    },
+
+    rowName(row) {
+        if (row < this.song.tracks.length) return this.song.tracks[row].name;
+        return this.laneOf(row) === 0 ? 'Audio' : 'Aud ' + (this.laneOf(row) + 1);
+    },
 
     /// The row the cursor is on. It only ever sits on a track, but moving
     /// through the grid has to count rows, not tracks.
@@ -1581,6 +2113,250 @@ const Studio = {
 
     clipDrop() { this.clear(); },
 
+    // ── Making it fit, and making it sound like a record ──────────────────
+
+    // ── Beat sync ─────────────────────────────────────────────────────────
+    // Tempo and phase. Matching only the first is what DJ software calls
+    // Tempo Sync, and it leaves two things drifting against each other
+    // because nothing has said where one is.
+
+    _ask: null,              // a decision waiting about an imported song
+
+    /// Put a clip in time with the song: stretch it to the project tempo,
+    /// and start it from its own first beat rather than from whatever
+    /// silence happens to be in front of it.
+    async syncClip(clip, quiet) {
+        if (!clip || !clip.buffer) return false;
+        const ctx = this.context();
+
+        // Phase first, because it costs nothing and the stretch is measured
+        // from what is left.
+        if (clip.grid && clip.grid.downbeat > 0.012) clip.lead = clip.grid.downbeat;
+
+        const moved = await this.fitClip(clip, true);
+        if (!quiet) {
+            this.say(moved
+                ? 'Synced — ' + clip.bars + (clip.bars === 1 ? ' bar' : ' bars') +
+                  (clip.grid ? ', from its own downbeat' : '')
+                : 'Already in time');
+        }
+        return moved;
+    },
+
+    /// Nudge the grid a beat either way. This is the one correction that
+    /// matters, because the way automatic detection fails is by anchoring
+    /// on the snare instead of the kick — confidently, and exactly half a
+    /// bar out.
+    gridNudge(beats) {
+        const clips = this.selClips().filter(c => c.grid);
+        if (!clips.length) { this.say('No beatgrid on that'); return; }
+        this.mark('Move the beatgrid', 'grid');
+        for (const c of clips) {
+            const beat = 60 / (c.grid.bpm || this.song.tempo);
+            c.grid.downbeat = Math.max(0, c.grid.downbeat + beats * beat);
+            c.lead = c.grid.downbeat;
+            c.render = null;
+            c.peaks = Tape.peaks(c);
+        }
+        this.keep();
+        this.refreshAct(); this.draw();
+        this.say((beats > 0 ? 'Grid a beat later' : 'Grid a beat earlier'));
+    },
+
+    /// Halve or double the detected tempo. The other way detection fails,
+    /// and the other correction, kept separate from phase because fixing
+    /// one should not disturb the other.
+    gridTempo(by) {
+        const clips = this.selClips().filter(c => c.grid);
+        if (!clips.length) { this.say('No beatgrid on that'); return; }
+        this.mark('Change the beatgrid tempo');
+        for (const c of clips) c.grid.bpm = c.grid.bpm * by;
+        this.keep();
+        this.refreshAct();
+        this.say('Beatgrid now ' + Math.round(clips[0].grid.bpm) + ' bpm — sync it again');
+    },
+
+    /// Take the project tempo from an imported record rather than the other
+    /// way round. For a two-minute song that is almost always the right
+    /// answer: stretching a whole record to fit a sketch is vandalism.
+    adoptTempo() {
+        const a = this._ask;
+        if (!a || !a.heard || !a.heard.tempo) return;
+        const bpm = Math.round(a.heard.tempo);
+        this.mark('Take the tempo from the import');
+        this.setTempo(bpm);
+        if (a.clip.grid) { a.clip.lead = a.clip.grid.downbeat || 0; a.clip.render = null; }
+        // Its bars are now whatever it is, at the song's new tempo.
+        const bars = Math.max(1, Math.round(a.clip.buffer.duration / this.context().barSeconds));
+        Tape.place(a.clip, null, Math.min(this.BARS, bars));
+        this._ask = null;
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        this.say('Song is now ' + bpm + ' bpm, to match the import');
+    },
+
+    async stretchImport() {
+        const a = this._ask;
+        if (!a) return;
+        this._ask = null;
+        this.mark('Stretch the import');
+        await this.syncClip(a.clip, true);
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        this.say('Stretched to ' + this.song.tempo + ' bpm');
+    },
+
+    leaveImport() {
+        this._ask = null;
+        this.refreshAct();
+        this.say('Left as it is');
+    },
+
+    /// Stretch a clip so it covers whole bars of THIS song, without moving
+    /// its pitch. Returns true if it actually needed it.
+    async fitClip(clip, quiet) {
+        if (!clip || !clip.buffer) return false;
+        const ctx = this.context();
+        // Measured from the downbeat, since anything before it is not part
+        // of the loop.
+        const usable = Math.max(0.05, clip.buffer.duration - (clip.lead || 0));
+        const plan = Flex.fit(usable, ctx, clip.buffer.getChannelData(0),
+                              clip.buffer.sampleRate);
+        if (!plan || !plan.reach) {
+            if (!quiet) this.say('That is too far from the tempo to stretch musically');
+            return false;
+        }
+        Tape.place(clip, null, Math.max(1, Math.round(plan.bars)));
+        if (plan.already) {
+            if (!quiet) this.say('Already in time — ' + plan.bars + ' bars');
+            return false;
+        }
+
+        clip.buffer = Flex.toLength(this.synth.ctx, clip.buffer, plan.bars * ctx.barSeconds);
+        clip.seconds = clip.buffer.duration;
+        clip.lead = 0;
+        clip.render = null;
+        clip.peaks = Tape.peaks(clip);
+        // It is in time now, so the pitch-shifting kind of fit is not
+        // wanted on top of it.
+        clip.fit = false;
+        if (!quiet) this.say('Stretched to ' + plan.bars +
+                             (plan.bars === 1 ? ' bar' : ' bars') + ' — pitch unchanged');
+        return true;
+    },
+
+    async fitSelection() {
+        const clips = this.selClips();
+        if (!clips.length) { this.say('Pick some audio first'); return; }
+        this.mark('Beat sync');
+        await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        this.context();              // the tape rebuilds its processing against this
+        await Tape.ready(this.synth.ctx);
+        let done = 0;
+        for (const c of clips) {
+            // Anything without a grid gets listened to now rather than
+            // being stretched on the strength of its length alone.
+            if (!c.grid && c.buffer) {
+                const heard = Listen.read(c.buffer, this.context());
+                if (heard && heard.tempo)
+                    c.grid = { bpm: heard.tempo, downbeat: heard.downbeat || 0, conf: heard.pulse };
+                if (heard) c.kind2 = c.kind2 || heard.kind;
+            }
+            if (await this.syncClip(c, true)) done++;
+        }
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        this.say(done ? done + (done === 1 ? ' clip' : ' clips') + ' beat-synced'
+                      : 'Already in time');
+    },
+
+    /// Move the words onto the grid. The gaps between them stretch; the
+    /// words themselves do not.
+    async alignSelection() {
+        const clips = this.selClips();
+        if (!clips.length) { this.say('Pick some audio first'); return; }
+        await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        this.context();              // the tape rebuilds its processing against this
+        await Tape.ready(this.synth.ctx);
+        const ctx = this.context();
+        this.mark('Align to the beat');
+
+        let moved = 0;
+        for (const c of clips) {
+            const from = c.render || c.buffer;
+            if (!from) continue;
+            const out = this.synth.ctx.createBuffer(
+                from.numberOfChannels, from.length, from.sampleRate);
+            let first = null;
+            for (let ch = 0; ch < from.numberOfChannels; ch++) {
+                // Every channel has to be warped the same way, or the take
+                // comes apart in the middle. The first channel decides.
+                const done = first
+                    ? { data: Flex.warp(from.getChannelData(ch), from.sampleRate,
+                                        first.marks, from.duration) }
+                    : Flex.align(from.getChannelData(ch), from.sampleRate, ctx,
+                                 { strength: 0.9 });
+                if (!first) first = done;
+                out.getChannelData(ch).set(done.data.subarray(0, from.length));
+            }
+            if (first && first.moved) {
+                c.render = out;
+                c.peaks = Tape.peaks(c);
+                moved += first.moved;
+            }
+        }
+
+        if (!moved) { this._undo.pop(); this.say('Nothing was far enough off to move'); return; }
+        this.keep();
+        this.refreshAct(); this.draw();
+        this.say('Moved ' + moved + (moved === 1 ? ' word' : ' words') + ' onto the beat');
+    },
+
+    /// One button. Gate it, tune it to the song's key, and put the chain on.
+    async polish(presetId) {
+        const clips = this.selClips();
+        if (!clips.length) { this.say('Pick a take first'); return; }
+        await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        this.context();              // the tape rebuilds its processing against this
+        await Tape.ready(this.synth.ctx);
+        const ctx = this.context();
+        this.mark('Polish');
+
+        let done = 0, report = null;
+        for (const c of clips) {
+            if (!c.buffer) continue;
+            c.fx = Voice.fresh(presetId || 'lead', ctx);
+            const out = Voice.render(this.synth.ctx, c.buffer, c.fx, ctx);
+            if (out) {
+                c.render = out;
+                if (!report && out._report) report = out._report;
+                c.peaks = Tape.peaks(c);
+            }
+            done++;
+        }
+
+        this.keep();
+        this.refreshAct(); this.draw();
+        this.say(done
+            ? 'Tuned to ' + ctx.name + (ctx.confident ? '' : ' (best guess)') +
+              (report ? ' · ' + report.moved + ' of ' + report.voiced + ' moved' : '')
+            : 'Nothing to work on');
+    },
+
+    /// Take the processing off and hear what was actually sung.
+    unpolish() {
+        const clips = this.selClips();
+        if (!clips.length) return;
+        this.mark('Remove processing');
+        for (const c of clips) { c.fx = null; c.render = null; c.peaks = Tape.peaks(c); }
+        this.keep();
+        this.refreshAct(); this.draw();
+        this.say('Back to the raw take');
+    },
+
     clipSet(field, value) {
         const clips = this.selClips();
         if (!clips.length) return;
@@ -1643,6 +2419,7 @@ const Studio = {
         if (!this.focusClip()) return;
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
+        this.context();              // the tape rebuilds its processing against this
         await Tape.ready(this.synth.ctx);
         // One at a time would be a mess; the focused clip is the one you
         // just touched, which is the one you meant.
@@ -1680,6 +2457,105 @@ const Studio = {
         if (hot) hot.className = peak > 0.98 ? 'mic-pk on' : 'mic-pk';
     },
 
+    // ── The mix ───────────────────────────────────────────────────────────
+
+    mixPanel() {
+        this._mixOpen = !this._mixOpen;
+        if (this._mixOpen) this._audio = false;
+        this.refreshAct(); this.toolbar(); this.layout();
+    },
+
+    /// A fader moved. Web Audio graphs are not reshapeable, so a change
+    /// means rebuilding one — cheap, and the only honest way to make a
+    /// setting that adds or removes a node take effect.
+    setMix(bus, field, value, id, text) {
+        const set = this.mix();
+        if (!set[bus]) return;
+        // Before the change, not after — a snapshot of the new value is not
+        // a snapshot of anything.
+        this.mark('Mix', 'mix-' + bus + '-' + field);
+        if (field.indexOf('.') !== -1) {
+            const [a, b] = field.split('.');
+            set[bus][a][b] = value;
+        } else {
+            set[bus][field] = value;
+        }
+        const n = document.getElementById(id);
+        if (n) n.textContent = text;
+        this.remix(true);
+    },
+
+    toggleMix(bus, field) {
+        const set = this.mix();
+        const [a, b] = field.split('.');
+        this.mark('Mix');
+        set[bus][a][b] = !set[bus][a][b];
+        this.remix();
+    },
+
+    resetMix() {
+        this.mark('Reset the mix');
+        this.mixSet = Mixer.fresh();
+        this.remix();
+        this.say('Back to the standard mix');
+    },
+
+    mixAct() {
+        const act = document.getElementById('st-act');
+        if (!act) return;
+        const m = this.mix();
+        const pct = v => Math.round(v * 100) + '%';
+        const db = v => (v > 0 ? '+' : '') + v.toFixed(1) + 'dB';
+
+        /// A fader. The read-out updates itself so the panel is not rebuilt
+        /// on every pixel of a drag.
+        const fader = (bus, field, label, min, max, step, value, fmt) => {
+            const id = 'mx-' + bus + '-' + field.replace('.', '-');
+            return '<label>' + label +
+                '<input type="range" min="' + min + '" max="' + max + '" step="' + step +
+                '" value="' + value + '" oninput="Studio.setMix(\'' + bus + '\',\'' +
+                field + '\',+this.value,\'' + id + '\',' +
+                (fmt === 'db' ? 'Studio._db(+this.value)' : 'Studio._pct(+this.value)') + ')">' +
+                '<b id="' + id + '">' + (fmt === 'db' ? db(value) : pct(value)) + '</b></label>';
+        };
+
+        act.innerHTML =
+            '<div class="ai-key">Master &middot; everything is summed here, so these ' +
+                'levels mean something against each other</div>' +
+            '<div class="mic-row mic-dials">' +
+                fader('master', 'gain', 'Master', 0, 1.4, 0.01, m.master.gain) +
+                fader('drums', 'gain', 'Drums', 0, 2, 0.01, m.drums.gain) +
+            '</div>' +
+            '<div class="mic-row mic-dials">' +
+                fader('music', 'gain', 'Synths', 0, 2, 0.01, m.music.gain) +
+                fader('audio', 'gain', 'Tape', 0, 2, 0.01, m.audio.gain) +
+            '</div>' +
+            '<div class="ai-key">The kit</div>' +
+            '<div class="mic-row mic-dials">' +
+                fader('drums', 'punch', 'Punch', 0, 1, 0.01, m.drums.punch) +
+                fader('drums', 'weight', 'Weight', 0, 1, 0.01, m.drums.weight) +
+            '</div>' +
+            '<div class="mic-row mic-dials">' +
+                fader('drums', 'parallel', 'Behind', 0, 1, 0.01, m.drums.parallel) +
+                fader('drums', 'kick', 'Kick', -6, 8, 0.1, m.drums.kick, 'db') +
+            '</div>' +
+            '<div class="mic-row mic-btns">' +
+                '<button class="' + (m.master.glue.on ? 'st-hot' : '') +
+                    '" onclick="Studio.toggleMix(\'master\',\'glue.on\')" ' +
+                    'title="Gentle compression over the whole mix">Glue</button>' +
+                '<button onclick="Studio.resetMix()">Reset</button>' +
+                '<button onclick="Studio.mixPanel()">Done</button>' +
+            '</div>' +
+            '<div class="st-note">Punch lets the stick through before it clamps. ' +
+                'Behind is a squashed copy slid under the kit &mdash; it makes the ' +
+                'drums bigger without making them louder. Nothing gets past the ' +
+                'ceiling, so it will not crackle.</div>' +
+            '<div class="st-say"></div>';
+    },
+
+    _pct(v) { return Math.round(v * 100) + '%'; },
+    _db(v) { return (v > 0 ? '+' : '') + (+v).toFixed(1) + 'dB'; },
+
     audioAct() {
         const act = document.getElementById('st-act');
         if (!act) return;
@@ -1712,6 +2588,14 @@ const Studio = {
                     : Mic.state === 'armed'   ? 'Counting in &mdash; come in at the top'
                     : '';
 
+        // Say what the song is. Everything automatic below reads this, so
+        // it should not be a secret — and if it is wrong, that is worth
+        // seeing before pressing Polish rather than after.
+        const mus = this.context();
+        html += '<div class="ai-key">' + mus.tempo + ' bpm &middot; ' +
+            esc(mus.name) + (mus.confident ? '' : ' <i>(best guess)</i>') +
+            '</div>';
+
         html +=
             '<div class="mic-row mic-btns">' +
                 (why ? '' : '<button class="' + (Mic.rolling() ? 'st-rec on' : 'st-rec') +
@@ -1725,6 +2609,27 @@ const Studio = {
                     ? '<button onclick="Studio.selectAll()">Select all</button>' : '') +
                 '<button onclick="Studio.audioClose()">Done</button>' +
             '</div>';
+
+        // A whole record has arrived and stretching it into eight bars
+        // would be vandalism. Neither answer is obviously right — it
+        // depends whether this is the song or a reference — so it asks.
+        if (this._ask && this._ask.heard) {
+            const h = this._ask.heard;
+            const bpm = Math.round(h.tempo || 0);
+            html +=
+                '<div class="ai-ask">' +
+                    '<b>' + esc(this._ask.clip.name) + '</b> &mdash; ' +
+                    Listen.clock(h.seconds) + ', about ' + bpm + ' bpm. ' +
+                    'Your song is ' + this.song.tempo + '.' +
+                    '<div class="mic-row mic-btns">' +
+                        (bpm ? '<button class="ai-go" onclick="Studio.adoptTempo()">' +
+                            'Make the song ' + bpm + '</button>' : '') +
+                        '<button onclick="Studio.stretchImport()">Stretch it to ' +
+                            this.song.tempo + '</button>' +
+                        '<button onclick="Studio.leaveImport()">Leave it</button>' +
+                    '</div>' +
+                '</div>';
+        }
 
         // What is selected. It can be riffs, audio, or a mixture, and the
         // heading should say which rather than calling everything a clip.
@@ -1774,6 +2679,46 @@ const Studio = {
                     '<button onclick="Studio.clipSet(\'on\', ' + (!c.on) + ')">' +
                         (c.on ? 'Mute' : 'Unmute') + '</button>' : '') +
                     '<button onclick="Studio.clear()" title="Delete">&#10005;</button>' +
+                '</div>';
+
+            // What it heard, and the grid it put on. Both are guesses and
+            // both are wrong sometimes, so both are shown and both can be
+            // corrected rather than being quietly relied upon.
+            if (c && (c.kind2 || c.grid)) {
+                html += '<div class="ai-key">' +
+                    (c.kind2 ? esc(Listen.KINDS[c.kind2] || c.kind2) : 'Audio') +
+                    (c.grid ? ' &middot; grid ' + Math.round(c.grid.bpm) + ' bpm, one at ' +
+                        c.grid.downbeat.toFixed(2) + 's' : ' &middot; no grid') +
+                    '</div>';
+            }
+            if (c && c.grid) {
+                html +=
+                    '<div class="mic-row mic-btns">' +
+                        '<button onclick="Studio.fitSelection()" ' +
+                            'title="Match the tempo and land its first beat on a bar">' +
+                            'Beat sync</button>' +
+                        '<button onclick="Studio.gridNudge(-1)" ' +
+                            'title="The grid is a beat late">&lsaquo; Beat</button>' +
+                        '<button onclick="Studio.gridNudge(1)" ' +
+                            'title="The grid is a beat early">Beat &rsaquo;</button>' +
+                        '<button onclick="Studio.gridTempo(0.5)" title="Detected double">&divide;2</button>' +
+                        '<button onclick="Studio.gridTempo(2)" title="Detected half">&times;2</button>' +
+                    '</div>';
+            }
+
+            html +=
+                '<div class="mic-row mic-btns ai-row">' +
+                    '<button class="ai-go" onclick="Studio.polish()" ' +
+                        'title="Gate, tune to the key, and put the vocal chain on">' +
+                        '&#10022; Polish vocal</button>' +
+                    '<button onclick="Studio.alignSelection()" ' +
+                        'title="Move the words onto the beat">Align</button>' +
+                    '<button onclick="Studio.fitSelection()" ' +
+                        'title="Stretch to whole bars at this tempo, without moving the pitch">' +
+                        'Fit tempo</button>' +
+                    (this.selClips().some(x => x.fx)
+                        ? '<button onclick="Studio.unpolish()" title="Hear the raw take">' +
+                          'Raw</button>' : '') +
                 '</div>' +
                 (c ? '<div class="mic-row mic-dials">' +
                     '<label>Level <input type="range" min="0" max="2" step="0.05" value="' +
@@ -1830,6 +2775,9 @@ const Studio = {
             label,
             vbm: writeVbm(this.song),
             clips: Tape.clips.map(c => Object.assign({}, c)),
+            // Cheap: a few dozen numbers, unlike the audio, which is shared.
+            mix: JSON.parse(JSON.stringify(this.mix())),
+            mutes: this.mutes(),
             where: {
                 track: this.track, bar: this.bar, view: this.view,
                 // Riffs come back from the file as new objects, so the open
@@ -1879,7 +2827,13 @@ const Studio = {
         this.stop();
         this.song = readVbm(snap.vbm);
         Tape.restore(snap.clips);
+        this.mixSet = Mixer.settle(snap.mix);
+        this.applyMutes(snap.mutes);
         this._markTag = '';          // the next edit starts a fresh step
+
+        // The graph is built from the settings, so putting the settings
+        // back means building it again.
+        if (this.synth && this.synth.ctx) this.wire(this.synth.ctx, this.context());
 
         this.editing = snap.where.riff
             ? this.song.riffs.find(r => String(r.id) === snap.where.riff) || null
@@ -1907,6 +2861,8 @@ const Studio = {
     KEY: 'runningboy_vibe_songs',
     BENCH: 'runningboy_vibe_bench',
     BENCH_AUDIO: 'runningboy_vibe_bench_audio',
+    BENCH_MIX: 'runningboy_vibe_bench_mix',
+    BENCH_MUTE: 'runningboy_vibe_bench_mute',
 
     _b64(bytes) {
         let s = '';
@@ -1944,6 +2900,8 @@ const Studio = {
             const aud = Tape.toJSON();
             if (aud) localStorage.setItem(this.BENCH_AUDIO, JSON.stringify(aud));
             else localStorage.removeItem(this.BENCH_AUDIO);
+            localStorage.setItem(this.BENCH_MIX, JSON.stringify(this.mix()));
+            localStorage.setItem(this.BENCH_MUTE, JSON.stringify(this.mutes()));
         } catch (_) {}
     },
 
@@ -1955,6 +2913,10 @@ const Studio = {
             this.track = 0; this.bar = 0;
             this.view = 'arrange'; this.editing = null; this.clip = null;
             try { Tape.fromJSON(JSON.parse(localStorage.getItem(this.BENCH_AUDIO))); } catch (_) {}
+            try { this.mixSet = Mixer.settle(JSON.parse(localStorage.getItem(this.BENCH_MIX))); }
+            catch (_) { this.mixSet = Mixer.fresh(); }
+            try { this.applyMutes(JSON.parse(localStorage.getItem(this.BENCH_MUTE))); } catch (_) {}
+            this._mix = null;            // rebuilt against the new settings
             this.selectNone();
             return true;
         } catch (_) { return false; }
@@ -1968,7 +2930,7 @@ const Studio = {
         const list = this.songs();
         const at = list.findIndex(x => x.name === now.name);
         const row = { name: now.name, data: this._b64(writeVbm(now)), at: Date.now(),
-                      audio: Tape.toJSON() };
+                      audio: Tape.toJSON(), mix: this.mix(), mutes: this.mutes() };
         if (at !== -1) list[at] = row; else list.push(row);
         if (list.length > 24) list.shift();
         if (this._writeSongs(list)) { this.keep(); this.say('Saved "' + now.name + '"'); }
@@ -1984,6 +2946,9 @@ const Studio = {
             this.track = 0; this.bar = 0;
             this.editing = null; this.clip = null;
             Tape.fromJSON(row.audio);
+            this.applyMutes(row.mutes);
+            this.mixSet = Mixer.settle(row.mix);
+            this._mix = null;
             this.selectNone();
             for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
             this.keep();
@@ -2024,7 +2989,7 @@ const Studio = {
         try {
             say('Rendering…');
             await this.synth.start();              // a gesture has happened: we are here
-            const buffer = await Bounce.render(this.song, say);
+            const buffer = await Bounce.render(this.song, say, this.mix());
             const name = Bounce.tidy(this.song.name);
 
             if (kind === 'mp3') {
@@ -2203,6 +3168,7 @@ const Studio = {
     },
 
     refreshAct() {
+        if (this._mixOpen) { this.mixAct(); return; }
         if (this._audio) { this.audioAct(); return; }
         if (this._rec) { this.recAct(); return; }
         const act = document.getElementById('st-act');

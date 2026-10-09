@@ -109,11 +109,35 @@ class Synth {
     adopt(ctx) {
         this.ctx = ctx;
         this._noise = null;                             // tied to a sample rate
+        this.routes = null;
         this.out = ctx.createGain();
         this.out.gain.value = 0.22;                     // headroom for chords
         const squash = ctx.createDynamicsCompressor();
         this.out.connect(squash).connect(ctx.destination);
         return ctx;
+    }
+
+    /// Send the kit one way and everything else another, so a mixer can
+    /// treat them differently. Without this the synth is its own tiny mix
+    /// and nothing downstream can undo it.
+    ///
+    /// Each destination keeps its own headroom gain: 0.22 is what stops a
+    /// chord clipping, and it has to keep doing that on the way to a bus.
+    route(drums, music) {
+        if (!this.ctx || !drums || !music) { this.routes = null; return; }
+        const pad = (to) => {
+            const g = this.ctx.createGain();
+            g.gain.value = 0.22;
+            g.connect(to);
+            return g;
+        };
+        this.routes = { drums: pad(drums), music: pad(music) };
+    }
+
+    /// Where a channel's sound should go. Channel 10 is the kit.
+    busFor(channel) {
+        if (!this.routes) return this.out;
+        return channel === 9 ? this.routes.drums : this.routes.music;
     }
 
     /// Browsers will not make a sound until a gesture starts the context.
@@ -145,11 +169,13 @@ class Synth {
         if (!this.ctx) return;
         const t = when == null ? this.ctx.currentTime : when;
         const gain = Math.min(1, velocity / 127) * 0.9;
-        if (channel === 9) this.drum(note, gain, t);
-        else this.voice(this.programs.get(channel) ?? 0, note, gain, seconds, t);
+        const bus = this.busFor(channel);
+        if (channel === 9) this.drum(note, gain, t, bus);
+        else this.voice(this.programs.get(channel) ?? 0, note, gain, seconds, t, bus);
     }
 
-    voice(program, note, gain, seconds, t) {
+    voice(program, note, gain, seconds, t, bus) {
+        bus = bus || this.out;
         const [wave, a, d, s, r, cutoff, detune] = VOICES[familyOf(program)];
         const hz = 440 * Math.pow(2, (note - 69) / 12);
 
@@ -168,7 +194,7 @@ class Synth {
             o.connect(filt);
             oscs.push(o);
         }
-        filt.connect(env).connect(this.out);
+        filt.connect(env).connect(bus);
 
         // Attack, decay to the sustain level, hold, then release.
         const peak = gain / (oscs.length || 1);
@@ -187,7 +213,8 @@ class Synth {
         }
     }
 
-    drum(note, gain, t) {
+    drum(note, gain, t, bus) {
+        bus = bus || this.out;
         const [kind, arg] = DRUMS[note] || ['hat', 0.05];
         if (kind === 'kick') {
             const o = this.ctx.createOscillator(), g = this.ctx.createGain();
@@ -196,7 +223,7 @@ class Synth {
             o.frequency.exponentialRampToValueAtTime(arg * 0.6, t + 0.11);
             g.gain.setValueAtTime(gain, t);
             g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-            o.connect(g).connect(this.out);
+            o.connect(g).connect(bus);
             o.start(t); o.stop(t + 0.24);
             return;
         }
@@ -214,7 +241,7 @@ class Synth {
                   : kind === 'click' ? 0.05 : (typeof arg === 'number' ? arg : 0.05);
         g.gain.setValueAtTime(gain * 0.8, t);
         g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-        src.connect(f).connect(g).connect(this.out);
+        src.connect(f).connect(g).connect(bus);
         src.start(t); src.stop(t + len + 0.02);
     }
 

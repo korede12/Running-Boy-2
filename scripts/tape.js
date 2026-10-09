@@ -34,6 +34,8 @@ const Tape = {
 
     clips: [],
     ctx: null,
+    ctxInfo: null,           // the musical context, for anything that processes
+    bus: null,               // where clips go: the mixer's audio input
     error: '',
     tooBig: 0,                    // clips left out of the last save, for size
 
@@ -92,6 +94,17 @@ const Tape = {
             loop: false,
             fit: false,
             seconds: 0,          // the clip's own length, in seconds
+            // Processing. `fx` is settings and is saved; `render` is the
+            // buffer they produce and is not — it is rebuilt from the
+            // original whenever it is needed, so a take can always go back
+            // to how it was sung.
+            fx: null,
+            render: null,
+            // The beatgrid: what tempo this audio is, and where its first
+            // beat sits inside the file. Everything about fitting it to the
+            // song is counted from these two numbers.
+            grid: null,      // { bpm, downbeat, conf }
+            kind2: null,     // what it was heard to be, for the panel to say
         }, fields);
     },
 
@@ -340,6 +353,8 @@ const Tape = {
         if (!clip) return;
         clip[field] = value;
         this._json = undefined;
+        if (field === 'fx') clip.render = null;      // rebuild from the recipe
+
         // These change what you would hear, so stop the old version rather
         // than letting the two overlap until the next pass.
         if (field !== 'name') this.stopOne(clip);
@@ -376,16 +391,29 @@ const Tape = {
         if (ctx) this.ctx = ctx;
         if (!this.ctx) return;
         for (const c of this.clips) {
-            if (c.buffer || !c.bytes) continue;
-            try { await this.decode(c); }
-            catch (_) { this.error = 'One clip will not decode on this browser.'; }
+            if (!c.buffer && c.bytes) {
+                try { await this.decode(c); }
+                catch (_) { this.error = 'One clip will not decode on this browser.'; }
+            }
+            // Rebuild what the recipe makes. Saved beats keep the settings
+            // and not the result, so this is where a tuned take becomes
+            // tuned again.
+            if (c.fx && c.fx.on && !c.render && c.buffer &&
+                typeof Voice !== 'undefined' && this.ctxInfo) {
+                try {
+                    const out = Voice.render(this.ctx, c.buffer, c.fx, this.ctxInfo);
+                    if (out) { c.render = out; c.peaks = this.peaks(c); }
+                } catch (_) { /* play it raw rather than not at all */ }
+            }
         }
     },
 
     /// Peaks across the part that is actually heard, so the drawing and the
     /// sound agree about where the clip starts.
     peaks(clip) {
-        const buf = clip.buffer;
+        // Draw what will be heard, which after processing is not the
+        // recording any more.
+        const buf = clip.render || clip.buffer;
         if (!buf) return [];
         const rate = buf.sampleRate;
         const from = Math.floor(Math.max(0, clip.lead) * rate);
@@ -424,9 +452,15 @@ const Tape = {
     /// Start every clip that begins on this bar. `when` is the audio clock
     /// reading for the bar line, which is the only timing the tape gets and
     /// all it needs.
-    barStart(bar, when, barSeconds) {
+    /// The lanes allowed to sound, when given — the studio works that out,
+    /// because solo and mute are about rows and this knows about clips.
+    barStart(bar, when, barSeconds, lanes) {
         if (!this.ctx) return;
-        for (const c of this.clips) if (c.at === bar && c.on) this.fire(c, when, barSeconds);
+        for (const c of this.clips) {
+            if (c.at !== bar || !c.on) continue;
+            if (lanes && lanes.indexOf(c.lane) === -1) continue;
+            this.fire(c, when, barSeconds);
+        }
     },
 
     /// Build one clip's audio graph against ANY context, at a given time.
@@ -434,7 +468,8 @@ const Tape = {
     /// gets exported is what was heard. `buffer` overrides the clip's own,
     /// which a bounce uses because it decodes at its own sample rate.
     voice(ctx, clip, when, barSeconds, buffer, dest) {
-        const buf = buffer || clip.buffer;
+        // The processed take if it has been made, the recording if not.
+        const buf = buffer || clip.render || clip.buffer;
         if (!ctx || !buf) return null;
         const rate = this.rate(clip, barSeconds);
         const off = Math.max(0, clip.lead + (clip.nudge || 0) / 1000);
@@ -444,7 +479,9 @@ const Tape = {
 
         const g = ctx.createGain();
         g.gain.value = clip.gain == null ? 1 : clip.gain;
-        g.connect(dest || ctx.destination);
+        // The mixer if there is one. Going straight to the destination is
+        // what made a clip and a synth part impossible to balance.
+        g.connect(dest || this.bus || ctx.destination);
 
         const src = ctx.createBufferSource();
         src.buffer = buf;
@@ -457,7 +494,15 @@ const Tape = {
             src.loopEnd = Math.min(buf.duration, off + (clip.seconds || own));
             if (src.loopEnd - src.loopStart < 0.02) src.loop = false;
         }
-        src.connect(g);
+        // The chain. Built fresh each time, because nodes cannot be
+        // reused, and spliced in here so a bounce gets it for free.
+        if (clip.fx && clip.fx.on && typeof Voice !== 'undefined' && this.ctxInfo) {
+            const chain = Voice.build(ctx, clip.fx, this.ctxInfo);
+            src.connect(chain.input);
+            chain.output.connect(g);
+        } else {
+            src.connect(g);
+        }
 
         // Never run past the bars the clip claims — that is what its span
         // means, and a clip bleeding into the next one is a bug, not a vibe.
@@ -584,7 +629,10 @@ const Tape = {
                        at: c.at, bars: c.bars, lane: c.lane, lead: c.lead,
                        nudge: c.nudge || 0, gain: c.gain == null ? 1 : c.gain,
                        on: c.on !== false, loop: !!c.loop, fit: !!c.fit,
-                       seconds: c.seconds || 0, peaks: c.peaks || [] });
+                       seconds: c.seconds || 0, peaks: c.peaks || [],
+                       // The recipe, not the result.
+                       fx: c.fx || null,
+                       grid: c.grid || null, kind2: c.kind2 || null });
         }
         this.tooBig = skipped;
         this._json = out.length ? out : null;
@@ -607,6 +655,8 @@ const Tape = {
                     gain: o.gain == null ? 1 : o.gain, on: o.on !== false,
                     loop: !!o.loop, fit: !!o.fit,
                     seconds: o.seconds || 0, peaks: o.peaks || [],
+                    fx: o.fx || null,
+                    grid: o.grid || null, kind2: o.kind2 || null,
                 }));
             } catch (_) {}
         }

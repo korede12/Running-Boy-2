@@ -31,7 +31,7 @@ const Bounce = {
 
     /// Render the loop to an AudioBuffer. `onsay` gets progress worth
     /// reading, because decoding a few samples is not instant.
-    async render(song, onsay) {
+    async render(song, onsay, mix) {
         const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
         if (!OAC) throw new Error('This browser cannot render audio offline.');
 
@@ -61,11 +61,21 @@ const Bounce = {
         synth.adopt(ctx);
         for (const t of song.tracks) synth.setProgram(t.channel, t.program);
 
+        // The same buses as live playback, built from the same settings, so
+        // an export is mixed exactly as it was heard rather than merely
+        // similarly. This is the whole reason Mixer takes a context.
+        let bus = null;
+        if (typeof Mixer !== 'undefined') {
+            bus = Mixer.build(ctx, mix, Tape.ctxInfo);
+            synth.route(bus.in.drums, bus.in.music);
+        }
+
         for (let i = 0; i < bars; i++) {
             const bar = from + i;
             const at = i * barLen;
 
             for (const t of song.tracks) {
+                if (t.muted) continue;          // off is off, including here
                 const p = t.placements.find(x => x.at === bar);
                 if (!p) continue;
                 for (const e of p.riff.events) {
@@ -76,7 +86,8 @@ const Bounce = {
             }
 
             for (const [clip, buf] of clips)
-                if (clip.at === bar) Tape.voice(ctx, clip, at, barLen, buf);
+                if (clip.at === bar)
+                    Tape.voice(ctx, clip, at, barLen, buf, bus ? bus.in.audio : null);
         }
 
         return ctx.startRendering();
