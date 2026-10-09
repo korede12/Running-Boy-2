@@ -1,24 +1,37 @@
 // ── Naijabeats ────────────────────────────────────────────────────────────
-// The music studio. Inside it you make a beat on Vibe — the real sequencer
-// from 2010, ported — and you can sell what you make.
+// The music studio. Inside it you make a beat on Vibe — the J2ME step
+// sequencer from 2010, ported — and you can sell what you make.
 //
-// It earns its place in the game by paying like the other work does: a
-// session costs hours, the fee depends on what is actually in the track, and
-// a beat can only be sold once. Hammering one note sixteen times is not a
-// song and does not pay like one.
+// Two screens, because that is Vibe's whole idea. A riff is one bar you can
+// see all of at once; the ARRANGE screen lays riffs out along tracks. You
+// never scroll a long timeline, which is how this fitted on a phone with a
+// keypad and is why it still fits on a phone with a thumb.
+//
+// The arrange screen carries Vibe's own vocabulary: copy, cut, paste as a
+// repeat (the same riff, so edits show everywhere) or paste as new (a copy
+// that goes its own way), plus the loop markers.
+//
+// It pays like the rest of the game: a session costs hours, the fee follows
+// what is actually in the beat, and a beat sells once.
 
 const Studio = {
 
     SESSION_HOURS: 3,
     MIN_TRACKS: 2,
     MIN_NOTES: 10,
+    BARS: 8,                 // how far the arrangement runs
 
     song: null,
     synth: null,
-    current: 0,
+    view: 'arrange',         // 'arrange' or 'edit'
+    track: 0,                // selected track
+    bar: 0,                  // selected bar, on the arrange screen
+    editing: null,           // the riff open in the note editor
+    clip: null,              // { riff } held by copy or cut
     _timer: null,
     _step: -1,
-    _sold: null,          // fingerprints of beats already sold
+    _playBar: -1,
+    _sold: null,
 
     PITCHES: [72, 71, 69, 67, 65, 64, 62, 60],
     DRUM_ROWS: [49, 46, 42, 39, 38, 37, 36, 35],
@@ -28,7 +41,10 @@ const Studio = {
     // ── Opening and closing ───────────────────────────────────────────────
 
     open() {
-        if (!Player.exists()) { openCreate(); return; }
+        if (typeof Player !== 'undefined' && Player.exists && !Player.exists()) {
+            if (typeof openCreate === 'function') openCreate();
+            return;
+        }
         const host = document.getElementById('studio');
         if (!host) return;
 
@@ -45,6 +61,7 @@ const Studio = {
 
     close() {
         this.stop();
+        window.removeEventListener('resize', this._resize);
         const host = document.getElementById('studio');
         if (host) { host.classList.remove('on'); host.innerHTML = ''; }
         document.body.classList.remove('in-place');
@@ -52,74 +69,97 @@ const Studio = {
         if (typeof CityMap !== 'undefined') CityMap.build();
     },
 
-    /// A new beat: one riff per track, which is how Vibe kept the grid small.
+    /// A new beat: two tracks, one riff each, placed at the first bar.
     fresh() {
         this.song = new Song('Beat');
         this.song.bars = 1;
         this.song.loopStart = 0;
-        this.song.loopEnd = 0;
-        this.current = 0;
-        this.addTrack('Lead', 0, 0);
-        this.addTrack('Drums', 9, 0);
+        this.song.loopEnd = 1;
+        this.track = 0; this.bar = 0;
+        this.view = 'arrange';
+        this.editing = null;
+        this.clip = null;
+        const lead = this.newTrackOn(0, 'Lead');
+        const drums = this.newTrackOn(9, 'Drums');
+        this.place(lead, 0, this.song.addRiff(new Riff('Lead 1', 1)));
+        this.place(drums, 0, this.song.addRiff(new Riff('Beat 1', 1)));
     },
 
-    addTrack(name, channel, program) {
-        const riff = this.song.addRiff(new Riff(name, 1));
+    newTrackOn(channel, name) {
         const t = this.song.addTrack(new Track(name, channel));
-        t.program = program;
-        t.add(new Placement(riff, 0));
-        t.riff = riff;
+        t.program = 0;
         return t;
     },
 
-    // ── What it looks like ────────────────────────────────────────────────
+    place(track, bar, riff) {
+        const had = track.placements.find(p => p.at === bar);
+        if (had) had.riff = riff;
+        else track.add(new Placement(riff, bar));
+        return riff;
+    },
+
+    riffAt(track, bar) {
+        const p = track.placements.find(x => x.at === bar);
+        return p ? p.riff : null;
+    },
+
+    // ── Chrome ────────────────────────────────────────────────────────────
 
     chrome() {
         return '<div class="st-top">' +
                 '<span class="st-name">&#9835; Naijabeats</span>' +
                 '<button class="pl-out" onclick="Studio.close()">&#10005; Leave</button>' +
             '</div>' +
-            '<div class="st-bar">' +
-                '<button class="st-go" id="st-play" onclick="Studio.toggle()">Play</button>' +
-                '<select id="st-track" onchange="Studio.pickTrack(+this.value)"></select>' +
-                '<button onclick="Studio.newTrack()" title="New track">+</button>' +
-                '<button onclick="Studio.dropTrack()" title="Remove track">&minus;</button>' +
-                '<select id="st-inst" onchange="Studio.setInst(+this.value)"></select>' +
-            '</div>' +
+            '<div class="st-bar" id="st-bar"></div>' +
             '<canvas id="st-grid"></canvas>' +
             '<div class="st-act" id="st-act"></div>';
     },
 
     bind() {
-        const sel = document.getElementById('st-track');
-        this.syncTracks();
-        const inst = document.getElementById('st-inst');
-        inst.innerHTML = '';
-        GM.forEach((n, i) => inst.add(new Option(n, String(i))));
-        this.syncInst();
-
         const cv = document.getElementById('st-grid');
         cv.addEventListener('pointerdown', e => this.tap(e));
         this._resize = () => this.layout();
         window.addEventListener('resize', this._resize);
+        this.toolbar();
         this.refreshAct();
     },
 
-    syncTracks() {
-        const sel = document.getElementById('st-track');
-        if (!sel) return;
-        sel.innerHTML = '';
-        this.song.tracks.forEach((t, i) =>
-            sel.add(new Option(t.name + ' · ch' + (t.channel + 1), String(i))));
-        sel.value = String(this.current);
-    },
+    /// The toolbar changes with the screen, because the two screens do
+    /// genuinely different jobs.
+    toolbar() {
+        const bar = document.getElementById('st-bar');
+        if (!bar) return;
+        const b = (label, fn, title, cls) =>
+            `<button class="${cls || ''}" title="${title || label}" onclick="Studio.${fn}">${label}</button>`;
 
-    syncInst() {
-        const inst = document.getElementById('st-inst');
-        if (!inst) return;
-        const t = this.song.tracks[this.current];
-        inst.disabled = t.channel === 9;
-        inst.value = String(t.program);
+        if (this.view === 'arrange') {
+            const here = this.riffAt(this.song.tracks[this.track], this.bar);
+            bar.innerHTML =
+                b(this._timer ? 'Stop' : 'Play', 'toggle()', 'Play', 'st-go' + (this._timer ? ' on' : '')) +
+                b('Edit', 'edit()', 'Open this riff', here ? 'st-hot' : '') +
+                b('New', 'newRiff()', 'New riff here') +
+                b('Copy', 'copy()', 'Copy this riff') +
+                b('Cut', 'cut()', 'Cut this riff') +
+                b('Repeat', 'paste(false)', 'Paste the same riff — edits show everywhere') +
+                b('As new', 'paste(true)', 'Paste an independent copy') +
+                b('Clear', 'clear()', 'Remove the riff here') +
+                b('&#9679;&rarr;', 'loopFrom()', 'Loop starts here') +
+                b('&rarr;&#9679;', 'loopTo()', 'Loop ends here') +
+                b('+ Track', 'newTrack()', 'Add a track') +
+                b('&minus;', 'dropTrack()', 'Remove this track');
+        } else {
+            const t = this.song.tracks[this.track];
+            let inst = '<select onchange="Studio.setInst(+this.value)"' +
+                (t.channel === 9 ? ' disabled' : '') + '>';
+            GM.forEach((n, i) =>
+                inst += `<option value="${i}"${i === t.program ? ' selected' : ''}>${n}</option>`);
+            inst += '</select>';
+            bar.innerHTML =
+                b(this._timer ? 'Stop' : 'Play', 'toggle()', 'Play', 'st-go' + (this._timer ? ' on' : '')) +
+                b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
+                inst +
+                b('Clear', 'clearRiff()', 'Empty this riff');
+        }
     },
 
     rows(t) { return t.channel === 9 ? this.DRUM_ROWS : this.PITCHES; },
@@ -136,27 +176,100 @@ const Studio = {
         if (!cv) return;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const w = cv.clientWidth, h = cv.clientHeight;
+        if (!w || !h) return;
         cv.width = w * dpr; cv.height = h * dpr;
         cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
-        this.cell = {
-            x0: 52, y0: 4,
-            w: (w - 58) / this.song.stepsPerRiff,
-            h: (h - 8) / 8,
-        };
+
+        if (this.view === 'arrange') {
+            const rows = Math.max(this.song.tracks.length, 1);
+            this.cell = { x0: 58, y0: 18,
+                          w: (w - 64) / this.BARS,
+                          h: Math.min(54, (h - 26) / rows) };
+        } else {
+            this.cell = { x0: 52, y0: 4,
+                          w: (w - 58) / this.song.stepsPerRiff,
+                          h: (h - 8) / 8 };
+        }
         this.draw();
     },
 
-    draw() {
+    draw() { this.view === 'arrange' ? this.drawArrange() : this.drawEdit(); },
+
+    // ── The arrangement ───────────────────────────────────────────────────
+
+    drawArrange() {
         const cv = document.getElementById('st-grid');
         if (!cv || !this.cell) return;
-        const cx = cv.getContext('2d');
-        const t = this.song.tracks[this.current];
-        const rows = this.rows(t), steps = this.song.stepsPerRiff;
-        const c = this.cell;
+        const cx = cv.getContext('2d'), c = this.cell;
         cx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
+        cx.textBaseline = 'middle';
 
+        // Bar numbers, and the loop span across the top.
+        cx.font = '9px monospace';
+        for (let bar = 0; bar < this.BARS; bar++) {
+            const x = c.x0 + bar * c.w;
+            const inLoop = bar >= this.song.loopStart && bar <= this.song.loopEnd;
+            cx.fillStyle = inLoop ? '#ffc83d' : '#4a5160';
+            cx.fillText(String(bar + 1), x + 3, 8);
+            if (inLoop) cx.fillRect(x + 1, 13, c.w - 2, 2);
+        }
+
+        this.song.tracks.forEach((t, ti) => {
+            const y = c.y0 + ti * c.h;
+            cx.font = '10px monospace';
+            cx.fillStyle = ti === this.track ? '#e8edf6' : '#6a7183';
+            cx.fillText(t.name.slice(0, 7), 5, y + c.h / 2 - 5);
+            cx.fillStyle = '#4a5160';
+            cx.font = '8px monospace';
+            cx.fillText('ch' + (t.channel + 1), 5, y + c.h / 2 + 7);
+
+            for (let bar = 0; bar < this.BARS; bar++) {
+                const x = c.x0 + bar * c.w;
+                const riff = this.riffAt(t, bar);
+                const sel = ti === this.track && bar === this.bar;
+
+                cx.fillStyle = bar === this._playBar ? '#2e2e40' : '#14141c';
+                cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
+
+                if (riff) {
+                    const notes = riff.events.filter(e => e.isNote);
+                    cx.fillStyle = t.channel === 9 ? '#6a5316' : '#1f5c2c';
+                    cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
+                    // A little picture of what is in the riff.
+                    const rows = this.rows(t);
+                    for (const e of notes) {
+                        const r = rows.indexOf(e.data[0]);
+                        if (r < 0) continue;
+                        const nx = x + 3 + (e.tick / riff.steps) * (c.w - 6);
+                        const ny = y + 4 + (r / 8) * (c.h - 8);
+                        cx.fillStyle = t.channel === 9 ? '#ffc83d' : '#4cd964';
+                        cx.fillRect(nx, ny, Math.max(1.5, (c.w - 6) / riff.steps - 0.5), 2);
+                    }
+                    cx.fillStyle = '#9fb0a2';
+                    cx.font = '8px monospace';
+                    cx.fillText(riff.name.slice(0, 8), x + 4, y + c.h - 7);
+                }
+
+                if (sel) {
+                    cx.strokeStyle = '#ff7a45'; cx.lineWidth = 2;
+                    cx.strokeRect(x + 2, y + 2, c.w - 4, c.h - 4);
+                }
+            }
+        });
+    },
+
+    // ── Inside a riff ─────────────────────────────────────────────────────
+
+    drawEdit() {
+        const cv = document.getElementById('st-grid');
+        if (!cv || !this.cell || !this.editing) return;
+        const cx = cv.getContext('2d'), c = this.cell;
+        const t = this.song.tracks[this.track];
+        const rows = this.rows(t), steps = this.editing.steps;
+        cx.clearRect(0, 0, cv.clientWidth, cv.clientHeight);
         cx.font = '10px monospace';
         cx.textBaseline = 'middle';
+
         for (let r = 0; r < 8; r++) {
             const y = c.y0 + r * c.h;
             cx.fillStyle = '#6a7183';
@@ -167,7 +280,7 @@ const Studio = {
                 cx.fillRect(c.x0 + s * c.w + 1, y + 1, c.w - 2, c.h - 2);
             }
         }
-        for (const e of t.riff.events) {
+        for (const e of this.editing.events) {
             if (!e.isNote) continue;
             const r = rows.indexOf(e.data[0]);
             if (r < 0) continue;
@@ -179,128 +292,255 @@ const Studio = {
         }
     },
 
-    // ── Editing ───────────────────────────────────────────────────────────
+    // ── Touch ─────────────────────────────────────────────────────────────
 
     tap(ev) {
         const cv = document.getElementById('st-grid');
         const r = cv.getBoundingClientRect(), c = this.cell;
-        const s = Math.floor((ev.clientX - r.left - c.x0) / c.w);
-        const row = Math.floor((ev.clientY - r.top - c.y0) / c.h);
-        if (s < 0 || s >= this.song.stepsPerRiff || row < 0 || row > 7) return;
+        const px = ev.clientX - r.left, py = ev.clientY - r.top;
 
-        const t = this.song.tracks[this.current];
+        if (this.view === 'arrange') {
+            const bar = Math.floor((px - c.x0) / c.w);
+            const ti = Math.floor((py - c.y0) / c.h);
+            if (bar < 0 || bar >= this.BARS || ti < 0 || ti >= this.song.tracks.length) return;
+            // A second tap on the same cell opens it, which saves a trip to
+            // the toolbar for the thing you most often want.
+            const again = ti === this.track && bar === this.bar;
+            this.track = ti; this.bar = bar;
+            if (again && this.riffAt(this.song.tracks[ti], bar)) { this.edit(); return; }
+            this.toolbar(); this.draw(); this.refreshAct();
+            return;
+        }
+
+        const s = Math.floor((px - c.x0) / c.w);
+        const row = Math.floor((py - c.y0) / c.h);
+        if (s < 0 || s >= this.editing.steps || row < 0 || row > 7) return;
+        const t = this.song.tracks[this.track];
         const pitch = this.rows(t)[row];
-        const found = t.riff.events.find(e => e.isNote && e.tick === s && e.data[0] === pitch);
-        if (found) t.riff.remove(found);
+        const found = this.editing.events.find(e => e.isNote && e.tick === s && e.data[0] === pitch);
+        if (found) this.editing.remove(found);
         else {
-            t.riff.add(Event.note(pitch, 100, t.channel === 9 ? 1 : 2, s));
-            if (this.synth.ctx) this.synth.hit(t.channel, pitch, 100, 0.25);
-            else this.synth.start().then(() => this.synth.hit(t.channel, pitch, 100, 0.25));
+            this.editing.add(Event.note(pitch, 100, t.channel === 9 ? 1 : 2, s));
+            this.preview(t.channel, pitch);
         }
         this.draw();
         this.refreshAct();
     },
 
-    pickTrack(i) { this.current = i; this.syncInst(); this.draw(); },
+    preview(channel, pitch) {
+        if (!this.synth) return;
+        if (this.synth.ctx) this.synth.hit(channel, pitch, 100, 0.25);
+        else this.synth.start().then(() => this.synth.hit(channel, pitch, 100, 0.25));
+    },
 
-    setInst(p) {
-        const t = this.song.tracks[this.current];
-        t.program = p;
-        this.synth.setProgram(t.channel, p);
+    // ── Arrangement commands, in Vibe's own words ─────────────────────────
+
+    edit() {
+        const riff = this.riffAt(this.song.tracks[this.track], this.bar);
+        if (!riff) { this.newRiff(); return; }
+        this.editing = riff;
+        this.view = 'edit';
+        this.toolbar(); this.layout(); this.refreshAct();
+    },
+
+    back() {
+        this.view = 'arrange';
+        this.editing = null;
+        this.toolbar(); this.layout(); this.refreshAct();
+    },
+
+    newRiff() {
+        const t = this.song.tracks[this.track];
+        const riff = this.song.addRiff(new Riff(
+            (t.channel === 9 ? 'Beat ' : 'Riff ') + (this.song.riffs.length + 1), 1));
+        this.place(t, this.bar, riff);
+        this.editing = riff;
+        this.view = 'edit';
+        this.toolbar(); this.layout(); this.refreshAct();
+    },
+
+    copy() {
+        const riff = this.riffAt(this.song.tracks[this.track], this.bar);
+        if (!riff) return;
+        this.clip = riff;
+        this.say('Copied ' + riff.name);
+    },
+
+    cut() {
+        const t = this.song.tracks[this.track];
+        const riff = this.riffAt(t, this.bar);
+        if (!riff) return;
+        this.clip = riff;
+        this.clear(true);
+        this.say('Cut ' + riff.name);
+    },
+
+    /// Repeat places the same riff, so editing it changes every repeat. As
+    /// new places an independent copy. That distinction is the whole reason
+    /// Vibe's paste has two commands.
+    paste(asNew) {
+        if (!this.clip) { this.say('Nothing copied yet'); return; }
+        const t = this.song.tracks[this.track];
+        const riff = asNew ? this.song.addRiff(Riff.copy(this.clip)) : this.clip;
+        this.place(t, this.bar, riff);
+        this.toolbar(); this.draw(); this.refreshAct();
+        this.say(asNew ? 'Pasted a copy' : 'Repeated ' + riff.name);
+    },
+
+    clear(quiet) {
+        const t = this.song.tracks[this.track];
+        const i = t.placements.findIndex(p => p.at === this.bar);
+        if (i === -1) return;
+        t.placements.splice(i, 1);
+        this.tidy();
+        this.toolbar(); this.draw(); this.refreshAct();
+        if (!quiet) this.say('Cleared bar ' + (this.bar + 1));
+    },
+
+    clearRiff() {
+        if (!this.editing) return;
+        this.editing.events = this.editing.events.filter(e => !e.isNote);
+        this.draw(); this.refreshAct();
+    },
+
+    /// A riff nothing points at any more is dead weight in the file. The
+    /// clipboard counts as pointing at it.
+    tidy() {
+        const live = new Set();
+        for (const t of this.song.tracks) for (const p of t.placements) live.add(p.riff);
+        if (this.clip) live.add(this.clip);
+        this.song.riffs = this.song.riffs.filter(r => live.has(r));
+    },
+
+    loopFrom() {
+        this.song.loopStart = this.bar;
+        if (this.song.loopEnd < this.bar) this.song.loopEnd = this.bar;
+        this.draw(); this.say('Loop starts at bar ' + (this.bar + 1));
+    },
+
+    loopTo() {
+        this.song.loopEnd = this.bar;
+        if (this.song.loopStart > this.bar) this.song.loopStart = this.bar;
+        this.draw(); this.say('Loop ends at bar ' + (this.bar + 1));
     },
 
     newTrack() {
         const wantDrums = this.song.tracks.every(t => t.channel !== 9);
         let ch = this.song.freeChannel(wantDrums);
         if (ch === -1) ch = this.song.freeChannel(false);
-        if (ch === -1) { flash('No channels left.'); return; }
-        const t = this.addTrack(ch === 9 ? 'Drums' : 'Track ' + (this.song.tracks.length + 1), ch, 0);
+        if (ch === -1) { this.say('No channels left'); return; }
+        const t = this.newTrackOn(ch, ch === 9 ? 'Drums' : 'Track ' + (this.song.tracks.length + 1));
         this.synth.setProgram(t.channel, t.program);
-        this.current = this.song.tracks.length - 1;
-        this.syncTracks(); this.syncInst(); this.draw(); this.refreshAct();
+        this.track = this.song.tracks.length - 1;
+        this.toolbar(); this.layout(); this.refreshAct();
     },
 
     dropTrack() {
         if (this.song.tracks.length <= 1) return;
-        const t = this.song.tracks[this.current];
-        this.song.tracks.splice(this.current, 1);
-        const i = this.song.riffs.indexOf(t.riff);
-        if (i !== -1) this.song.riffs.splice(i, 1);
-        if (this.current >= this.song.tracks.length) this.current = this.song.tracks.length - 1;
-        this.syncTracks(); this.syncInst(); this.draw(); this.refreshAct();
+        this.song.tracks.splice(this.track, 1);
+        this.tidy();
+        if (this.track >= this.song.tracks.length) this.track = this.song.tracks.length - 1;
+        this.toolbar(); this.layout(); this.refreshAct();
+    },
+
+    setInst(p) {
+        const t = this.song.tracks[this.track];
+        t.program = p;
+        this.synth.setProgram(t.channel, p);
     },
 
     // ── Playing ───────────────────────────────────────────────────────────
 
     toggle() { this._timer ? this.stop() : this.play(); },
 
+    /// On the arrange screen this plays the loop across bars; inside a riff
+    /// it loops that one bar, which is what you want while editing it.
     async play() {
         await this.synth.start();
-        const btn = document.getElementById('st-play');
-        if (btn) { btn.textContent = 'Stop'; btn.classList.add('on'); }
-        let step = 0;
+        const editing = this.view === 'edit' && this.editing;
+        const from = editing ? 0 : this.song.loopStart;
+        const to = editing ? 0 : this.song.loopEnd;
+        const steps = this.song.stepsPerRiff;
+        let bar = from, step = 0;
+
         const beat = () => {
             this._step = step;
-            for (const t of this.song.tracks)
-                for (const e of t.riff.events)
+            this._playBar = editing ? -1 : bar;
+            if (editing) {
+                const t = this.song.tracks[this.track];
+                for (const e of this.editing.events)
                     if (e.isNote && e.tick === step)
                         this.synth.hit(t.channel, e.data[0], e.data[1],
                                        Math.max(1, e.dur) * (15 / this.song.tempo));
+            } else {
+                for (const t of this.song.tracks) {
+                    const riff = this.riffAt(t, bar);
+                    if (!riff) continue;
+                    for (const e of riff.events)
+                        if (e.isNote && e.tick === step)
+                            this.synth.hit(t.channel, e.data[0], e.data[1],
+                                           Math.max(1, e.dur) * (15 / this.song.tempo));
+                }
+            }
             this.draw();
-            step = (step + 1) % this.song.stepsPerRiff;
+            step++;
+            if (step >= steps) { step = 0; if (!editing) bar = bar >= to ? from : bar + 1; }
         };
         beat();
         this._timer = setInterval(beat, 15000 / this.song.tempo);
+        this.toolbar();
     },
 
     stop() {
         if (this._timer) clearInterval(this._timer);
         this._timer = null;
-        this._step = -1;
+        this._step = -1; this._playBar = -1;
         if (this.synth) this.synth.allOff();
-        const btn = document.getElementById('st-play');
-        if (btn) { btn.textContent = 'Play'; btn.classList.remove('on'); }
-        this.draw();
+        this.toolbar(); this.draw();
     },
 
     // ── Selling it ────────────────────────────────────────────────────────
-    // The fee follows what is actually in the beat: how many tracks carry
-    // something, how much of the bar is used, and how much variety there is.
-    // Repeating one note is not a song, and the shape of this says so.
+    // The fee follows what is in the beat: layers, how much of the bar is
+    // used, variety of sounds, and now how long the arrangement runs. One
+    // note hammered sixteen times is not a song and does not pay like one.
 
     worth() {
         const s = this.song;
-        let notes = 0, steps = new Set(), pitches = new Set(), live = 0;
+        let notes = 0, live = 0;
+        const steps = new Set(), pitches = new Set(), bars = new Set();
         for (const t of s.tracks) {
-            const ns = t.riff.events.filter(e => e.isNote);
-            if (ns.length) live++;
-            notes += ns.length;
-            for (const e of ns) { steps.add(e.tick); pitches.add(t.channel + ':' + e.data[0]); }
+            let any = false;
+            for (const p of t.placements) {
+                const ns = p.riff.events.filter(e => e.isNote);
+                if (!ns.length) continue;
+                any = true;
+                bars.add(p.at);
+                notes += ns.length;
+                for (const e of ns) { steps.add(e.tick); pitches.add(t.channel + ':' + e.data[0]); }
+            }
+            if (any) live++;
         }
-        return {
-            notes, live,
-            spread: steps.size,            // how much of the bar is used
-            variety: pitches.size,         // how many distinct sounds
-            ok: live >= this.MIN_TRACKS && notes >= this.MIN_NOTES,
-        };
+        return { notes, live, spread: steps.size, variety: pitches.size, bars: bars.size,
+                 ok: live >= this.MIN_TRACKS && notes >= this.MIN_NOTES };
     },
 
-    /// What a buyer would pay, in Lagos terms, before the city multiplier.
     fee() {
         const w = this.worth();
         if (!w.ok) return 0;
-        const base = 18
-            + Math.min(w.live, 4) * 6             // layers, up to four
-            + Math.min(w.spread, 16) * 1.4        // use of the bar
-            + Math.min(w.variety, 12) * 1.6;      // variety of sounds
-        return Math.round(Math.min(base, 78));
+        const base = 16
+            + Math.min(w.live, 4) * 6
+            + Math.min(w.spread, 16) * 1.3
+            + Math.min(w.variety, 12) * 1.5
+            + Math.min(w.bars, 8) * 2.2;        // a longer arrangement is worth more
+        return Math.round(Math.min(base, 92));
     },
 
-    /// Two beats that are the same beat should not both pay.
     fingerprint() {
         return this.song.tracks.map(t =>
-            t.channel + '|' + t.riff.events.filter(e => e.isNote)
-                .map(e => e.tick + ',' + e.data[0]).sort().join(' ')
+            t.channel + '|' + t.placements.map(p =>
+                p.at + ':' + p.riff.events.filter(e => e.isNote)
+                    .map(e => e.tick + ',' + e.data[0]).sort().join(' ')
+            ).sort().join(';')
         ).sort().join('//');
     },
 
@@ -311,34 +551,38 @@ const Studio = {
         return this._sold;
     },
 
+    say(msg) {
+        const act = document.getElementById('st-act');
+        if (!act) return;
+        const n = act.querySelector('.st-say');
+        if (n) n.textContent = msg;
+    },
+
     refreshAct() {
         const act = document.getElementById('st-act');
         if (!act) return;
         const w = this.worth();
-        const paid = Player.wage(this.fee(), Player.cityId());
+        const hasPlayer = typeof Player !== 'undefined' && Player.exists && Player.exists();
+        const paid = hasPlayer ? Player.wage(this.fee(), Player.cityId()) : this.fee();
         const already = this.sold().includes(this.fingerprint());
 
+        let body;
         if (!w.ok) {
             const need = [];
             if (w.live < this.MIN_TRACKS) need.push(this.MIN_TRACKS + ' tracks with something on them');
             if (w.notes < this.MIN_NOTES) need.push(this.MIN_NOTES + ' notes');
-            act.innerHTML = '<div class="st-note">Nobody is buying that yet. ' +
-                'You need ' + need.join(' and ') + '. You have ' +
-                w.live + ' and ' + w.notes + '.</div>';
-            return;
+            body = '<div class="st-note">Nobody is buying that yet. You need ' +
+                need.join(' and ') + '. You have ' + w.live + ' and ' + w.notes + '.</div>';
+        } else if (already) {
+            body = '<div class="st-note">You already sold this one. Change it and ' +
+                'they will listen again.</div>';
+        } else {
+            body = '<div class="st-note">' + w.live + ' tracks, ' + w.notes + ' notes, ' +
+                w.bars + ' bars. Takes ' + this.SESSION_HOURS + ' hours to lay down.</div>' +
+                '<button class="est-btn" onclick="Studio.sell()">Sell the beat ' +
+                '&nbsp;·&nbsp; &#10022; ' + paid + '</button>';
         }
-        if (already) {
-            act.innerHTML = '<div class="st-note">You already sold this one. ' +
-                'Change it and they will listen again.</div>' +
-                '<button class="est-btn" onclick="Studio.fresh();Studio.syncTracks();' +
-                'Studio.syncInst();Studio.draw();Studio.refreshAct()">Start a new beat</button>';
-            return;
-        }
-        act.innerHTML =
-            '<div class="st-note">' + w.live + ' tracks, ' + w.notes + ' notes. ' +
-            'Takes ' + this.SESSION_HOURS + ' hours to lay down.</div>' +
-            '<button class="est-btn" onclick="Studio.sell()">Sell the beat &nbsp;·&nbsp; &#10022; ' +
-            paid + '</button>';
+        act.innerHTML = body + '<div class="st-say"></div>';
     },
 
     sell() {
@@ -357,7 +601,7 @@ const Studio = {
 
         this.stop();
         if (typeof refreshLifeHud === 'function') refreshLifeHud();
-        flash('They took the beat · +' + paid);
+        if (typeof flash === 'function') flash('They took the beat · +' + paid);
         this.refreshAct();
     },
 };

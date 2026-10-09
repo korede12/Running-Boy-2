@@ -1216,3 +1216,12 @@ body.in-place { overflow: hidden; }
     .st-note { display: none; }
     .st-act { padding-top: 8px; padding-bottom: 8px; }
 }
+
+/* The studio toolbar wraps on a phone, and highlights the one button that
+   moves you between the two screens. */
+.st-hot { background: #2a2338 !important; border-color: #6a4d93 !important; color: #c9a6ff !important; }
+.st-bar { overflow-x: auto; }
+.st-say {
+    font-family: monospace; font-size: 10.5px; color: #c9a6ff;
+    min-height: 14px; margin-top: 7px;
+}

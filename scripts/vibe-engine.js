@@ -280,6 +280,17 @@ class Riff {
         if (i !== -1) this.events.splice(i, 1);
     }
     get steps() { return this.bars * STEPS_PER_BAR; }
+
+    /// An independent copy, events and all. Vibe names these 'Copy of X' and
+    /// caps the name at 21 characters, so this does too — a longer name
+    /// would write a file the original cannot read back the same way.
+    static copy(riff) {
+        let name = 'Copy of ' + riff.name;
+        if (name.length > 20) name = name.slice(0, 21);
+        const out = new Riff(name, riff.bars);
+        for (const e of riff.events) out.events.push(e.clone());
+        return out;
+    }
 }
 
 /// Where a riff sits in a track. `at` counts riffs, not steps.
