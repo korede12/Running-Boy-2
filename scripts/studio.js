@@ -162,7 +162,6 @@ const Studio = {
         this.track = 0; this.bar = 0;
         this.view = 'arrange';
         this.editing = null;
-        this.clip = null;
         Tape.clear();
         this.solo = null;
         this.mixSet = Mixer.fresh();
@@ -2211,7 +2210,7 @@ const Studio = {
         this.mark(asNew ? 'Paste as new' : 'Paste');
 
         const made = [];
-        let short = 0;
+        let short = 0, adopted = 0;
         for (const it of this._board.items) {
             const at = this.bar + it.dBar;
             if (at < 0 || at >= this.BARS) { short++; continue; }
@@ -2219,7 +2218,16 @@ const Studio = {
             if (it.k === 'riff') {
                 const t = this.song.tracks[it.t];
                 if (!t) { short++; continue; }
-                const riff = asNew ? this.song.addRiff(Riff.copy(it.riff)) : it.riff;
+                // A riff from another beat has to be adopted, or the
+                // placement points at something the file does not contain
+                // and the bar comes back empty. Across songs there is no
+                // riff to share, so a copy is the only thing Repeat can
+                // honestly mean.
+                const foreign = this.song.riffs.indexOf(it.riff) === -1;
+                const riff = (asNew || foreign)
+                    ? this.song.addRiff(Riff.copy(it.riff))
+                    : it.riff;
+                if (foreign) adopted++;
                 this.place(t, at, riff);
                 made.push({ k: 'riff', t: it.t, at });
             } else {
@@ -2245,6 +2253,9 @@ const Studio = {
         this.say('Pasted ' + made.length + (made.length === 1 ? ' object' : ' objects') +
                  ' at bar ' + (this.bar + 1) +
                  (asNew ? ' as copies' : '') +
+                 (adopted && !asNew ? ' — ' + adopted +
+                    (adopted === 1 ? ' riff came' : ' riffs came') + ' from another beat, so ' +
+                    (adopted === 1 ? 'it is a copy' : 'they are copies') : '') +
                  (short ? ' — ' + short + ' had nowhere to go' : ''));
     },
 
@@ -3064,13 +3075,27 @@ const Studio = {
         } catch (_) {}
     },
 
+    /// Does this look like a song? readVbm will not say — it is a port of
+    /// the original reader and its job is to agree with it, not to judge.
+    /// Handed rubbish it returns a tidy Song with tempo 0 and no tracks,
+    /// and everything downstream then divides by that.
+    plausible(song) {
+        return !!song
+            && song.tracks && song.tracks.length > 0
+            && song.bars >= 1 && song.bars <= 64
+            && song.tempo >= 20 && song.tempo <= 400
+            && song.loopStart >= 0 && song.loopEnd >= song.loopStart;
+    },
+
     restore() {
         try {
             const b = localStorage.getItem(this.BENCH);
             if (!b) return false;
-            this.song = readVbm(this._bytes(b));
+            const song = readVbm(this._bytes(b));
+            if (!this.plausible(song)) return false;
+            this.song = song;
             this.track = 0; this.bar = 0;
-            this.view = 'arrange'; this.editing = null; this.clip = null;
+            this.view = 'arrange'; this.editing = null;
             try { Tape.fromJSON(JSON.parse(localStorage.getItem(this.BENCH_AUDIO))); } catch (_) {}
             try { this.mixSet = Mixer.settle(JSON.parse(localStorage.getItem(this.BENCH_MIX))); }
             catch (_) { this.mixSet = Mixer.fresh(); }
@@ -3101,9 +3126,15 @@ const Studio = {
         try {
             this.mark('Open a beat');
             this.stop();
-            this.song = readVbm(this._bytes(row.data));
+            const song = readVbm(this._bytes(row.data));
+            if (!this.plausible(song)) {
+                this._undo.pop();              // nothing happened, no history
+                this.say('That beat will not open');
+                return;
+            }
+            this.song = song;
             this.track = 0; this.bar = 0;
-            this.editing = null; this.clip = null;
+            this.editing = null;
             Tape.fromJSON(row.audio);
             this.applyMutes(row.mutes);
             this.mixSet = Mixer.settle(row.mix);
@@ -3229,6 +3260,7 @@ const Studio = {
                 let note = '';
                 try {
                     const sng = readVbm(this._bytes(row.data));
+                    if (!this.plausible(sng)) throw new Error('not a song');
                     const bars = new Set();
                     let notes = 0;
                     for (const t of sng.tracks) for (const p of t.placements) {
