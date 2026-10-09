@@ -133,6 +133,16 @@ const Studio = {
         const b = (label, fn, title, cls) =>
             `<button class="${cls || ''}" title="${title || label}" onclick="Studio.${fn}">${label}</button>`;
 
+        // Vibe's own limit is 260; below about 40 nothing is playable, so the
+        // slider covers the useful part of that range.
+        const tempo =
+            '<span class="st-bpm" title="Beats per minute">' +
+                '<input type="range" min="' + this.BPM_MIN + '" max="' + this.BPM_MAX + '" ' +
+                    'value="' + this.song.tempo + '" ' +
+                    'oninput="Studio.setTempo(+this.value)">' +
+                '<b id="st-bpm">' + this.song.tempo + '</b>' +
+            '</span>';
+
         if (this.view === 'arrange') {
             const here = this.riffAt(this.song.tracks[this.track], this.bar);
             bar.innerHTML =
@@ -149,7 +159,8 @@ const Studio = {
                 b('+ Track', 'newTrack()', 'Add a track') +
                 b('&minus;', 'dropTrack()', 'Remove this track') +
                 b('Save', 'saveSong()', 'Save this beat') +
-                b('Beats', 'beats()', 'Your saved beats');
+                b('Beats', 'beats()', 'Your saved beats') +
+                tempo;
         } else {
             const t = this.song.tracks[this.track];
             let inst = '<select onchange="Studio.setInst(+this.value)"' +
@@ -161,8 +172,23 @@ const Studio = {
                 b(this._timer ? 'Stop' : 'Play', 'toggle()', 'Play', 'st-go' + (this._timer ? ' on' : '')) +
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
-                b('Clear', 'clearRiff()', 'Empty this riff');
+                b('Clear', 'clearRiff()', 'Empty this riff') +
+                tempo;
         }
+    },
+
+    BPM_MIN: 40,
+    BPM_MAX: 260,
+
+    /// Change the tempo. If it is playing, the clock has to be re-timed —
+    /// otherwise the slider moves and nothing happens until you stop.
+    setTempo(bpm) {
+        bpm = Math.max(this.BPM_MIN, Math.min(this.BPM_MAX, Math.round(bpm)));
+        this.song.tempo = bpm;
+        const read = document.getElementById('st-bpm');
+        if (read) read.textContent = String(bpm);
+        if (this._timer) { this.stop(); this.play(); }
+        this.keep();
     },
 
     rows(t) { return t.channel === 9 ? this.DRUM_ROWS : this.PITCHES; },
