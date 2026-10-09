@@ -107,7 +107,7 @@ const Studio = {
     ecol0: 0,                // leftmost step on screen
     estart: 0,               // where the loop begins inside a riff
     RULER: 14,               // height of the ruler along the top
-    _keys: null,
+    _keys: null,              // the pitch cache — see keys(); NOT the key handler
     // Every sound the synth's kit makes has a name here. A row labelled 44
     // is a row you cannot act on.
     DRUM_NAMES: { 35: 'Kick', 36: 'Kick2', 37: 'Rim', 38: 'Snare', 39: 'Clap',
@@ -137,6 +137,12 @@ const Studio = {
         document.body.classList.add('in-place');
         this.bind();
         this.layout();
+
+        // Belt and braces for the first paint. The observer covers this on
+        // anything modern; these two frames cover the rest, and cost
+        // nothing when the first layout was already right.
+        if (typeof requestAnimationFrame === 'function')
+            requestAnimationFrame(() => requestAnimationFrame(() => this.layout()));
     },
 
     close() {
@@ -146,7 +152,8 @@ const Studio = {
         Tape.hush();
         Mic.hush();                  // the browser shows a live mic, so let it go
         window.removeEventListener('resize', this._resize);
-        window.removeEventListener('keydown', this._keys);
+        window.removeEventListener('keydown', this._onKey);
+        if (this._watcher) { try { this._watcher.disconnect(); } catch (_) {} this._watcher = null; }
         const host = document.getElementById('studio');
         if (host) { host.classList.remove('on'); host.innerHTML = ''; }
         document.body.classList.remove('in-place');
@@ -216,8 +223,17 @@ const Studio = {
         cv.addEventListener('wheel', e => this.wheel(e), { passive: false });
         this._resize = () => this.layout();
         window.addEventListener('resize', this._resize);
-        this._keys = e => this.key(e);
-        window.addEventListener('keydown', this._keys);
+
+        // The window resizing is not the only way this canvas changes size,
+        // and it is not even the common one: the page finishing its layout
+        // after the studio opens, a panel growing underneath, a phone
+        // keyboard appearing. None of those fire a resize event. This does.
+        if (typeof ResizeObserver === 'function') {
+            this._watcher = new ResizeObserver(() => this.layout());
+            try { this._watcher.observe(cv); } catch (_) { this._watcher = null; }
+        }
+        this._onKey = e => this.key(e);
+        window.addEventListener('keydown', this._onKey);
 
         // Drag a sample straight onto the bar you want it on. There is no
         // drag on a phone, so the panel also has a file button.
