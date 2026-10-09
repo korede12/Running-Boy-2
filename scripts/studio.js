@@ -22,7 +22,8 @@ const Studio = {
     BARS: 32,                // how far the arrangement runs
     BAR_MIN: 38,             // a bar narrower than this cannot show a name
     BAR_MAX: 76,
-    ROW_H: 54,
+    ROW_H: 54,               // what a row would like to be
+    ROW_FLOOR: 30,           // and the least it may be before scrolling starts
     GUTTER: 9,               // where the scrollbars live
 
     bar0: 0,                 // leftmost bar on screen
@@ -398,7 +399,16 @@ const Studio = {
         if (!cv) return;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         const w = cv.clientWidth, h = cv.clientHeight;
-        if (!w || !h) return;
+        if (!w || !h) {
+            // Opened before the stylesheet has been applied. Giving up here
+            // leaves whatever cell the last screen had, so ask again once
+            // the browser has laid the page out.
+            if (typeof requestAnimationFrame === 'function' && !this._waiting) {
+                this._waiting = true;
+                requestAnimationFrame(() => { this._waiting = false; this.layout(); });
+            }
+            return;
+        }
         cv.width = w * dpr; cv.height = h * dpr;
         cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
@@ -418,10 +428,17 @@ const Studio = {
             const rh = Math.max(26, this.ROW_H * z);
             const cols = Math.max(1, Math.min(this.BARS, Math.floor(across / cw)));
 
+            // Shrink rows to fit what is there rather than keeping them at
+            // a fixed height and pushing the last tracks off the bottom —
+            // five tracks and two audio lanes want 378 pixels and the grid
+            // usually has about 270. Below the floor it stops shrinking and
+            // starts scrolling, which is the point at which a row is too
+            // thin to read or to hit.
             const down = Math.max(30, h - y0 - g);
-            const rows = Math.max(1, Math.min(total, Math.floor(down / rh)));
+            const fit = Math.max(this.ROW_FLOOR * this.zoom, Math.min(rh, down / total));
+            const rows = Math.max(1, Math.min(total, Math.floor(down / fit)));
 
-            this.cell = { x0, y0, w: cw, h: rh, cols, rows, total };
+            this.cell = { x0, y0, w: cw, h: fit, cols, rows, total, forW: w, forH: h };
             this.clampView();
         } else {
             const t = this.song.tracks[this.track];
@@ -434,9 +451,16 @@ const Studio = {
             const total = this.rows(t).length;
             const steps = this.editing ? this.editing.steps : this.song.stepsPerRiff;
 
-            const rowH = Math.max(this.ROW_MIN, grid.rowH * this.zoom);
             const across = Math.max(40, w - x0 - g);
             const down = Math.max(26, h - y0 - g);
+
+            // Aim to show a useful stretch of the instrument at once, and
+            // shrink rows towards the floor to manage it on a short window
+            // rather than showing two rows at the height they would like.
+            const wants = grid.rowH * this.zoom;
+            const aim = t.channel === 9 ? total : Math.min(total, 14);
+            const rowH = Math.max(this.ROW_MIN * Math.min(1, this.zoom),
+                                  Math.min(wants, down / aim));
 
             // Aim to show a bar at a time across; a riff that is longer than
             // one scrolls rather than squeezing into illegibility.
@@ -444,7 +468,7 @@ const Studio = {
             const cols = Math.max(1, Math.min(steps, Math.floor(across / cw)));
             const rows = Math.max(1, Math.min(total, Math.floor(down / rowH)));
 
-            this.cell = { x0, y0, w: cw, h: rowH, cols, rows, total };
+            this.cell = { x0, y0, w: cw, h: rowH, cols, rows, total, forW: w, forH: h };
             this.clampView();
         }
         this.draw();
@@ -647,6 +671,25 @@ const Studio = {
 
     draw() {
         if (this.view === 'beats') return;          // that screen is HTML
+
+        // The canvas changes height whenever the panel below it does, and
+        // in a browser that happens through CSS with no event to listen
+        // for. Drawing against a cell worked out for a different size is
+        // how rows end up off the bottom of a grid that has room for them.
+        const cv = document.getElementById('st-grid');
+        // Only a cell that layout() produced carries the size it was made
+        // for. One set by hand is somebody saying "use these numbers", and
+        // second-guessing that is not this function's business.
+        if (cv && this.cell && this.cell.forW && !this._laying) {
+            const w = cv.clientWidth, h = cv.clientHeight;
+            if (w && h && (w !== this.cell.forW || h !== this.cell.forH)) {
+                this._laying = true;                // layout() draws; do not recurse
+                this.layout();
+                this._laying = false;
+                return;
+            }
+        }
+
         this.view === 'arrange' ? this.drawArrange() : this.drawEdit();
     },
 
