@@ -217,6 +217,7 @@ const Studio = {
         cv.addEventListener('pointermove', e => this.move(e));
         cv.addEventListener('pointerup', e => this.up(e));
         cv.addEventListener('pointercancel', () => {
+            if (this._move) this.moveEnd();
             this._press = null; this._band = null; this._scroll = null; this.draw();
         });
 
@@ -1178,8 +1179,16 @@ const Studio = {
             return;
         }
 
+        // What is under the press decides what a drag will mean: something
+        // moves, nothing draws a box.
+        const overBar = this.bar0 + Math.floor((p.x - this.cell.x0) / this.cell.w);
+        const overRow = this.row0 + Math.floor((p.y - this.cell.y0) / this.cell.h);
+        const under = (p.x >= this.cell.x0 && overBar >= 0 && overBar < this.BARS &&
+                       overRow >= 0 && overRow < this.rowCount())
+            ? this.objAt(overRow, overBar) : null;
+
         this._press = {
-            x: p.x, y: p.y,
+            x: p.x, y: p.y, under,
             add: !!(ev.shiftKey || ev.ctrlKey || ev.metaKey),
             // Kept rather than the event itself: a pointer event is recycled
             // by the browser and will not read the same on release.
@@ -1193,10 +1202,23 @@ const Studio = {
 
     move(ev) {
         if (this._scroll) { this.scrollDrag(this.point(ev)); return; }
+        if (this._move) { const q = this.point(ev); this.moveDrag(q.x, q.y); return; }
         if (!this._press) return;
         const p = this.point(ev);
         const dx = p.x - this._press.x, dy = p.y - this._press.y;
         if (!this._band && Math.abs(dx) < this.DRAG_SLOP && Math.abs(dy) < this.DRAG_SLOP) return;
+
+        // Travelling from something: move it. Shift is for adding to a
+        // selection, so a shift-drag still draws a box.
+        if (this._press.under && !this._press.add) {
+            const start = this._press;
+            this._press = null;
+            if (this.moveStart(start.under, start.x, start.y)) {
+                this.moveDrag(p.x, p.y);
+                return;
+            }
+            this._press = start;
+        }
         this._band = {
             x0: Math.min(this._press.x, p.x), x1: Math.max(this._press.x, p.x),
             y0: Math.min(this._press.y, p.y), y1: Math.max(this._press.y, p.y),
@@ -1205,6 +1227,7 @@ const Studio = {
     },
 
     up() {
+        if (this._move) { this.moveEnd(); return; }
         if (this._scroll) { this._scroll = null; this.draw(); return; }
         const press = this._press;
         this._press = null;
@@ -1913,6 +1936,9 @@ const Studio = {
             this.clipDrop();
             return;
         }
+        if ((ev.key === 'b' || ev.key === 'B') && this.view === 'arrange' && !this._rec) {
+            ev.preventDefault(); this.slice(); return;
+        }
         if ((ev.key === 'm' || ev.key === 'M') && this.view === 'arrange' && !this._rec) {
             ev.preventDefault(); this.muteRow(this.cursorRow()); return;
         }
@@ -2357,6 +2383,204 @@ const Studio = {
     },
 
     clipDrop() { this.clear(); },
+
+    /// Cut the selected clips at the cursor. Two clips over one recording:
+    /// nothing is copied and nothing is thrown away, so the halves can be
+    /// put back by deleting one and widening the other.
+    slice() {
+        const at = this.bar;
+        const cut = this.selClips().filter(c => at > c.at && at < c.at + c.bars);
+        if (!cut.length) {
+            this.say(this.selClips().length
+                ? 'Put the cursor inside a clip to slice it'
+                : 'Pick some audio first');
+            return;
+        }
+
+        this.mark(cut.length > 1 ? 'Slice' : 'Slice clip');
+        const ctx = this.context();
+        const made = [];
+        for (const c of cut) {
+            const right = Tape.twin(c);
+            const before = at - c.at;                    // bars kept on the left
+
+            right.at = at;
+            right.bars = c.bars - before;
+            right.lane = c.lane;
+            // A loop was already restarting; let both halves go on doing
+            // it. Anything else advances into the recording by as much
+            // time as the left half takes.
+            if (!c.loop) {
+                right.lead = c.lead + before * ctx.barSeconds * Tape.rate(c, ctx.barSeconds);
+                right.seconds = Math.max(0.01, c.seconds - before * ctx.barSeconds);
+            }
+            right.name = c.name;
+            Tape.clips.push(right);
+
+            c.bars = before;
+            if (!c.loop) c.seconds = before * ctx.barSeconds;
+            c.render = null;
+            right.render = null;
+            c.peaks = Tape.peaks(c);
+            right.peaks = Tape.peaks(right);
+            Tape.stopOne(c);
+            made.push(right);
+        }
+        Tape._json = undefined;
+
+        // Keep both halves selected: the usual reason to slice is to do
+        // something to one of them next, and hunting for them afterwards
+        // is a step nobody wants.
+        for (const r of made) this.select(this.asItem(r), true);
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        this.say('Sliced at bar ' + (at + 1));
+    },
+
+    // ── Dragging things about ─────────────────────────────────────────────
+    // Press on something and you move it; press on nothing and you draw a
+    // box. Every arrangement window works this way and it is worth not
+    // being original about.
+
+    _move: null,
+
+    /// Start a move. Positions are remembered as they were, so the drag is
+    /// always measured from the start rather than accumulated — which is
+    /// what stops a slow drag over a blocked bar from creeping.
+    moveStart(o, px, py) {
+        if (!this.picked(o)) this.select(o, false);
+        const items = [];
+        for (const x of this._sel) {
+            if (x.k === 'clip') {
+                const c = this.clipOf(x);
+                if (c) items.push({ k: 'clip', c, at: c.at, lane: c.lane });
+            } else {
+                const t = this.song.tracks[x.t];
+                const p = t && t.placements.find(q => q.at === x.at);
+                if (p) items.push({ k: 'riff', t: x.t, at: x.at, riff: p.riff });
+            }
+        }
+        if (!items.length) return false;
+        this._move = { items, px, py, dBar: 0, dRow: 0, marked: false };
+        return true;
+    },
+
+    /// Could the selection sit here? Nothing in the selection blocks
+    /// anything else in it, which is what lets a run of touching clips
+    /// move as one.
+    moveFits(dBar, dRow) {
+        const mine = new Set(this._move.items.map(i => i.k === 'clip' ? i.c : i.riff));
+        for (const i of this._move.items) {
+            const at = i.at + dBar;
+            if (at < 0 || at >= this.BARS) return false;
+
+            if (i.k === 'clip') {
+                const lane = i.lane + dRow;
+                if (lane < 0 || lane >= Tape.MAX_LANES) return false;
+                if (at + i.c.bars > this.BARS) return false;
+                const clash = Tape.clips.some(o => !mine.has(o) && o.lane === lane &&
+                    at < o.at + o.bars && o.at < at + i.c.bars);
+                if (clash) return false;
+            } else {
+                const ti = i.t + dRow;
+                if (ti < 0 || ti >= this.song.tracks.length) return false;
+                const t = this.song.tracks[ti];
+                const clash = t.placements.some(p => !mine.has(p.riff) && p.at === at);
+                if (clash) return false;
+            }
+        }
+        return true;
+    },
+
+    /// Put everything where the drag says. Taken off and put back, rather
+    /// than edited in place, so a move across rows is one operation.
+    moveTo(dBar, dRow) {
+        const m = this._move;
+        // Lift everything out first, or a clip can collide with where
+        // another one has not left yet.
+        for (const i of m.items) {
+            if (i.k === 'clip') continue;
+            const t = this.song.tracks[i.t];
+            const at = t.placements.findIndex(p => p.at === i.at && p.riff === i.riff);
+            if (at !== -1) t.placements.splice(at, 1);
+        }
+        for (const i of m.items) {
+            if (i.k === 'clip') {
+                i.c.at = i.at + dBar;
+                i.c.lane = i.lane + dRow;
+                Tape.stopOne(i.c);
+            } else {
+                const t = this.song.tracks[i.t + dRow];
+                this.place(t, i.at + dBar, i.riff);
+            }
+        }
+        Tape._json = undefined;
+
+        // The selection names a riff by where it is, so it moves too.
+        this._sel = m.items.map(i => i.k === 'clip'
+            ? { k: 'clip', id: i.c.id }
+            : { k: 'riff', t: i.t + dRow, at: i.at + dBar });
+        m.dBar = dBar; m.dRow = dRow;
+    },
+
+    moveDrag(px, py) {
+        const m = this._move, c = this.cell;
+        if (!m || !c) return;
+        let dBar = Math.round((px - m.px) / c.w);
+        let dRow = Math.round((py - m.py) / c.h);
+        if (dBar === m.dBar && dRow === m.dRow) return;
+
+        // Go as far as it can rather than nowhere at all: a drag into a
+        // wall should stop against the wall, not wherever the pointer
+        // last happened to be sampled — which makes a fast drag travel
+        // less far than a slow one over the same path.
+        //
+        // The ends of the arrangement are arithmetic, so they are clamped
+        // outright; only collisions need walking, and there are never many
+        // to walk past.
+        let lowBar = Infinity, highEnd = 0, lowRow = Infinity, highRow = 0;
+        for (const i of m.items) {
+            lowBar = Math.min(lowBar, i.at);
+            highEnd = Math.max(highEnd, i.at + (i.k === 'clip' ? i.c.bars : 1));
+            const r = i.k === 'clip' ? i.lane : i.t;
+            lowRow = Math.min(lowRow, r);
+            highRow = Math.max(highRow, r);
+        }
+        const rowTop = m.items[0].k === 'clip' ? Tape.MAX_LANES : this.song.tracks.length;
+        dBar = Math.max(-lowBar, Math.min(this.BARS - highEnd, dBar));
+        dRow = Math.max(-lowRow, Math.min(rowTop - 1 - highRow, dRow));
+
+        const step = (want, have) => (want > have ? -1 : want < have ? 1 : 0);
+        let guard = this.BARS + rowTop + 4;
+        while (guard-- > 0 && !this.moveFits(dBar, dRow)) {
+            if (dBar === m.dBar && dRow === m.dRow) return;   // cannot move at all
+            // Give up the row first: sideways is nearly always what was
+            // meant, and a blocked lane should not stop a bar move.
+            if (dRow !== m.dRow) dRow += step(dRow, m.dRow);
+            else dBar += step(dBar, m.dBar);
+        }
+        // The walk can run out before it finds room. Applying the delta
+        // anyway is how a clip ends up at bar 90 of a 32-bar song.
+        if (!this.moveFits(dBar, dRow)) return;
+        if (dBar === m.dBar && dRow === m.dRow) return;
+
+        if (!m.marked) { this.mark('Move'); m.marked = true; }
+        this.moveTo(dBar, dRow);
+        this.draw();
+    },
+
+    moveEnd() {
+        const m = this._move;
+        this._move = null;
+        if (!m) return;
+        if (!m.marked) return;                          // never actually moved
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        const n = m.items.length;
+        this.say('Moved ' + n + (n === 1 ? ' object' : ' objects') +
+            (m.dBar ? ' ' + Math.abs(m.dBar) + (m.dBar > 0 ? ' bars later' : ' bars earlier') : '') +
+            (m.dRow ? ', ' + Math.abs(m.dRow) + (m.dRow > 0 ? ' rows down' : ' rows up') : ''));
+    },
 
     // ── Making it fit, and making it sound like a record ──────────────────
 
@@ -2912,6 +3136,8 @@ const Studio = {
                 '<div class="mic-row mic-btns">' +
                     '<button onclick="Studio.clipMove(-1)" title="Earlier">&lsaquo; Bar</button>' +
                     '<button onclick="Studio.clipMove(1)" title="Later">Bar &rsaquo;</button>' +
+                    '<button onclick="Studio.slice()" ' +
+                        'title="Cut it in two at the cursor">&#9986; Slice</button>' +
                     '<button onclick="Studio.clipSpan(-1)" title="Cover fewer bars">&minus;</button>' +
                     '<button onclick="Studio.clipSpan(1)" title="Cover more bars">+</button>' +
                     '<button onclick="Studio.clipHear()">Hear</button>' +
@@ -2989,11 +3215,11 @@ const Studio = {
 
         const hint = state
             || ((this._sel.length > 1
-                    ? 'Riffs and audio select together. Copy, move the cursor, paste.'
+                    ? 'Drag to move. Riffs and audio select together — copy, move the cursor, paste.'
               : c ? (c.fit ? 'Fit changes the speed, so it moves the pitch too.'
                            : 'Shift-tap anything else to work on both at once.')
-                  : 'Drag a loop onto a bar, or record over the loop. ' +
-                    'Tap anything in the playlist to pick it up.') + keys);
+                  : 'Drag a loop onto a bar, or record over the loop. Tap anything to ' +
+                    'pick it up, drag it to move it, B to slice it at the cursor.') + keys);
         html += '<div class="st-note">' + hint +
             (Mic.error ? ' &middot; ' + esc(Mic.error) : '') +
             (Tape.error ? ' &middot; ' + esc(Tape.error) : '') +
