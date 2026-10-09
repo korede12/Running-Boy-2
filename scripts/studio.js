@@ -135,7 +135,10 @@ const Studio = {
 
     bind() {
         const cv = document.getElementById('st-grid');
-        cv.addEventListener('pointerdown', e => this.tap(e));
+        cv.addEventListener('pointerdown', e => this.down(e));
+        cv.addEventListener('pointermove', e => this.move(e));
+        cv.addEventListener('pointerup', e => this.up(e));
+        cv.addEventListener('pointercancel', () => { this._press = null; this._band = null; this.draw(); });
         this._resize = () => this.layout();
         window.addEventListener('resize', this._resize);
         this._keys = e => this.key(e);
@@ -147,6 +150,7 @@ const Studio = {
         cv.addEventListener('dragenter', e => { stop(e); this._dragOn(e); });
         cv.addEventListener('dragover', e => { stop(e); this._dragOn(e); });
         cv.addEventListener('dragleave', e => { stop(e); this._drag = null; this.draw(); });
+        cv.addEventListener('drop', () => { this._drag = null; });
         cv.addEventListener('drop', e => { stop(e); this.dropFiles(e); });
         this.toolbar();
         this.refreshAct();
@@ -345,6 +349,23 @@ const Studio = {
         });
 
         for (let lane = 0; lane < this.audioRows(); lane++) this.drawLane(cx, c, lane);
+
+        // The bar a dragged file will land on. This was being worked out and
+        // then not drawn, which is the same as not working it out.
+        if (this._drag != null) {
+            const x = c.x0 + this._drag * c.w;
+            cx.strokeStyle = '#4cc9d9'; cx.lineWidth = 2;
+            cx.strokeRect(x + 1, c.y0,
+                          c.w - 2, (this.song.tracks.length + this.audioRows()) * c.h);
+        }
+
+        if (this._band) {
+            const b = this._band;
+            cx.fillStyle = 'rgba(255, 122, 69, 0.16)';
+            cx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+            cx.strokeStyle = '#ff7a45'; cx.lineWidth = 1;
+            cx.strokeRect(b.x0 + 0.5, b.y0 + 0.5, b.x1 - b.x0 - 1, b.y1 - b.y0 - 1);
+        }
     },
 
     /// One audio lane. Clips are drawn as what they are — a block across the
@@ -449,6 +470,86 @@ const Studio = {
 
     // ── Touch ─────────────────────────────────────────────────────────────
 
+    DRAG_SLOP: 6,            // pixels before a press counts as a drag
+
+    _press: null,
+    _band: null,             // the box being dragged, in canvas pixels
+
+    /// Canvas-relative coordinates.
+    point(ev) {
+        const cv = document.getElementById('st-grid');
+        if (!cv) return { x: 0, y: 0 };
+        const r = cv.getBoundingClientRect();
+        return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    },
+
+    down(ev) {
+        // Inside a riff a tap is a note and should land immediately; there is
+        // nothing to drag, so there is nothing to wait for.
+        if (this.view !== 'arrange') { this.tap(ev); return; }
+        const p = this.point(ev);
+        this._press = {
+            x: p.x, y: p.y,
+            add: !!(ev.shiftKey || ev.ctrlKey || ev.metaKey),
+            // Kept rather than the event itself: a pointer event is recycled
+            // by the browser and will not read the same on release.
+            ev: { clientX: ev.clientX, clientY: ev.clientY,
+                  shiftKey: ev.shiftKey, ctrlKey: ev.ctrlKey, metaKey: ev.metaKey },
+        };
+        this._band = null;
+        const cv = document.getElementById('st-grid');
+        if (cv && cv.setPointerCapture) { try { cv.setPointerCapture(ev.pointerId); } catch (_) {} }
+    },
+
+    move(ev) {
+        if (!this._press) return;
+        const p = this.point(ev);
+        const dx = p.x - this._press.x, dy = p.y - this._press.y;
+        if (!this._band && Math.abs(dx) < this.DRAG_SLOP && Math.abs(dy) < this.DRAG_SLOP) return;
+        this._band = {
+            x0: Math.min(this._press.x, p.x), x1: Math.max(this._press.x, p.x),
+            y0: Math.min(this._press.y, p.y), y1: Math.max(this._press.y, p.y),
+        };
+        this.draw();
+    },
+
+    up() {
+        const press = this._press;
+        this._press = null;
+        if (!press) return;
+        if (this._band) {
+            const box = this._band;
+            this._band = null;
+            this.bandSelect(box, press.add);
+            return;
+        }
+        this.tap(press.ev);
+    },
+
+    /// Everything the box touches. A clip counts if it overlaps at all — you
+    /// should not have to enclose a four-bar clip to catch it.
+    bandSelect(box, add) {
+        const c = this.cell;
+        if (!c) return;
+        const barFrom = Math.floor((box.x0 - c.x0) / c.w);
+        const barTo = Math.floor((box.x1 - c.x0) / c.w);
+        const rowFrom = Math.floor((box.y0 - c.y0) / c.h) - this.song.tracks.length;
+        const rowTo = Math.floor((box.y1 - c.y0) / c.h) - this.song.tracks.length;
+
+        const caught = Tape.clips.filter(cl =>
+            cl.lane >= rowFrom && cl.lane <= rowTo &&
+            cl.at <= barTo && cl.at + cl.bars - 1 >= barFrom);
+
+        if (!add) this._sel = caught;
+        else for (const cl of caught) if (this._sel.indexOf(cl) === -1) this._sel.push(cl);
+
+        if (caught.length) this._audio = true;
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+        this.say(this._sel.length
+            ? this._sel.length + (this._sel.length === 1 ? ' clip selected' : ' clips selected')
+            : (rowTo < 0 ? 'Drag over the audio lanes to pick clips' : 'Nothing in there'));
+    },
+
     tap(ev) {
         const cv = document.getElementById('st-grid');
         const r = cv.getBoundingClientRect(), c = this.cell;
@@ -512,7 +613,10 @@ const Studio = {
     _dragOn(ev) {
         if (this.view !== 'arrange') return;
         if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
-        this._drag = this.barAt(ev);
+        const bar = this.barAt(ev);
+        if (bar === this._drag) return;
+        this._drag = bar;
+        this.draw();
     },
 
     async dropFiles(ev) {
@@ -1268,13 +1372,22 @@ const Studio = {
                 '</div>';
         }
 
+        // Only where there is a mouse and a keyboard to use.
+        const desk = typeof matchMedia === 'function'
+            && matchMedia('(pointer: fine)').matches;
+        const keys = desk
+            ? ' Drag a box round clips to pick them up &mdash; ctrl+A all, ' +
+              'ctrl+C copy, ctrl+X cut, ctrl+V paste at the cursor, ' +
+              'delete to remove, ctrl+Z to undo.'
+            : '';
+
         const hint = state
-            || (this._sel.length > 1
+            || ((this._sel.length > 1
                     ? 'Shift-tap to add or drop one. Copy, then move the cursor and paste.'
               : c ? (c.fit ? 'Fit changes the speed, so it moves the pitch too.'
                            : 'Shift-tap another clip to work on both at once.')
                   : 'Drag a loop onto a bar, or record over the loop. ' +
-                    'Tap a clip to work on it, shift-tap to pick several.');
+                    'Tap a clip to work on it, shift-tap to pick several.') + keys);
         html += '<div class="st-note">' + hint +
             (Mic.error ? ' &middot; ' + esc(Mic.error) : '') +
             (Tape.error ? ' &middot; ' + esc(Tape.error) : '') +
