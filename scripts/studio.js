@@ -66,18 +66,23 @@ const Studio = {
     // laid them out.
     DRUM_ROWS: [51, 49, 46, 44, 42, 40, 39, 38, 37, 36, 35],
 
+    // What General MIDI calls program 0 on channel 10, and what this one
+    // actually is. There is one kit; offering a menu of eight would be a
+    // nicer lie rather than a better answer.
+    KIT_NAME: 'Standard Kit',
+
     /// What sort of grid a track wants. `at` is where the window opens, as
     /// a pitch; the full range stays reachable by scrolling, because a grid
     /// that refuses a note on the grounds that a bass should not play it is
     /// a grid that is wrong about your song.
     GRIDS: {
         drums:  { name: 'Kit',    rowH: 26, at: null },
-        bass:   { name: 'Bass',   rowH: 20, at: 40,  span: 24 },   // E1 up
-        guitar: { name: 'Guitar', rowH: 17, at: 52,  span: 30 },
-        keys:   { name: 'Keys',   rowH: 15, at: 60,  span: 38 },   // round C4
-        lead:   { name: 'Lead',   rowH: 16, at: 67,  span: 32 },
-        pad:    { name: 'Pad',    rowH: 15, at: 60,  span: 38 },
-        tuned:  { name: 'Tuned',  rowH: 16, at: 60,  span: 34 },
+        bass:   { name: 'Bass',   rowH: 21, at: 40,  span: 24 },   // E1 up
+        guitar: { name: 'Guitar', rowH: 19, at: 52,  span: 30 },
+        keys:   { name: 'Keys',   rowH: 18, at: 60,  span: 38 },   // round C4
+        lead:   { name: 'Lead',   rowH: 18, at: 67,  span: 32 },
+        pad:    { name: 'Pad',    rowH: 18, at: 60,  span: 38 },
+        tuned:  { name: 'Tuned',  rowH: 18, at: 60,  span: 34 },
     },
 
     /// Which profile a track gets. The GM programs are laid out in families
@@ -99,9 +104,14 @@ const Studio = {
     },
     erow0: 0,                // topmost pitch row on screen
     ecol0: 0,                // leftmost step on screen
+    estart: 0,               // where the loop begins inside a riff
+    RULER: 14,               // height of the ruler along the top
     _keys: null,
-    DRUM_NAMES: { 35: 'Kick', 36: 'Kick2', 37: 'Rim', 38: 'Snare',
-                  39: 'Clap', 42: 'HiHat', 46: 'Open', 49: 'Crash' },
+    // Every sound the synth's kit makes has a name here. A row labelled 44
+    // is a row you cannot act on.
+    DRUM_NAMES: { 35: 'Kick', 36: 'Kick2', 37: 'Rim', 38: 'Snare', 39: 'Clap',
+                  40: 'Snare2', 42: 'HiHat', 44: 'Pedal', 46: 'Open',
+                  49: 'Crash', 51: 'Ride' },
 
     // ── Opening and closing ───────────────────────────────────────────────
 
@@ -277,11 +287,20 @@ const Studio = {
                 tempo;
         } else {
             const t = this.song.tracks[this.track];
-            let inst = '<select onchange="Studio.setInst(+this.value)"' +
-                (t.channel === 9 ? ' disabled' : '') + '>';
-            GM.forEach((n, i) =>
-                inst += `<option value="${i}"${i === t.program ? ' selected' : ''}>${n}</option>`);
-            inst += '</select>';
+            let inst;
+            if (t.channel === 9) {
+                // Channel 10 is the kit, and a General MIDI program number
+                // means a different thing there — which is why showing the
+                // first entry of the melodic list was never right.
+                inst = '<span class="st-kit" title="' + this.DRUM_ROWS.length +
+                    ' sounds — the only kit this synth has">&#9834; ' +
+                    this.KIT_NAME + '</span>';
+            } else {
+                inst = '<select onchange="Studio.setInst(+this.value)">';
+                GM.forEach((n, i) =>
+                    inst += `<option value="${i}"${i === t.program ? ' selected' : ''}>${n}</option>`);
+                inst += '</select>';
+            }
             bar.innerHTML =
                 b(this._timer ? 'Stop' : 'Play', 'toggle()', 'Play', 'st-go' + (this._timer ? ' on' : '')) +
                 b(this._rec ? '&#9632; Done' : '&#9679; Rec', 'record()',
@@ -313,6 +332,36 @@ const Studio = {
         this.keep();
     },
 
+    /// Where a step is, musically and in seconds. Two answers because they
+    /// are for two different questions: the first is what you think in
+    /// while writing a part, the second is what you need when lining
+    /// something up against a recording.
+    stamp(step) {
+        const per = 16;                                  // steps to the bar
+        const bar = Math.floor(step / per) + 1;
+        const beat = Math.floor((step % per) / 4) + 1;
+        const sub16 = (step % 4) + 1;
+        const secs = step * (15 / this.song.tempo);
+        return {
+            bar, beat, sub: sub16,
+            at: (this.song.bars > 1 ? bar + '.' : '') + beat + '.' + sub16,
+            secs,
+            clock: secs.toFixed(2) + 's',
+        };
+    },
+
+    /// Move the start of the loop inside a riff.
+    setStart(step) {
+        const steps = this.editing ? this.editing.steps : 16;
+        const at = Math.max(0, Math.min(steps - 1, step | 0));
+        if (at === this.estart) return;
+        this.estart = at;
+        this.reveal(null, at);
+        this.draw();
+        const p = this.stamp(at);
+        this.say('Starts at ' + p.at + ' · ' + p.clock);
+    },
+
     /// Every pitch, highest first. Built once — it never changes.
     keys() {
         if (!this._keys) {
@@ -336,6 +385,10 @@ const Studio = {
 
     label(t, row) {
         const n = this.rows(t)[row];
+        // A row past the end of the kit is not a row. It used to be
+        // labelled String(undefined), which put the word "undefined" down
+        // the side of every drum grid taller than the kit.
+        if (n == null) return '';
         if (t.channel === 9) return this.DRUM_NAMES[n] || String(n);
         return ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][n % 12]
              + (Math.floor(n / 12) - 1);
@@ -375,8 +428,9 @@ const Studio = {
             const t = this.song.tracks[this.track];
             const grid = this.gridFor(t);
             const g = this.GUTTER;
-            const x0 = t.channel === 9 ? 58 : 44;      // names need more room
-            const y0 = 4;
+            // A kit needs room for a name; everything else gets a keyboard.
+            const x0 = t.channel === 9 ? 58 : 40;
+            const y0 = this.RULER + 2;
 
             const total = this.rows(t).length;
             const steps = this.editing ? this.editing.steps : this.song.stepsPerRiff;
@@ -478,10 +532,6 @@ const Studio = {
         else this.reveal(this.cursorRow(), this.bar);
     },
 
-    clampView() {
-        this.bar0 = Math.max(0, Math.min(this.maxBar0(), this.bar0 | 0));
-        this.row0 = Math.max(0, Math.min(this.maxRow0(), this.row0 | 0));
-    },
 
     /// Move the window. Anything the user does to it stops the playhead
     /// dragging it around underneath them.
@@ -632,7 +682,8 @@ const Studio = {
             cx.fillText(t.name.slice(0, 7), 5, y + c.h / 2 - 5);
             cx.fillStyle = '#4a5160';
             cx.font = '8px monospace';
-            cx.fillText('ch' + (t.channel + 1), 5, y + c.h / 2 + 7);
+            cx.fillText(t.channel === 9 ? 'kit' : (GM[t.program] || 'ch' + (t.channel + 1))
+                .slice(0, 9).toLowerCase(), 5, y + c.h / 2 + 7);
 
             for (let i = 0; i < c.cols; i++) {
                 const bar = this.bar0 + i;
@@ -814,6 +865,15 @@ const Studio = {
         const bigEnough = c.h >= this.ROW_MIN + 2;
         const roomy = c.h >= this.ROW_BIG;
 
+        // The keyboard is drawn per row below; this is the strip behind it,
+        // so a gap between keys reads as a gap rather than as the grid.
+        if (!drums) {
+            cx.fillStyle = '#0e0e14';
+            cx.fillRect(0, c.y0, c.x0 - 1, c.rows * c.h);
+        }
+
+        this.drawRuler(cx, c, t);
+
         for (let i = 0; i < c.rows; i++) {
             const r = this.erow0 + i;
             if (r >= rows.length) break;
@@ -822,13 +882,24 @@ const Studio = {
             const black = !drums && this.isBlack(pitch);
             const isC = !drums && pitch % 12 === 0;
 
-            // The label. Over seven octaves there is no room to name every
-            // row, so the Cs are named and the rest are shown by shade —
-            // which is what the black keys on a keyboard are for.
-            if (drums || roomy || isC) {
-                cx.font = (isC && !drums) ? 'bold 9px monospace' : '9px monospace';
-                cx.fillStyle = isC ? '#8b93a6' : '#5a6172';
+            if (drums) {
+                cx.font = '9px monospace';
+                cx.fillStyle = '#5a6172';
                 cx.fillText(this.label(t, r), 4, y + c.h / 2);
+            } else {
+                // A key. Black ones are drawn short and dark, like the real
+                // thing, so the octave reads at a glance without anything
+                // having to be named.
+                const kw = black ? c.x0 - 16 : c.x0 - 2;
+                cx.fillStyle = black ? '#15151c' : '#c8ccd6';
+                cx.fillRect(0, y + 1, kw, c.h - 1);
+                cx.fillStyle = '#0e0e14';
+                cx.fillRect(0, y + c.h - 1, c.x0 - 2, 1);     // the gap between keys
+                if (isC && c.h >= 11) {
+                    cx.font = '8px monospace';
+                    cx.fillStyle = '#3a3a46';
+                    cx.fillText(this.label(t, r), 3, y + c.h / 2);
+                }
             }
 
             for (let j = 0; j < c.cols; j++) {
@@ -870,6 +941,58 @@ const Studio = {
         }
 
         this.drawScrollbars(cx, c);
+    },
+
+    /// The ruler: beats across the top, the start marker, the playhead, and
+    /// the readout in the corner where the row labels have no work to do.
+    drawRuler(cx, c, t) {
+        const steps = this.editing.steps;
+        const top = c.y0 - this.RULER - 1;
+
+        cx.fillStyle = '#11111a';
+        cx.fillRect(0, 0, c.x0 + c.cols * c.w + this.GUTTER, this.RULER + 1);
+        cx.textBaseline = 'middle';
+        cx.font = '8.5px monospace';
+
+        for (let j = 0; j < c.cols; j++) {
+            const st = this.ecol0 + j;
+            if (st >= steps) break;
+            const x = c.x0 + j * c.w;
+            const onBeat = st % 4 === 0;
+            // A tick for every step, a taller one and a number for a beat.
+            cx.fillStyle = onBeat ? '#6a7183' : '#2a2a38';
+            cx.fillRect(x, this.RULER - (onBeat ? 6 : 3), 1, onBeat ? 6 : 3);
+            if (onBeat && c.w > 16) {
+                cx.fillStyle = '#6a7183';
+                cx.fillText(String(Math.floor(st / 4) + 1), x + 3, this.RULER / 2 - 2);
+            }
+        }
+
+        // Where the loop begins. A flag rather than a line, so it reads as
+        // something you can move rather than as where you happen to be.
+        if (this.stepOn(this.estart)) {
+            const x = this.stepX(this.estart);
+            cx.fillStyle = '#4cd964';
+            cx.beginPath();
+            cx.moveTo(x, 1); cx.lineTo(x + 7, 1); cx.lineTo(x, 8);
+            cx.closePath(); cx.fill();
+            cx.fillRect(x, 1, 1, this.RULER - 1);
+        }
+
+        // The playhead, which is where you are rather than where you began.
+        if (this._step >= 0 && this.stepOn(this._step)) {
+            const x = this.stepX(this._step);
+            cx.fillStyle = '#ffc83d';
+            cx.fillRect(x, 1, 2, this.RULER - 1);
+        }
+
+        // The readout. Playing, it says where the playhead is; stopped, it
+        // says where the next pass will begin.
+        const at = this._step >= 0 ? this._step : this.estart;
+        const p = this.stamp(at);
+        cx.fillStyle = this._step >= 0 ? '#ffc83d' : '#5a6172';
+        cx.font = '8.5px monospace';
+        cx.fillText(p.at + ' ' + p.clock, 3, this.RULER / 2 - 1);
     },
 
     // ── Touch ─────────────────────────────────────────────────────────────
@@ -1089,11 +1212,19 @@ const Studio = {
             return;
         }
 
-        const s = this.ecol0 + Math.floor((px - c.x0) / c.w);
-        const row = this.erow0 + Math.floor((py - c.y0) / c.h);
         const t = this.song.tracks[this.track];
-        if (px < c.x0 || s < 0 || s >= this.editing.steps ||
-            row < 0 || row >= this.rows(t).length) return;
+        const s = this.ecol0 + Math.max(0, Math.floor((px - c.x0) / c.w));
+        if (s < 0 || s >= this.editing.steps) return;
+
+        // The ruler is for moving the start, not for writing notes.
+        if (py < c.y0) { this.setStart(s); return; }
+
+        const row = this.erow0 + Math.floor((py - c.y0) / c.h);
+        if (row < 0 || row >= this.rows(t).length) return;
+
+        // The keyboard sounds a note rather than writing one — which is
+        // what it is for, and what it does everywhere else.
+        if (px < c.x0 - 1) { this.preview(t.channel, this.rows(t)[row]); return; }
         const pitch = this.rows(t)[row];
         const found = this.editing.events.find(e => e.isNote && e.tick === s && e.data[0] === pitch);
         this.mark(found ? 'Note off' : 'Note on');
@@ -1214,6 +1345,7 @@ const Studio = {
         this.editing = riff;
         this.view = 'edit';
         this.ecol0 = 0;
+        this.estart = 0;
         this.toolbar(); this.layout();
         this.lookAtNotes();
         this.refreshAct();
@@ -1225,8 +1357,20 @@ const Studio = {
     /// a filing cabinet.
     lookAtNotes() {
         const t = this.song.tracks[this.track];
-        if (!t || t.channel === 9) { this.erow0 = 0; this.clampView(); return; }
+        if (!t) return;
         const notes = (this.editing ? this.editing.events : []).filter(e => e.isNote);
+
+        if (t.channel === 9) {
+            // A kit is short. When it fits, show all of it; when it does
+            // not, anchor to the bottom — every drum machine ever made puts
+            // the kick at the bottom and nobody has ever wanted the ride
+            // instead.
+            this.erow0 = this.rows(t).length;      // clamped to the last page
+            this.clampView();
+            this.draw();
+            return;
+        }
+
         let at;
         if (notes.length) {
             let lo = 127, hi = 0;
@@ -1236,6 +1380,9 @@ const Studio = {
             at = this.gridFor(t).at || 60;
         }
         this.centre(this.rowOf(t, Math.round(at)));
+        // Moving the window without redrawing leaves the drawing a step
+        // behind where the roll has scrolled to.
+        this.draw();
     },
 
     back() {
@@ -1355,7 +1502,10 @@ const Studio = {
         const from = editing ? 0 : this.song.loopStart;
         const to = editing ? 0 : this.song.loopEnd;
         const steps = this.song.stepsPerRiff;
-        let bar = from, step = 0;
+        // Inside a riff the loop begins wherever the start flag is, so you
+        // can work on the last two beats without hearing the first two
+        // every time round.
+        let bar = from, step = editing ? Math.min(this.estart, steps - 1) : 0;
 
         const beat = () => {
             this._step = step;
@@ -1398,7 +1548,10 @@ const Studio = {
             if (!editing && step === 0) this.followPlayhead(bar);
             this.draw();
             step++;
-            if (step >= steps) { step = 0; if (!editing) bar = bar >= to ? from : bar + 1; }
+            if (step >= steps) {
+                step = editing ? Math.min(this.estart, steps - 1) : 0;
+                if (!editing) bar = bar >= to ? from : bar + 1;
+            }
         };
         // Absolute scheduling: each step aims at a time, not at a delay, so
         // the clock neither drifts nor needs rebuilding when the tempo moves.
@@ -1661,6 +1814,12 @@ const Studio = {
             if (ev.shiftKey) { if (here) this.select(here, true); }
             else this.select(here, false);
             this.toolbar(); this.draw(); this.refreshAct();
+            return;
+        }
+        if (ev.key === 'Home' && this.view === 'edit' && this.editing) {
+            ev.preventDefault();
+            this.setStart(0);
+            this.scrollTo(0, null, true);
             return;
         }
         if (ev.key === 'Home' && this.view === 'arrange') {

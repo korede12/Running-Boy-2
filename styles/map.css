@@ -1372,3 +1372,10 @@ body.in-place { overflow: hidden; }
 /* Enough for two rows and a scrollbar: below that the arrangement stops
    being an arrangement. Anything further down is reached by scrolling. */
 #st-grid { min-height: 150px; }
+
+/* A drum track has a kit, not a General MIDI program. */
+.st-kit {
+    font-family: monospace; font-size: 11.5px; color: #ffc83d;
+    background: #16161f; border: 1px solid #23232e; border-radius: 8px;
+    padding: 7px 10px; white-space: nowrap;
+}
