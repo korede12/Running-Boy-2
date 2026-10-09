@@ -29,6 +29,12 @@ const Studio = {
     editing: null,           // the riff open in the note editor
     clip: null,              // { riff } held by copy or cut
     _timer: null,
+    _audio: false,            // the audio panel is open
+    _clip: null,              // the clip the panel is working on
+    _rec: false,              // a take is running
+    _recMade: null,           // riffs the take created, so empty ones can go
+    _recHits: 0,
+    _beatAt: 0,               // when the current step started, for quantising
     _step: -1,
     _playBar: -1,
     _sold: null,
@@ -49,6 +55,10 @@ const Studio = {
         if (!host) return;
 
         if (!this.song) this.restore() || this.fresh();
+        Tape.ctx = this.synth ? this.synth.ctx : null;
+        Mic.onstate = () => { this.refreshAct(); this.toolbar(); this.layout(); };
+        Mic.onlevel = (lv, pk) => this.micMeter(lv, pk);
+        Mic.onclip = take => this.micKeep(take);
         if (!this.synth) this.synth = new Synth();
         for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
 
@@ -62,7 +72,11 @@ const Studio = {
     close() {
         this.stop();
         this.keep();                 // never lose what is on the bench
+        this._audio = false;
+        Tape.hush();
+        Mic.hush();                  // the browser shows a live mic, so let it go
         window.removeEventListener('resize', this._resize);
+        window.removeEventListener('keydown', this._keys);
         const host = document.getElementById('studio');
         if (host) { host.classList.remove('on'); host.innerHTML = ''; }
         document.body.classList.remove('in-place');
@@ -80,6 +94,8 @@ const Studio = {
         this.view = 'arrange';
         this.editing = null;
         this.clip = null;
+        Tape.clear();
+        this._clip = null;
         const lead = this.newTrackOn(0, 'Lead');
         const drums = this.newTrackOn(9, 'Drums');
         this.place(lead, 0, this.song.addRiff(new Riff('Lead 1', 1)));
@@ -121,6 +137,16 @@ const Studio = {
         cv.addEventListener('pointerdown', e => this.tap(e));
         this._resize = () => this.layout();
         window.addEventListener('resize', this._resize);
+        this._keys = e => this.key(e);
+        window.addEventListener('keydown', this._keys);
+
+        // Drag a sample straight onto the bar you want it on. There is no
+        // drag on a phone, so the panel also has a file button.
+        const stop = e => { e.preventDefault(); e.stopPropagation(); };
+        cv.addEventListener('dragenter', e => { stop(e); this._dragOn(e); });
+        cv.addEventListener('dragover', e => { stop(e); this._dragOn(e); });
+        cv.addEventListener('dragleave', e => { stop(e); this._drag = null; this.draw(); });
+        cv.addEventListener('drop', e => { stop(e); this.dropFiles(e); });
         this.toolbar();
         this.refreshAct();
     },
@@ -143,10 +169,20 @@ const Studio = {
                 '<b id="st-bpm">' + this.song.tempo + '</b>' +
             '</span>';
 
+        // Undo sits on both screens and in the same place on both, because
+        // the one thing worse than no undo is an undo you have to go looking
+        // for.
+        const history =
+            b('&#8630;', 'undo()', 'Undo', this.canUndo() ? '' : 'st-dim') +
+            b('&#8631;', 'redo()', 'Redo', this.canRedo() ? '' : 'st-dim');
+
         if (this.view === 'arrange') {
             const here = this.riffAt(this.song.tracks[this.track], this.bar);
             bar.innerHTML =
+                history +
                 b(this._timer ? 'Stop' : 'Play', 'toggle()', 'Play', 'st-go' + (this._timer ? ' on' : '')) +
+                b(this._rec ? '&#9632; Done' : '&#9679; Rec', 'record()',
+                  'Play the pads into the loop', 'st-rec' + (this._rec ? ' on' : '')) +
                 b('Edit', 'edit()', 'Open this riff', here ? 'st-hot' : '') +
                 b('New', 'newRiff()', 'New riff here') +
                 b('Copy', 'copy()', 'Copy this riff') +
@@ -160,6 +196,9 @@ const Studio = {
                 b('&minus;', 'dropTrack()', 'Remove this track') +
                 b('Save', 'saveSong()', 'Save this beat') +
                 b('Beats', 'beats()', 'Your saved beats') +
+                b(Mic.rolling() ? '&#9632; Audio' : '&#127908; Audio', 'audioPanel()',
+                  'Microphone and samples',
+                  this._audio ? 'st-hot' : (Mic.rolling() ? 'st-rec on' : '')) +
                 tempo;
         } else {
             const t = this.song.tracks[this.track];
@@ -170,6 +209,9 @@ const Studio = {
             inst += '</select>';
             bar.innerHTML =
                 b(this._timer ? 'Stop' : 'Play', 'toggle()', 'Play', 'st-go' + (this._timer ? ' on' : '')) +
+                b(this._rec ? '&#9632; Done' : '&#9679; Rec', 'record()',
+                  'Play the pads into this riff', 'st-rec' + (this._rec ? ' on' : '')) +
+                history +
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
                 b('Clear', 'clearRiff()', 'Empty this riff') +
@@ -184,10 +226,13 @@ const Studio = {
     /// otherwise the slider moves and nothing happens until you stop.
     setTempo(bpm) {
         bpm = Math.max(this.BPM_MIN, Math.min(this.BPM_MAX, Math.round(bpm)));
+        if (bpm === this.song.tempo) return;
+        this.mark('Tempo', 'tempo');
         this.song.tempo = bpm;
         const read = document.getElementById('st-bpm');
         if (read) read.textContent = String(bpm);
-        if (this._timer) { this.stop(); this.play(); }
+        // Nothing to restart: the clock reads the tempo on every step, so a
+        // change lands on the next one and the loop keeps its place.
         this.keep();
     },
 
@@ -210,7 +255,7 @@ const Studio = {
         cv.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
 
         if (this.view === 'arrange') {
-            const rows = Math.max(this.song.tracks.length, 1);
+            const rows = Math.max(this.song.tracks.length + this.audioRows(), 1);
             this.cell = { x0: 58, y0: 18,
                           w: (w - 64) / this.BARS,
                           h: Math.min(54, (h - 26) / rows) };
@@ -220,6 +265,14 @@ const Studio = {
                           h: (h - 8) / 8 };
         }
         this.draw();
+    },
+
+    /// Audio gets a row per lane, plus an empty one to drop onto while the
+    /// panel is open and you are about to put something there.
+    audioRows() {
+        const used = Tape.lanes();
+        const spare = (this._audio || Mic.rolling()) && used < Tape.MAX_LANES ? 1 : 0;
+        return used + spare;
     },
 
     draw() {
@@ -288,6 +341,74 @@ const Studio = {
                 }
             }
         });
+
+        for (let lane = 0; lane < this.audioRows(); lane++) this.drawLane(cx, c, lane);
+    },
+
+    /// One audio lane. Clips are drawn as what they are — a block across the
+    /// bars they cover, with their own waveform — and they sit in the
+    /// arrangement because that is where they play from, even though the
+    /// audio itself lives outside the .vbm.
+    drawLane(cx, c, lane) {
+        const y = c.y0 + (this.song.tracks.length + lane) * c.h;
+        const clips = Tape.inLane(lane);
+        const arming = Mic.rolling() && lane === Tape.lanes();
+
+        cx.font = '10px monospace';
+        cx.fillStyle = arming ? '#e8384f' : (clips.length ? '#e8edf6' : '#6a7183');
+        cx.fillText(lane === 0 ? 'Audio' : 'Aud ' + (lane + 1), 5, y + c.h / 2 - 5);
+        cx.fillStyle = '#4a5160';
+        cx.font = '8px monospace';
+        cx.fillText(arming ? 'rec' : (clips.length ? clips.length + ' clip' + (clips.length > 1 ? 's' : '') : 'drop here'),
+                    5, y + c.h / 2 + 7);
+
+        for (let bar = 0; bar < this.BARS; bar++) {
+            const x = c.x0 + bar * c.w;
+            cx.fillStyle = bar === this._playBar ? '#2e2e40' : '#14141c';
+            cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
+        }
+
+        // Where the microphone is about to put its take.
+        if (arming) {
+            const from = this.song.loopStart;
+            const bars = this.song.loopEnd - from + 1;
+            cx.fillStyle = '#3a1620';
+            cx.fillRect(c.x0 + from * c.w + 1, y + 1, c.w * bars - 2, c.h - 2);
+            const w = (c.w * bars - 4) * Math.min(1, Mic.level);
+            cx.fillStyle = '#e8384f';
+            cx.fillRect(c.x0 + from * c.w + 2, y + c.h / 2 - 1, Math.max(1, w), 2);
+        }
+
+        for (const clip of clips) {
+            const x0 = c.x0 + clip.at * c.w;
+            const span = c.w * clip.bars;
+            const sel = clip === this._clip;
+            cx.fillStyle = !clip.on ? '#1c1c24' : (clip.kind === 'mic' ? '#2a1c3c' : '#15303a');
+            cx.fillRect(x0 + 1, y + 1, span - 2, c.h - 2);
+
+            const mid = y + c.h / 2;
+            const half = (c.h - 12) / 2;
+            cx.fillStyle = !clip.on ? '#4a5160' : (clip.kind === 'mic' ? '#c9a6ff' : '#4cc9d9');
+            if (clip.peaks && clip.peaks.length) {
+                const inner = span - 4;
+                for (let i = 0; i < clip.peaks.length; i++) {
+                    const h = Math.max(0.6, clip.peaks[i] * half);
+                    cx.fillRect(x0 + 2 + (i / clip.peaks.length) * inner, mid - h,
+                                Math.max(0.8, inner / clip.peaks.length - 0.4), h * 2);
+                }
+            } else {
+                cx.fillRect(x0 + 2, mid - 1, span - 4, 2);
+            }
+
+            cx.font = '8px monospace';
+            cx.fillStyle = clip.on ? '#cfe6ea' : '#5b6372';
+            cx.fillText(clip.name.slice(0, Math.max(3, Math.floor(span / 5))), x0 + 4, y + c.h - 7);
+
+            if (sel) {
+                cx.strokeStyle = '#ff7a45'; cx.lineWidth = 2;
+                cx.strokeRect(x0 + 2, y + 2, span - 4, c.h - 4);
+            }
+        }
     },
 
     // ── Inside a riff ─────────────────────────────────────────────────────
@@ -334,7 +455,17 @@ const Studio = {
         if (this.view === 'arrange') {
             const bar = Math.floor((px - c.x0) / c.w);
             const ti = Math.floor((py - c.y0) / c.h);
-            if (bar < 0 || bar >= this.BARS || ti < 0 || ti >= this.song.tracks.length) return;
+            if (bar < 0 || bar >= this.BARS || ti < 0) return;
+            // Below the tracks are the audio lanes: tapping a clip selects it
+            // and opens the panel on it, tapping empty space offers a drop.
+            if (ti >= this.song.tracks.length) {
+                const lane = ti - this.song.tracks.length;
+                if (lane >= this.audioRows()) return;
+                this._clip = Tape.at(lane, bar);
+                this._audio = true;
+                this.refreshAct(); this.toolbar(); this.draw();
+                return;
+            }
             // A second tap on the same cell opens it, which saves a trip to
             // the toolbar for the thing you most often want.
             const again = ti === this.track && bar === this.bar;
@@ -350,6 +481,7 @@ const Studio = {
         const t = this.song.tracks[this.track];
         const pitch = this.rows(t)[row];
         const found = this.editing.events.find(e => e.isNote && e.tick === s && e.data[0] === pitch);
+        this.mark(found ? 'Note off' : 'Note on');
         if (found) this.editing.remove(found);
         else {
             this.editing.add(Event.note(pitch, 100, t.channel === 9 ? 1 : 2, s));
@@ -358,6 +490,67 @@ const Studio = {
         this.draw();
         this.refreshAct();
         this.keep();
+    },
+
+    /// Which bar the pointer is over, so a drop lands where it looks like it
+    /// will land.
+    barAt(ev) {
+        const cv = document.getElementById('st-grid');
+        if (!cv || !this.cell) return 0;
+        const r = cv.getBoundingClientRect();
+        const bar = Math.floor((ev.clientX - r.left - this.cell.x0) / this.cell.w);
+        return Math.max(0, Math.min(this.BARS - 1, bar));
+    },
+
+    _dragOn(ev) {
+        if (this.view !== 'arrange') return;
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+        this._drag = this.barAt(ev);
+    },
+
+    async dropFiles(ev) {
+        this._drag = null;
+        const files = ev.dataTransfer && ev.dataTransfer.files;
+        if (!files || !files.length) return;
+        if (this.view !== 'arrange') { this.back(); }
+        await this.addSamples(files, this.barAt(ev));
+    },
+
+    /// Bring samples in — dropped, or chosen from the panel. Each one covers
+    /// whole bars from where it landed, so nothing ends mid-bar by accident.
+    async addSamples(files, at) {
+        await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        this.mark('Add sample');
+        this._audio = true;
+        let got = 0, bar = at || 0;
+        for (const f of Array.from(files).slice(0, 6)) {
+            const spb = this.song.stepsPerRiff * (15 / this.song.tempo);
+            const clip = await Tape.take(f, bar, spb);
+            if (!clip) continue;
+            this._clip = clip;
+            bar = Math.min(this.BARS - 1, clip.at + clip.bars);
+            got++;
+        }
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
+        this.say(got ? 'Added ' + got + (got === 1 ? ' sample' : ' samples')
+                     : (Tape.error || 'Nothing to add'));
+    },
+
+    pickSamples() {
+        // The input is made on demand and thrown away: a file input that
+        // lives in the page remembers its last pick and will not re-fire for
+        // the same file twice.
+        const inp = document.createElement('input');
+        inp.type = 'file';
+        inp.accept = 'audio/*';
+        inp.multiple = true;
+        inp.onchange = () => {
+            if (inp.files && inp.files.length)
+                this.addSamples(inp.files, this._clip ? this._clip.at : this.bar);
+        };
+        inp.click();
     },
 
     preview(channel, pitch) {
@@ -385,6 +578,7 @@ const Studio = {
     },
 
     newRiff() {
+        this.mark('New riff');
         const t = this.song.tracks[this.track];
         const riff = this.song.addRiff(new Riff(
             (t.channel === 9 ? 'Beat ' : 'Riff ') + (this.song.riffs.length + 1), 1));
@@ -405,6 +599,7 @@ const Studio = {
         const t = this.song.tracks[this.track];
         const riff = this.riffAt(t, this.bar);
         if (!riff) return;
+        this.mark('Cut');
         this.clip = riff;
         this.clear(true);
         this.say('Cut ' + riff.name);
@@ -415,6 +610,7 @@ const Studio = {
     /// Vibe's paste has two commands.
     paste(asNew) {
         if (!this.clip) { this.say('Nothing copied yet'); return; }
+        this.mark(asNew ? 'Paste a copy' : 'Repeat');
         const t = this.song.tracks[this.track];
         const riff = asNew ? this.song.addRiff(Riff.copy(this.clip)) : this.clip;
         this.place(t, this.bar, riff);
@@ -426,6 +622,8 @@ const Studio = {
         const t = this.song.tracks[this.track];
         const i = t.placements.findIndex(p => p.at === this.bar);
         if (i === -1) return;
+        // Cut has already marked — one command, one step of history.
+        if (!quiet) this.mark('Clear bar');
         t.placements.splice(i, 1);
         this.tidy();
         this.toolbar(); this.draw(); this.refreshAct();
@@ -434,6 +632,7 @@ const Studio = {
 
     clearRiff() {
         if (!this.editing) return;
+        this.mark('Clear riff');
         this.editing.events = this.editing.events.filter(e => !e.isNote);
         this.draw(); this.refreshAct();
     },
@@ -448,12 +647,14 @@ const Studio = {
     },
 
     loopFrom() {
+        this.mark('Loop start', 'loop');
         this.song.loopStart = this.bar;
         if (this.song.loopEnd < this.bar) this.song.loopEnd = this.bar;
         this.draw(); this.say('Loop starts at bar ' + (this.bar + 1));
     },
 
     loopTo() {
+        this.mark('Loop end', 'loop');
         this.song.loopEnd = this.bar;
         if (this.song.loopStart > this.bar) this.song.loopStart = this.bar;
         this.draw(); this.say('Loop ends at bar ' + (this.bar + 1));
@@ -464,6 +665,7 @@ const Studio = {
         let ch = this.song.freeChannel(wantDrums);
         if (ch === -1) ch = this.song.freeChannel(false);
         if (ch === -1) { this.say('No channels left'); return; }
+        this.mark('New track');
         const t = this.newTrackOn(ch, ch === 9 ? 'Drums' : 'Track ' + (this.song.tracks.length + 1));
         this.synth.setProgram(t.channel, t.program);
         this.track = this.song.tracks.length - 1;
@@ -472,6 +674,7 @@ const Studio = {
 
     dropTrack() {
         if (this.song.tracks.length <= 1) return;
+        this.mark('Remove track');
         this.song.tracks.splice(this.track, 1);
         this.tidy();
         if (this.track >= this.song.tracks.length) this.track = this.song.tracks.length - 1;
@@ -479,6 +682,7 @@ const Studio = {
     },
 
     setInst(p) {
+        this.mark('Instrument', 'inst');
         const t = this.song.tracks[this.track];
         t.program = p;
         this.synth.setProgram(t.channel, p);
@@ -492,6 +696,8 @@ const Studio = {
     /// it loops that one bar, which is what you want while editing it.
     async play() {
         await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        await Tape.ready(this.synth.ctx);
         const editing = this.view === 'edit' && this.editing;
         const from = editing ? 0 : this.song.loopStart;
         const to = editing ? 0 : this.song.loopEnd;
@@ -500,6 +706,16 @@ const Studio = {
 
         const beat = () => {
             this._step = step;
+            this._beatAt = this._now();
+            // A bar line: start any clip that begins here, and tell the
+            // microphone when the loop came round. That is all the timing
+            // either of them gets, and all either of them needs.
+            if (!editing && step === 0) {
+                const now = this.synth.ctx.currentTime;
+                const spb = steps * (15 / this.song.tempo);
+                if (bar === from) Mic.passStart(now);
+                if (!Mic.rolling()) Tape.barStart(bar, now, spb);
+            }
             this._playBar = editing ? -1 : bar;
             if (editing) {
                 const t = this.song.tracks[this.track];
@@ -521,17 +737,491 @@ const Studio = {
             step++;
             if (step >= steps) { step = 0; if (!editing) bar = bar >= to ? from : bar + 1; }
         };
-        beat();
-        this._timer = setInterval(beat, 15000 / this.song.tempo);
+        // Absolute scheduling: each step aims at a time, not at a delay, so
+        // the clock neither drifts nor needs rebuilding when the tempo moves.
+        let next = this._now();
+        const tick = () => {
+            beat();
+            next += 15000 / this.song.tempo;
+            this._timer = setTimeout(tick, Math.max(0, next - this._now()));
+        };
+        if (this._timer) clearTimeout(this._timer);     // never two clocks
+        tick();
         this.toolbar();
     },
 
-    stop() {
-        if (this._timer) clearInterval(this._timer);
+    /// Kill the clock and leave everything else alone. Changing tempo in the
+    /// middle of a take has to re-time the loop without throwing the take
+    /// away, so that path needs this rather than stop().
+    _halt() {
+        if (this._timer) clearTimeout(this._timer);
         this._timer = null;
         this._step = -1; this._playBar = -1;
         if (this.synth) this.synth.allOff();
+        Tape.hush();
+        if (Mic.rolling()) Mic.finish();
+    },
+
+    stop() {
+        const take = this._rec;
+        this._rec = false;
+        this._halt();
+        if (take) this.endTake();
         this.toolbar(); this.draw();
+    },
+
+    // ── Recording ─────────────────────────────────────────────────────────
+    // The loop runs, you hit the pads, and each hit snaps to the nearest
+    // step of the bar that was passing. Hits go into the riff already on
+    // that bar, so a take layers onto what is there instead of replacing it
+    // — which is how you build a part up over several passes.
+
+    _now() {
+        return typeof performance !== 'undefined' ? performance.now() : Date.now();
+    },
+
+    async record() {
+        if (this._rec) { this.stop(); return; }
+
+        this.mark('Record');
+        // Recording writes into whatever is under the playhead, so every bar
+        // it will pass over needs a riff waiting there. Ones that stay empty
+        // are swept up when the take ends.
+        const made = [];
+        if (this.view === 'arrange') {
+            const t = this.song.tracks[this.track];
+            for (let bar = this.song.loopStart; bar <= this.song.loopEnd; bar++) {
+                if (this.riffAt(t, bar)) continue;
+                const riff = this.song.addRiff(new Riff(
+                    (t.channel === 9 ? 'Beat ' : 'Riff ') + (this.song.riffs.length + 1), 1));
+                this.place(t, bar, riff);
+                made.push(riff);
+            }
+        } else if (!this.editing) {
+            return;
+        }
+
+        this._halt();                // a take starts at the top of the loop
+        this._rec = true;
+        this._recMade = made;
+        this._recHits = 0;
+        await this.play();
+        this.refreshAct();
+    },
+
+    /// Keep the hits, drop the bars you never played onto.
+    endTake() {
+        for (const r of (this._recMade || [])) {
+            if (r.events.some(e => e.isNote)) continue;
+            for (const t of this.song.tracks)
+                t.placements = t.placements.filter(p => p.riff !== r);
+        }
+        this._recMade = null;
+        this.tidy();
+        this.keep();
+        this.refreshAct();
+        this.say(this._recHits
+            ? 'Take kept \u00b7 ' + this._recHits + (this._recHits === 1 ? ' hit' : ' hits')
+            : 'Nothing played, nothing kept');
+    },
+
+    /// Which step a hit belongs to. The step sounding right now is the one
+    /// you were aiming at only if you were early; past halfway you meant the
+    /// next one, which may be the first step of the next bar.
+    _slot() {
+        const ms = 15000 / this.song.tempo;
+        let step = this._step + (this._now() - this._beatAt > ms / 2 ? 1 : 0);
+        let bar = this.view === 'edit' ? -1 : this._playBar;
+        if (step >= this.song.stepsPerRiff) {
+            step = 0;
+            if (bar >= 0) bar = bar >= this.song.loopEnd ? this.song.loopStart : bar + 1;
+        }
+        return { step, bar };
+    },
+
+    /// A pad hit: sound it now, write it where it belongs.
+    pad(row) {
+        const t = this.song.tracks[this.track];
+        const pitch = this.rows(t)[row];
+        this.preview(t.channel, pitch);
+        if (!this._rec || this._step < 0) return;
+
+        const at = this._slot();
+        const riff = at.bar < 0 ? this.editing : this.riffAt(t, at.bar);
+        if (!riff) return;
+        // Two hits on the same pad in the same step is one note, not two.
+        if (riff.events.some(e => e.isNote && e.tick === at.step && e.data[0] === pitch)) return;
+        riff.add(Event.note(pitch, 100, t.channel === 9 ? 1 : 2, at.step));
+        this._recHits++;
+        this.draw();
+    },
+
+    /// Ctrl+Z and Ctrl+Shift+Z — or Ctrl+Y, for anyone whose hands learned
+    /// it that way. Keys 1–8 are the pads while a take is running.
+    key(ev) {
+        if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
+            const k = (ev.key || '').toLowerCase();
+            if (k === 'z') { ev.preventDefault(); ev.shiftKey ? this.redo() : this.undo(); }
+            else if (k === 'y') { ev.preventDefault(); this.redo(); }
+            return;
+        }
+        if (!this._rec || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+        const n = '12345678'.indexOf(ev.key);
+        if (n === -1) return;
+        ev.preventDefault();
+        this.pad(7 - n);
+    },
+
+    /// The pads, in place of the earnings panel while a take is running.
+    /// Lowest sound on the left, so it reads like a keyboard and like a
+    /// drum kit at the same time.
+    recAct() {
+        const act = document.getElementById('st-act');
+        if (!act) return;
+        const t = this.song.tracks[this.track];
+        let pads = '';
+        for (let r = 7; r >= 0; r--)
+            pads += '<button class="st-pad" onpointerdown="Studio.pad(' + r + ')">' +
+                this.label(t, r) + '<i>' + (8 - r) + '</i></button>';
+
+        const where = this.view === 'edit'
+            ? this.editing.name
+            : t.name + ', bars ' + (this.song.loopStart + 1) + '&ndash;' + (this.song.loopEnd + 1);
+        act.innerHTML =
+            '<div class="st-note">Recording onto ' + where + '. Hit the pads in time, ' +
+                'or keys 1&ndash;8 &mdash; each one lands on the nearest step. The loop keeps ' +
+                'going, so you can build the part up over a few passes.</div>' +
+            '<div class="st-pads">' + pads + '</div>' +
+            '<div class="st-say"></div>';
+    },
+
+    // ── Audio: the microphone and the samples ─────────────────────────────
+    // Which input, which sample, where it sits and how loud. Everything else
+    // about a clip is decided by the bars it covers.
+
+    async audioPanel() {
+        if (this._audio) { this.audioClose(); return; }
+        this._audio = true;
+        this.refreshAct(); this.toolbar(); this.layout();
+        if (!Mic.stream && !Mic.why()) {
+            await this.synth.start();
+            Tape.ctx = this.synth.ctx;
+            await Mic.listen(this.synth.ctx, Mic.deviceId);
+            this.refreshAct();
+        }
+    },
+
+    audioClose() {
+        this._audio = false;
+        if (!Mic.rolling()) Mic.hush();
+        this.refreshAct(); this.toolbar(); this.layout();
+    },
+
+    async micPick(id) {
+        await this.synth.start();
+        await Mic.pick(this.synth.ctx, id || null);
+        this.refreshAct();
+    },
+
+    /// Record over the loop. The count-in is one pass, so this starts the
+    /// transport if it is not already running and you come in the second
+    /// time round.
+    async micTake() {
+        if (Mic.rolling()) { Mic.finish(); this.refreshAct(); return; }
+        if (!Mic.stream) {
+            await this.micPick(Mic.deviceId);
+            if (!Mic.stream) return;
+        }
+        await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        const bars = Math.max(1, this.song.loopEnd - this.song.loopStart + 1);
+        const spb = this.song.stepsPerRiff * (15 / this.song.tempo);
+        if (Tape.room(this.song.loopStart, bars) === -1) {
+            this.say('Every audio lane is busy over the loop. Clear one first.');
+            return;
+        }
+        if (!Mic.arm(bars, spb, this.song.loopStart)) { this.refreshAct(); return; }
+        if (!this._timer) await this.play();
+        this.refreshAct(); this.toolbar(); this.layout();
+    },
+
+    /// A finished take, handed over by the microphone. From here it is just
+    /// another clip.
+    async micKeep(take) {
+        this.mark('Mic take');
+        const clip = Tape.clip({
+            name: 'Take ' + (Tape.clips.filter(c => c.kind === 'mic').length + 1),
+            kind: 'mic', type: take.type, bytes: take.bytes,
+            lead: take.lead, seconds: take.seconds,
+        });
+        try { await Tape.decode(clip); } catch (_) {}
+
+        // A recorder that was cut short hands back less than the pass it was
+        // asked for. Keep what did arrive — a clip whose zero is past the end
+        // of its own audio would sit there looking right and never play.
+        if (clip.buffer) {
+            const left = clip.buffer.duration - clip.lead;
+            if (left <= 0.05) { this.say('That take came back empty'); return; }
+            if (left < clip.seconds) {
+                clip.seconds = left;
+                clip.peaks = Tape.peaks(clip);
+            }
+        }
+
+        if (!Tape.add(clip, take.at, take.bars)) { this.say(Tape.error); return; }
+        this._clip = clip;
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
+        this.say('Take kept');
+    },
+
+    clipDrop() {
+        if (!this._clip) return;
+        this.mark('Delete clip');
+        Tape.remove(this._clip);
+        this._clip = null;
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
+        this.say('Clip deleted');
+    },
+
+    clipSet(field, value) {
+        if (!this._clip) return;
+        this.mark(field === 'on' ? (value ? 'Unmute' : 'Mute')
+                : field === 'loop' ? 'Loop' : field === 'fit' ? 'Fit' : 'Clip');
+        Tape.set(this._clip, field, value);
+        this.keep();
+        this.refreshAct(); this.draw();
+    },
+
+    clipMove(by) {
+        if (!this._clip) return;
+        this.mark('Move clip', 'move');
+        const to = Math.max(0, Math.min(this.BARS - this._clip.bars, this._clip.at + by));
+        if (Tape.place(this._clip, to, null)) { this.keep(); this.toolbar(); this.layout(); }
+        this.refreshAct(); this.draw();
+        if (Tape.error) this.say(Tape.error);
+    },
+
+    clipSpan(by) {
+        if (!this._clip) return;
+        this.mark('Resize clip', 'span');
+        const want = Math.max(1, Math.min(this.BARS - this._clip.at, this._clip.bars + by));
+        if (Tape.place(this._clip, null, want)) { this.keep(); this.toolbar(); this.layout(); }
+        this.refreshAct(); this.draw();
+    },
+
+    async clipHear() {
+        if (!this._clip) return;
+        await this.synth.start();
+        Tape.ctx = this.synth.ctx;
+        await Tape.ready(this.synth.ctx);
+        Tape.audition(this._clip, this.song.stepsPerRiff * (15 / this.song.tempo));
+    },
+
+    clipGain(v) {
+        this.clipQuiet('gain', Math.max(0, Math.min(2, v)), 'clip-gain-n',
+                       Math.round(v * 100) + '%');
+    },
+
+    /// Nudge, in milliseconds. Input lag is real and varies by device, and a
+    /// sample can have silence at its head, so the only honest fix is a
+    /// control that slides the clip until it sits on the beat.
+    clipNudge(ms) {
+        const v = Math.max(-500, Math.min(500, ms));
+        this.clipQuiet('nudge', v, 'clip-nudge-n', (v > 0 ? '+' : '') + v + 'ms');
+    },
+
+    /// A slider fires on every pixel of movement, so it updates its own
+    /// read-out and the clip, and leaves the panel alone.
+    clipQuiet(field, value, id, text) {
+        if (!this._clip) return;
+        this.mark(field === 'gain' ? 'Clip level' : 'Clip nudge', 'clip-' + field);
+        Tape.set(this._clip, field, value);
+        const n = document.getElementById(id);
+        if (n) n.textContent = text;
+        this.keep();
+    },
+
+    micMeter(level, peak) {
+        const bar = document.getElementById('mic-lv');
+        if (bar) bar.style.width = Math.round(level * 100) + '%';
+        const hot = document.getElementById('mic-pk');
+        if (hot) hot.className = peak > 0.98 ? 'mic-pk on' : 'mic-pk';
+    },
+
+    audioAct() {
+        const act = document.getElementById('st-act');
+        if (!act) return;
+        const esc = t => String(t).replace(/[<>&"]/g, ch =>
+            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[ch]));
+        const why = Mic.why();
+        const c = this._clip;
+        let html = '';
+
+        // The microphone half.
+        if (why) {
+            html += '<div class="st-note">' + why + ' Samples still work.</div>';
+        } else {
+            let opts = '';
+            if (!Mic.devices.length) opts = '<option value="">Default input</option>';
+            for (const d of Mic.devices)
+                opts += '<option value="' + esc(d.id) + '"' +
+                    (d.id === Mic.deviceId ? ' selected' : '') + '>' +
+                    esc(d.label.slice(0, 34)) + '</option>';
+            html +=
+                '<div class="mic-row">' +
+                    '<select class="mic-dev" title="Which input" ' +
+                        'onchange="Studio.micPick(this.value)">' + opts + '</select>' +
+                    '<span class="mic-meter"><i id="mic-lv"></i></span>' +
+                    '<span class="mic-pk" id="mic-pk"></span>' +
+                '</div>';
+        }
+
+        const state = Mic.state === 'rolling' ? 'Rolling &mdash; this pass is the take'
+                    : Mic.state === 'armed'   ? 'Counting in &mdash; come in at the top'
+                    : '';
+
+        html +=
+            '<div class="mic-row mic-btns">' +
+                (why ? '' : '<button class="' + (Mic.rolling() ? 'st-rec on' : 'st-rec') +
+                    '" onclick="Studio.micTake()">' +
+                    (Mic.rolling() ? '&#9632; Stop' : '&#9679; Record') + '</button>') +
+                '<button onclick="Studio.pickSamples()">+ Sample</button>' +
+                '<button onclick="Studio.audioClose()">Done</button>' +
+            '</div>';
+
+        // The clip half.
+        if (c) {
+            html +=
+                '<div class="clip-head"><b>' + esc(c.name) + '</b>' +
+                    '<span>' + (Tape.KINDS[c.kind] || 'Clip') + ' &middot; ' +
+                    Tape.label(c) + ' &middot; bar ' + (c.at + 1) + '</span></div>' +
+                '<div class="mic-row mic-btns">' +
+                    '<button onclick="Studio.clipMove(-1)" title="Earlier">&lsaquo; Bar</button>' +
+                    '<button onclick="Studio.clipMove(1)" title="Later">Bar &rsaquo;</button>' +
+                    '<button onclick="Studio.clipSpan(-1)" title="Cover fewer bars">&minus;</button>' +
+                    '<button onclick="Studio.clipSpan(1)" title="Cover more bars">+</button>' +
+                    '<button onclick="Studio.clipHear()">Hear</button>' +
+                    '<button class="' + (c.loop ? 'st-hot' : '') +
+                        '" onclick="Studio.clipSet(\'loop\', ' + (!c.loop) +
+                        ')" title="Repeat it to fill its bars">Loop</button>' +
+                    '<button class="' + (c.fit ? 'st-hot' : '') +
+                        '" onclick="Studio.clipSet(\'fit\', ' + (!c.fit) +
+                        ')" title="Squeeze it into its bars — this moves the pitch">Fit</button>' +
+                    '<button onclick="Studio.clipSet(\'on\', ' + (!c.on) + ')">' +
+                        (c.on ? 'Mute' : 'Unmute') + '</button>' +
+                    '<button onclick="Studio.clipDrop()">&#10005;</button>' +
+                '</div>' +
+                '<div class="mic-row mic-dials">' +
+                    '<label>Level <input type="range" min="0" max="2" step="0.05" value="' +
+                        (c.gain == null ? 1 : c.gain) +
+                        '" oninput="Studio.clipGain(+this.value)">' +
+                        '<b id="clip-gain-n">' + Math.round((c.gain == null ? 1 : c.gain) * 100) +
+                        '%</b></label>' +
+                    '<label>Nudge <input type="range" min="-250" max="250" step="5" value="' +
+                        (c.nudge || 0) + '" oninput="Studio.clipNudge(+this.value)">' +
+                        '<b id="clip-nudge-n">' + ((c.nudge || 0) > 0 ? '+' : '') +
+                        (c.nudge || 0) + 'ms</b></label>' +
+                '</div>';
+        }
+
+        const hint = state || (c ? (c.fit ? 'Fit changes the speed, so it moves the pitch too.'
+                                          : 'Tap a clip in the arrangement to work on it.')
+                                 : 'Drag a loop onto a bar, or record over the loop. ' +
+                                   'Tap a clip to move it, stretch it or mute it.');
+        html += '<div class="st-note">' + hint +
+            (Mic.error ? ' &middot; ' + esc(Mic.error) : '') +
+            (Tape.error ? ' &middot; ' + esc(Tape.error) : '') +
+            (Tape.tooBig ? ' &middot; ' + Tape.tooBig +
+                ' clip(s) are too big to save with the beat — they play now but will not come back.' : '') +
+            '</div>';
+
+        act.innerHTML = html + '<div class="st-say"></div>';
+    },
+
+    // ── Undo ──────────────────────────────────────────────────────────────
+    // Every command that changes the beat calls mark() first. That is the
+    // whole contract: mark describes what is ABOUT to happen, and the
+    // snapshot it takes is the state before it happened.
+
+    DEPTH: 50,
+    _undo: [],
+    _redo: [],
+    _markAt: 0,
+    _markTag: '',
+
+    _snap(label) {
+        return {
+            label,
+            vbm: writeVbm(this.song),
+            clips: Tape.clips.map(c => Object.assign({}, c)),
+            where: {
+                track: this.track, bar: this.bar, view: this.view,
+                // Riffs come back from the file as new objects, so the open
+                // one is found again by the id the format keeps for exactly
+                // this sort of reason.
+                riff: this.editing ? String(this.editing.id) : null,
+                clip: this._clip ? this._clip.id : null,
+            },
+        };
+    },
+
+    /// Call before changing anything. A tag coalesces: a slider dragged
+    /// across thirty pixels is one step of history, not thirty.
+    mark(label, tag) {
+        const now = this._now();
+        if (tag && tag === this._markTag && now - this._markAt < 1200) {
+            this._markAt = now;
+            return;
+        }
+        this._undo.push(this._snap(label));
+        if (this._undo.length > this.DEPTH) this._undo.shift();
+        this._redo.length = 0;
+        this._markTag = tag || '';
+        this._markAt = now;
+    },
+
+    canUndo() { return this._undo.length > 0; },
+    canRedo() { return this._redo.length > 0; },
+
+    undo() {
+        if (!this._undo.length) { this.say('Nothing to undo'); return; }
+        const back = this._undo.pop();
+        this._redo.push(this._snap(back.label));
+        this._apply(back);
+        this.say('Undid: ' + back.label.toLowerCase());
+    },
+
+    redo() {
+        if (!this._redo.length) { this.say('Nothing to redo'); return; }
+        const fwd = this._redo.pop();
+        this._undo.push(this._snap(fwd.label));
+        this._apply(fwd);
+        this.say('Redid: ' + fwd.label.toLowerCase());
+    },
+
+    _apply(snap) {
+        this.stop();
+        this.song = readVbm(snap.vbm);
+        Tape.restore(snap.clips);
+        this._markTag = '';          // the next edit starts a fresh step
+
+        this.editing = snap.where.riff
+            ? this.song.riffs.find(r => String(r.id) === snap.where.riff) || null
+            : null;
+        this.view = this.editing ? snap.where.view : 'arrange';
+        this.track = Math.max(0, Math.min(snap.where.track, this.song.tracks.length - 1));
+        this.bar = Math.max(0, Math.min(snap.where.bar, this.BARS - 1));
+        this._clip = snap.where.clip
+            ? Tape.clips.find(c => c.id === snap.where.clip) || null
+            : null;
+
+        for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
+        const grid = document.getElementById('st-grid');
+        if (grid) grid.style.display = '';
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct();
     },
 
     // ── Keeping beats ─────────────────────────────────────────────────────
@@ -540,6 +1230,7 @@ const Studio = {
 
     KEY: 'runningboy_vibe_songs',
     BENCH: 'runningboy_vibe_bench',
+    BENCH_AUDIO: 'runningboy_vibe_bench_audio',
 
     _b64(bytes) {
         let s = '';
@@ -571,6 +1262,13 @@ const Studio = {
     keep() {
         if (!this.song) return;
         try { localStorage.setItem(this.BENCH, this._b64(writeVbm(this.song))); } catch (_) {}
+        // Audio is big, so it is written separately and only when it has
+        // actually changed — Tape caches its own serialisation.
+        try {
+            const aud = Tape.toJSON();
+            if (aud) localStorage.setItem(this.BENCH_AUDIO, JSON.stringify(aud));
+            else localStorage.removeItem(this.BENCH_AUDIO);
+        } catch (_) {}
     },
 
     restore() {
@@ -580,6 +1278,8 @@ const Studio = {
             this.song = readVbm(this._bytes(b));
             this.track = 0; this.bar = 0;
             this.view = 'arrange'; this.editing = null; this.clip = null;
+            try { Tape.fromJSON(JSON.parse(localStorage.getItem(this.BENCH_AUDIO))); } catch (_) {}
+            this._clip = null;
             return true;
         } catch (_) { return false; }
     },
@@ -591,7 +1291,8 @@ const Studio = {
         now.name = name.slice(0, 20);
         const list = this.songs();
         const at = list.findIndex(x => x.name === now.name);
-        const row = { name: now.name, data: this._b64(writeVbm(now)), at: Date.now() };
+        const row = { name: now.name, data: this._b64(writeVbm(now)), at: Date.now(),
+                      audio: Tape.toJSON() };
         if (at !== -1) list[at] = row; else list.push(row);
         if (list.length > 24) list.shift();
         if (this._writeSongs(list)) { this.keep(); this.say('Saved "' + now.name + '"'); }
@@ -601,10 +1302,13 @@ const Studio = {
         const row = this.songs()[i];
         if (!row) return;
         try {
+            this.mark('Open a beat');
             this.stop();
             this.song = readVbm(this._bytes(row.data));
             this.track = 0; this.bar = 0;
             this.editing = null; this.clip = null;
+            Tape.fromJSON(row.audio);
+            this._clip = null;
             for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
             this.keep();
             this.view = 'arrange';
@@ -637,7 +1341,8 @@ const Studio = {
             a.download = (s.name || 'beat').replace(/[^\w -]/g, '') + '.mid';
             a.click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            this.say('Exported ' + a.download);
+            this.say('Exported ' + a.download +
+                (Tape.has() ? ' — notes only, a .mid cannot carry audio' : ''));
         } catch (_) { this.say('Could not export'); }
     },
 
@@ -673,7 +1378,8 @@ const Studio = {
                         notes += p.riff.events.filter(e => e.isNote).length;
                     }
                     note = sng.tracks.length + ' tracks · ' + bars.size + ' bars · ' +
-                           notes + ' notes · ' + sng.tempo + ' bpm';
+                           notes + ' notes · ' + sng.tempo + ' bpm' +
+                           (row.audio ? ' · ' + row.audio.length + ' audio' : '');
                 } catch (_) { note = 'unreadable'; }
                 html += '<div class="st-row">' +
                     '<div class="st-row-t"><b>' + row.name + '</b><span>' + note + '</span></div>' +
@@ -687,6 +1393,7 @@ const Studio = {
     },
 
     newBeat() {
+        this.mark('New beat');
         this.stop();
         this.fresh();
         this.keep();
@@ -716,19 +1423,26 @@ const Studio = {
             }
             if (any) live++;
         }
-        return { notes, live, spread: steps.size, variety: pitches.size, bars: bars.size,
-                 ok: live >= this.MIN_TRACKS && notes >= this.MIN_NOTES };
+        // Audio counts as a layer. A drum loop, a bass loop and a vocal is a
+        // track, and refusing to buy it because none of it is MIDI would be
+        // the sequencer being precious about its own format.
+        const audio = Tape.clips.filter(c => c.on).length;
+        return { notes, live, audio, layers: live + audio,
+                 spread: steps.size, variety: pitches.size, bars: bars.size,
+                 ok: live + audio >= this.MIN_TRACKS &&
+                     (notes >= this.MIN_NOTES || audio >= 2) };
     },
 
     fee() {
         const w = this.worth();
         if (!w.ok) return 0;
         const base = 16
-            + Math.min(w.live, 4) * 6
+            + Math.min(w.layers, 5) * 6
             + Math.min(w.spread, 16) * 1.3
             + Math.min(w.variety, 12) * 1.5
-            + Math.min(w.bars, 8) * 2.2;        // a longer arrangement is worth more
-        return Math.round(Math.min(base, 92));
+            + Math.min(w.bars, 8) * 2.2         // a longer arrangement is worth more
+            + Math.min(w.audio, 3) * 7;         // real audio on it is worth paying for
+        return Math.round(Math.min(base, 110));
     },
 
     fingerprint() {
@@ -737,7 +1451,7 @@ const Studio = {
                 p.at + ':' + p.riff.events.filter(e => e.isNote)
                     .map(e => e.tick + ',' + e.data[0]).sort().join(' ')
             ).sort().join(';')
-        ).sort().join('//');
+        ).sort().join('//') + Tape.print();
     },
 
     sold() {
@@ -755,6 +1469,8 @@ const Studio = {
     },
 
     refreshAct() {
+        if (this._audio) { this.audioAct(); return; }
+        if (this._rec) { this.recAct(); return; }
         const act = document.getElementById('st-act');
         if (!act) return;
         const w = this.worth();
@@ -765,16 +1481,21 @@ const Studio = {
         let body;
         if (!w.ok) {
             const need = [];
-            if (w.live < this.MIN_TRACKS) need.push(this.MIN_TRACKS + ' tracks with something on them');
-            if (w.notes < this.MIN_NOTES) need.push(this.MIN_NOTES + ' notes');
+            if (w.layers < this.MIN_TRACKS)
+                need.push(this.MIN_TRACKS + ' layers with something on them');
+            if (w.notes < this.MIN_NOTES && w.audio < 2)
+                need.push(this.MIN_NOTES + ' notes, or two audio clips');
             body = '<div class="st-note">Nobody is buying that yet. You need ' +
-                need.join(' and ') + '. You have ' + w.live + ' and ' + w.notes + '.</div>';
+                need.join(' and ') + '. You have ' + w.layers +
+                (w.audio ? ' (' + w.audio + ' audio)' : '') + ' and ' + w.notes + '.</div>';
         } else if (already) {
             body = '<div class="st-note">You already sold this one. Change it and ' +
                 'they will listen again.</div>';
         } else {
             body = '<div class="st-note">' + w.live + ' tracks, ' + w.notes + ' notes, ' +
-                w.bars + ' bars. Takes ' + this.SESSION_HOURS + ' hours to lay down.</div>' +
+                w.bars + ' bars' +
+                (w.audio ? ', and ' + w.audio + ' audio clip' + (w.audio > 1 ? 's' : '') : '') +
+                '. Takes ' + this.SESSION_HOURS + ' hours to lay down.</div>' +
                 '<button class="est-btn" onclick="Studio.sell()">Sell the beat ' +
                 '&nbsp;·&nbsp; &#10022; ' + paid + '</button>';
         }

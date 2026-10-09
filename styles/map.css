@@ -1260,3 +1260,104 @@ body.in-place { overflow: hidden; }
     color: #ffc83d; min-width: 26px; text-align: right;
 }
 @media (max-width: 420px) { .st-bpm input[type=range] { width: 74px; } }
+
+/* Recording: the pads take over the bottom panel while a take runs, because
+   while you are playing a part that is the only control you want under your
+   thumb. Lowest sound on the left — so it reads as a keyboard going up, and
+   as a kit starting from the kick. */
+.st-rec {
+    background: #e8384f !important; border-color: #e8384f !important; color: #fff !important;
+}
+.st-rec.on { animation: st-blink 1s steps(2, start) infinite; }
+@keyframes st-blink { 50% { opacity: .42; } }
+
+.st-pads { display: flex; gap: 5px; }
+.st-pads .st-pad {
+    flex: 1 1 0; min-width: 0; padding: 15px 2px 9px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-family: monospace; font-size: 9.5px; white-space: nowrap; color: #e8edf6;
+    background: #1d1d27; border: 1px solid #2d2d3a; border-radius: 8px;
+    overflow: hidden; touch-action: manipulation; user-select: none;
+    -webkit-user-select: none;
+}
+.st-pads .st-pad:active {
+    background: #ffc83d; color: #11111a; border-color: #ffc83d;
+}
+.st-pads .st-pad i { font-style: normal; font-size: 8.5px; color: #6a7183; }
+.st-pads .st-pad:active i { color: #11111a; }
+
+@media (max-height: 520px) {
+    /* .st-note is hidden here, so the pads get the room instead */
+    .st-pads .st-pad { padding: 11px 2px 7px; }
+}
+
+/* ── The audio panel ───────────────────────────────────────────────────────
+   The microphone and the samples share one panel, because they fill the same
+   thing: a clip on a bar. Input and meter on top, then what you can do, then
+   the two dials that actually matter — how loud, and how far off the beat. */
+.mic-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.mic-row:last-of-type { margin-bottom: 0; }
+
+.mic-dev {
+    flex: 1 1 auto; min-width: 0;
+    font-family: monospace; font-size: 11px; color: #e8edf6;
+    background: #16161f; border: 1px solid #23232e; border-radius: 8px;
+    padding: 7px 9px; cursor: pointer;
+}
+
+.mic-meter {
+    flex: 0 0 96px; height: 9px; border-radius: 5px; overflow: hidden;
+    background: #1a1a24; border: 1px solid #23232e;
+}
+.mic-meter i {
+    display: block; width: 0; height: 100%;
+    /* Green through to red, so a hot input looks hot without a number */
+    background: linear-gradient(90deg, #4cd964 0%, #4cd964 55%, #ffc83d 78%, #e8384f 100%);
+    transition: width .05s linear;
+}
+.mic-pk {
+    flex: 0 0 9px; height: 9px; border-radius: 50%;
+    background: #23232e; border: 1px solid #2d2d3a;
+}
+.mic-pk.on { background: #e8384f; border-color: #e8384f; }
+
+.mic-btns { flex-wrap: wrap; }
+.mic-btns button {
+    flex: 0 1 auto;
+    font-family: monospace; font-size: 11px; color: #e8edf6;
+    background: #1d1d27; border: 1px solid #2d2d3a; border-radius: 7px;
+    padding: 7px 11px; cursor: pointer;
+}
+.mic-btns button:active { background: #272734; }
+
+.clip-head {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 8px; padding-top: 2px;
+    border-top: 1px solid #1b1b24;
+}
+.clip-head b {
+    font-family: monospace; font-size: 12px; font-weight: normal; color: #4cc9d9;
+}
+.clip-head span { font-family: monospace; font-size: 9.5px; color: #7f8aa0; }
+
+.mic-dials { flex-wrap: wrap; gap: 12px; }
+.mic-dials label {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: monospace; font-size: 10px; color: #8b93a6;
+}
+.mic-dials input[type=range] {
+    width: 86px; accent-color: #4cc9d9; background: none; padding: 0; margin: 0;
+}
+.mic-dials b {
+    font-family: monospace; font-size: 10.5px; font-weight: normal;
+    color: #4cc9d9; min-width: 38px;
+}
+
+@media (max-width: 420px) {
+    .mic-meter { flex-basis: 64px; }
+    .mic-dials input[type=range] { width: 70px; }
+}
+
+/* A history button with nothing behind it: still there, so the toolbar does
+   not reflow every time you undo, but visibly not worth pressing. */
+.st-dim { opacity: .34; }
