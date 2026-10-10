@@ -4147,14 +4147,13 @@ const Studio = {
         const from = s.loopStart * s.stepsPerRiff;
         const to = (s.loopEnd + 1) * s.stepsPerRiff - 1;
         const bytes = writeMid(s, from, to);
+        const name = (s.name || 'beat').replace(/[^\w -]/g, '') + '.mid';
         try {
-            const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/midi' }));
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = (s.name || 'beat').replace(/[^\w -]/g, '') + '.mid';
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            this.say('Exported ' + a.download +
+            // Through Bounce, which is where the decision about how a file
+            // leaves lives — there is a host app now, and two copies of
+            // that decision would be one too many.
+            Bounce.save(bytes, name, 'audio/midi');
+            this.say('Exported ' + name +
                 (Tape.has() ? ' — notes only, a .mid cannot carry audio' : ''));
         } catch (_) { this.say('Could not export'); }
     },

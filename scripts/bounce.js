@@ -201,13 +201,46 @@ const Bounce = {
 
     // ── Out of the browser ────────────────────────────────────────────────
 
+    /// The one way a file leaves the studio.
+    ///
+    /// A browser gets an anchor click, which is what a browser is for. A
+    /// WebView has no download manager, so if the host app has left a
+    /// bridge on the window the bytes go through that instead and the app
+    /// writes the file where the device can see it.
     save(bytes, name, type) {
+        if (this.toHost(bytes, name, type)) return true;
         const url = URL.createObjectURL(new Blob([bytes], { type }));
         const a = document.createElement('a');
         a.href = url;
         a.download = name;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 2000);
+        return true;
+    },
+
+    /// Hand the bytes to the host app, if there is one. Returns false when
+    /// there is not, which is the ordinary case on the web.
+    toHost(bytes, name, type) {
+        const host = typeof window !== 'undefined' && window.RBNative;
+        if (!host || typeof host.postMessage !== 'function') return false;
+        try {
+            host.postMessage(JSON.stringify({
+                file: name, type: type || 'application/octet-stream',
+                b64: this.b64(bytes),
+            }));
+            return true;
+        } catch (_) { return false; }
+    },
+
+    /// Base64 without blowing the argument limit: String.fromCharCode
+    /// takes its arguments on the stack, and a three-minute render is
+    /// several million of them.
+    b64(bytes) {
+        let s = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk)
+            s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        return btoa(s);
     },
 
     tidy(name) {
