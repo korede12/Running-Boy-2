@@ -162,6 +162,13 @@ const Studio = {
         Mic.hush();                  // the browser shows a live mic, so let it go
         window.removeEventListener('resize', this._resize);
         window.removeEventListener('keydown', this._onKey);
+        if (this._onTouch) {
+            const cv0 = document.getElementById('st-grid');
+            const root = (cv0 && cv0.parentNode) || document;
+            root.removeEventListener('pointerdown', this._onTouch, true);
+            this._onTouch = null;
+        }
+        this._touchLayer = null;
         if (this._watcher) { try { this._watcher.disconnect(); } catch (_) {} this._watcher = null; }
         const host = document.getElementById('studio');
         if (host) { host.classList.remove('on'); host.innerHTML = ''; }
@@ -236,11 +243,29 @@ const Studio = {
             '</div>' +
             '<div class="st-bar" id="st-bar"></div>' +
             '<canvas id="st-grid"></canvas>' +
-            '<div class="st-act" id="st-act"></div>';
+            '<div class="st-act" id="st-act"></div>' +
+            // Above everything and deaf to the pointer: it is a record of
+            // what happened, not a thing you can press.
+            '<div class="st-touch" id="st-touch"></div>';
     },
 
     bind() {
         const cv = document.getElementById('st-grid');
+
+        // Every press in the studio, caught on the way down so nothing
+        // can swallow it first. A button that redraws its own panel
+        // destroys the element the event came from, which is exactly the
+        // press most worth showing.
+        const root = cv.parentNode || document;
+        this._onTouch = e => {
+            try {
+                const btn = e.target && e.target.closest &&
+                            e.target.closest('button, select, .st-pad, label');
+                this.markTouch(e.clientX, e.clientY, btn ? 'hit' : '');
+            } catch (_) { /* never let the decoration break the press */ }
+        };
+        root.addEventListener('pointerdown', this._onTouch, true);
+
         cv.addEventListener('pointerdown', e => this.down(e));
         cv.addEventListener('pointermove', e => this.move(e));
         cv.addEventListener('pointerup', e => this.up(e));
@@ -326,6 +351,9 @@ const Studio = {
                 (this.solo ? b('Unsolo', 'clearSolo()', 'Hear everything again', 'st-go on') : '') +
                 b('&#9834; Presets', 'presetPanel()', 'Patterns to start from',
                   this._presetOpen ? 'st-hot' : '') +
+                b('&#9995;', 'showTouch()',
+                  'Show where the screen is touched — for recording',
+                  this.touchShown() ? 'st-hot' : 'st-dim') +
                 b('&#9707;', 'mixPanel()', 'The mix', this._mixOpen ? 'st-hot' : '') +
                 b('&#8595;', 'exportAs(\'mp3\')', 'Export an mp3 of the loop') +
                 b(Mic.rolling() ? '&#9632; Audio' : '&#127908; Audio', 'audioPanel()',
@@ -358,6 +386,12 @@ const Studio = {
                 history +
                 b('&minus;', 'zoomBy(-1)', 'Zoom out', this.zoom <= this.ZOOM_MIN ? 'st-dim' : '') +
                 b('+', 'zoomBy(1)', 'Zoom in', this.zoom >= this.ZOOM_MAX ? 'st-dim' : '') +
+                '<span class="st-scope" title="What Play means in here">' +
+                    '<button class="' + (this._scope === 'riff' ? 'on' : '') +
+                        '" onclick="Studio.setScope(\'riff\')">Riff</button>' +
+                    '<button class="' + (this._scope === 'song' ? 'on' : '') +
+                        '" onclick="Studio.setScope(\'song\')">Song</button>' +
+                '</span>' +
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
                 b('Copy', 'noteCopy()', 'Copy the notes you are holding',
@@ -869,6 +903,28 @@ const Studio = {
     stepX(step) { return this.cell.x0 + (step - this.ecol0) * this.cell.w; },
     keyY(row) { return this.cell.y0 + (row - this.erow0) * this.cell.h; },
     stepOn(step) { return step >= this.ecol0 && step < this.ecol0 + this.cell.cols; },
+
+    /// Where the playhead sits INSIDE the riff on screen, or -1 when it
+    /// is not in it at all.
+    ///
+    /// The roll draws this twice — down the grid and in the ruler — and
+    /// they used to work it out separately, which is how one of them came
+    /// to be right and the other not.
+    ///
+    /// With the arrangement playing, _step counts into the BAR and the
+    /// transport may be anywhere in the song, so the answer is only a
+    /// number while it is passing through this riff.
+    rollHead() {
+        if (this._step >= 0 && this._playBar >= 0) {
+            const p = this.editPlace();
+            if (!p) return -1;
+            const into = this._playBar - p.at;
+            return (into >= 0 && into < this.spanOf(p.riff))
+                ? into * 16 + this._step : -1;
+        }
+        if (this._step >= 0) return this._step;          // looping this riff
+        return this.headInRiff() ? this.headTick() : -1; // stopped
+    },
     keyOn(row) { return row >= this.erow0 && row < this.erow0 + this.cell.rows; },
 
     /// The scrollbar tracks, in canvas pixels. Null when everything fits —
@@ -1304,8 +1360,7 @@ const Studio = {
         // Down the grid as well as in the ruler: a mark at the top of a
         // tall roll is easy to lose.
         {
-            const at = this._step >= 0 ? this._step
-                     : (this.headInRiff() ? this.headTick() : -1);
+            const at = this.rollHead();
             if (at >= 0 && this.stepOn(at)) {
                 cx.globalAlpha = this._step >= 0 ? 0.5 : 0.3;
                 cx.fillStyle = this._step >= 0 ? '#ffc83d' : '#4cd964';
@@ -1367,8 +1422,7 @@ const Studio = {
 
         // The playhead. One marker rather than two: where you are while it
         // runs, where you will start when it does not.
-        const here = this._step >= 0 ? this._step
-                   : (this.headInRiff() ? this.headTick() : -1);
+        const here = this.rollHead();
         if (here >= 0 && this.stepOn(here)) {
             const x = this.stepX(here);
             const live = this._step >= 0;
@@ -2205,7 +2259,8 @@ const Studio = {
         this.context();              // the tape rebuilds its processing against this
         if (!this._mix) this.wire(this.synth.ctx, Tape.ctxInfo);
         await Tape.ready(this.synth.ctx);
-        const editing = this.view === 'edit' && this.editing;
+        // The roll being open is no longer what decides this.
+        const editing = this.loopingRiff();
         const from = editing ? 0 : this.song.loopStart;
         const to = editing ? 0 : this.song.loopEnd;
         // Begin at the playhead when it is inside the loop, which is what
@@ -2734,12 +2789,11 @@ const Studio = {
             : t.name + ', bars ' + (this.song.loopStart + 1) + '&ndash;' + (this.song.loopEnd + 1);
         const inKey = t.channel === 9 ? '' :
             ' The pads are ' + this.context().name + ', so what you play is in key.';
-        act.innerHTML =
+        this.paint('rec', '&#9679; Recording',
             '<div class="st-note">Recording onto ' + where + '. Hit the pads in time, ' +
                 'or keys 1&ndash;8 &mdash; each one lands on the nearest step. The loop keeps ' +
                 'going, so you can build the part up over a few passes.' + inKey + '</div>' +
-            '<div class="st-pads">' + pads + '</div>' +
-            '<div class="st-say"></div>';
+            '<div class="st-pads">' + pads + '</div>');
     },
 
     // ── Audio: the microphone and the samples ─────────────────────────────
@@ -3774,7 +3828,7 @@ const Studio = {
                 '<b id="' + id + '">' + (fmt === 'db' ? db(value) : pct(value)) + '</b></label>';
         };
 
-        act.innerHTML =
+        this.paint('mix', '&#9707; The mix',
             '<div class="ai-key">Master &middot; everything is summed here, so these ' +
                 'levels mean something against each other</div>' +
             '<div class="mic-row mic-dials">' +
@@ -3804,8 +3858,7 @@ const Studio = {
             '<div class="st-note">Punch lets the stick through before it clamps. ' +
                 'Behind is a squashed copy slid under the kit &mdash; it makes the ' +
                 'drums bigger without making them louder. Nothing gets past the ' +
-                'ceiling, so it will not crackle.</div>' +
-            '<div class="st-say"></div>';
+                'ceiling, so it will not crackle.</div>');
     },
 
     _pct(v) { return Math.round(v * 100) + '%'; },
@@ -3815,7 +3868,7 @@ const Studio = {
         const act = document.getElementById('st-act');
         if (!act) return;
         if (this._work) {
-            act.innerHTML =
+            this.paint('work', this._work.label,
                 '<div class="st-work">' +
                     '<div class="st-work-top">' +
                         '<b id="st-work-name">' + this._work.label + '</b>' +
@@ -3825,7 +3878,7 @@ const Studio = {
                         '<i id="st-work-bar" style="width:' +
                         Math.round(this._work.at * 100) + '%"></i>' +
                     '</div>' +
-                '</div><div class="st-say"></div>';
+                '</div>');
             return;
         }
         const esc = t => String(t).replace(/[<>&"]/g, ch =>
@@ -4027,7 +4080,8 @@ const Studio = {
                 ' clip(s) are too big to save with the beat — they play now but will not come back.' : '') +
             '</div>';
 
-        act.innerHTML = html + '<div class="st-say"></div>';
+        this.paint('audio', '&#127908; Audio', html,
+                   Tape.clips.length ? Tape.clips.length + ' on the tape' : '');
     },
 
     // ── Undo ──────────────────────────────────────────────────────────────
@@ -4401,8 +4455,8 @@ const Studio = {
                     '</div>';
             });
         }
-        html += '</div><div class="st-say"></div>';
-        if (act) act.innerHTML = html;
+        html += '</div>';
+        this.paint('beats', 'Your beats', html);
     },
 
     newBeat() {
@@ -4546,7 +4600,115 @@ const Studio = {
                   ', replacing what is there.') +
             '</div>';
 
-        act.innerHTML = html + '<div class="st-say"></div>';
+        this.paint('preset', '&#9834; Presets', html,
+                   Presets.KINDS.find(k => k.id === want.kind).name);
+    },
+
+    // Which panels are folded away. Per panel rather than one flag: the
+    // mixer can sit folded while the preset list stays open, and both
+    // remember across a trip to the other screen.
+    _folded: {},
+
+    // ── Showing the finger ────────────────────────────────────────────────
+    // A screen recording loses it, so a clip of the studio shows things
+    // happening with nothing causing them.
+
+    SHOW_TOUCH: 'rb_show_touch',
+    _touchOn: null,
+    _touchLayer: null,
+
+    touchShown() {
+        if (this._touchOn == null) {
+            let saved = null;
+            try { saved = localStorage.getItem(this.SHOW_TOUCH); } catch (_) {}
+            // On unless it has been turned off: whoever asked for this
+            // wants it while recording and will not remember a setting.
+            this._touchOn = saved !== '0';
+        }
+        return this._touchOn;
+    },
+
+    showTouch(on) {
+        this._touchOn = on == null ? !this.touchShown() : !!on;
+        try { localStorage.setItem(this.SHOW_TOUCH, this._touchOn ? '1' : '0'); } catch (_) {}
+        if (!this._touchOn && this._touchLayer) this._touchLayer.innerHTML = '';
+        this.toolbar();
+        this.say(this._touchOn ? 'Touches are shown' : 'Touches are hidden');
+    },
+
+    /// Mark a press. Called for every pointerdown anywhere in the studio,
+    /// so it has to be cheap and it has to never throw.
+    markTouch(x, y, kind) {
+        if (!this.touchShown()) return;
+        const layer = this._touchLayer ||
+            (this._touchLayer = document.getElementById('st-touch'));
+        if (!layer) return;
+        const ring = document.createElement('div');
+        ring.className = 'st-ring' + (kind ? ' ' + kind : '');
+        ring.style.left = x + 'px';
+        ring.style.top = y + 'px';
+        layer.appendChild(ring);
+        // Removed on a timer rather than on animationend: an animation
+        // that never starts — a hidden tab, a browser that throttles —
+        // would otherwise leave the ring on screen for good.
+        setTimeout(() => { if (ring.parentNode) ring.parentNode.removeChild(ring); }, 620);
+        // A long session is a lot of rings if something goes wrong.
+        while (layer.childNodes.length > 12) layer.removeChild(layer.firstChild);
+    },
+
+    // What Play means while the roll is open. The roll used to decide
+    // this by existing, which made hearing your part in context a matter
+    // of closing the thing you were editing.
+    _scope: 'riff',          // 'riff' | 'song'
+
+    /// Loop this riff, or play the arrangement with the roll still open.
+    async setScope(how) {
+        if (how !== 'riff' && how !== 'song') return;
+        if (how === this._scope) return;
+        this._scope = how;
+        // Restart rather than switch underneath: the two read the clock
+        // from different places, and splicing them mid-bar would land
+        // somewhere neither of them meant. Awaited, because starting the
+        // transport is — otherwise the caller sees a stopped studio.
+        const was = !!this._timer;
+        if (was) this._halt();
+        this.toolbar();
+        if (was) await this.play();
+        else this.draw();
+        this.say(how === 'song' ? 'Play follows the arrangement'
+                                : 'Play loops this riff');
+    },
+
+    /// Is the transport confined to the riff on screen?
+    loopingRiff() { return this.view === 'edit' && this.editing && this._scope === 'riff'; },
+
+    /// Every panel is drawn through here.
+    ///
+    /// The message line sits outside the folding part on purpose — a
+    /// panel that is out of the way should still be able to say what
+    /// just happened.
+    paint(key, title, html, aside) {
+        const act = document.getElementById('st-act');
+        if (!act) return;
+        const shut = !!this._folded[key];
+        act.className = 'st-act' + (shut ? ' st-min' : '');
+        act.innerHTML =
+            '<div class="st-head" onclick="Studio.fold(\'' + key + '\')">' +
+                '<b>' + title + '</b>' +
+                (aside ? '<i>' + aside + '</i>' : '') +
+                '<span class="st-caret">' + (shut ? '&#9652;' : '&#9662;') + '</span>' +
+            '</div>' +
+            '<div class="st-body">' + html + '</div>' +
+            '<div class="st-say"></div>';
+    },
+
+    /// Fold a panel away, or bring it back. The canvas grows into the
+    /// space it leaves, which is the entire point of folding it.
+    fold(key, shut) {
+        this._folded[key] = shut == null ? !this._folded[key] : !!shut;
+        this.refreshAct();
+        this.layout();
+        this.draw();
     },
 
     refreshAct() {
@@ -4582,7 +4744,8 @@ const Studio = {
                 '<button class="est-btn" onclick="Studio.sell()">Sell the beat ' +
                 '&nbsp;·&nbsp; &#10022; ' + paid + '</button>';
         }
-        act.innerHTML = body + '<div class="st-say"></div>';
+        this.paint('sell', 'This beat', body,
+                   w.ok ? w.notes + ' notes' : '');
     },
 
     sell() {

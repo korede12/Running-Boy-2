@@ -1443,3 +1443,62 @@ body.in-place { overflow: hidden; }
     border-radius: 7px; cursor: pointer;
 }
 .pre-do .pre-bpm { color: #ffc83d; background: #241f12; border-color: #5a4a1a; }
+
+/* ── Panel headers ───────────────────────────────────────────────────── */
+/* Every panel shares one strip under the canvas, so every panel can be
+   folded out of the way — on a phone the mixer alone is half the screen,
+   and that is half the screen not showing what you are mixing. */
+.st-head {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding-bottom: 8px; margin-bottom: 2px; user-select: none;
+}
+.st-head b {
+    font-family: monospace; font-size: 11.5px; color: #e8edf6;
+    letter-spacing: .4px;
+}
+.st-head i {
+    flex: 1; font-family: monospace; font-size: 10px; color: #5f6a80;
+    font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.st-head .st-caret { margin-left: auto; color: #6a7183; font-size: 11px; }
+.st-act.st-min { max-height: none; }
+.st-act.st-min .st-head { padding-bottom: 0; }
+.st-act.st-min .st-body { display: none; }
+
+/* Riff or song: what Play means while the roll is open. A pair rather
+   than a toggle, because which one is active has to be readable at a
+   glance — a toggle only tells you what it would do next. */
+.st-scope { display: inline-flex; border: 1px solid #23232e; border-radius: 8px; overflow: hidden; }
+.st-scope button {
+    font-family: monospace; font-size: 11px; padding: 7px 10px; border: 0;
+    color: #8b93a6; background: #16161f; cursor: pointer;
+}
+.st-scope button.on { color: #0e0e14; background: #4cd964; font-weight: bold; }
+
+/* ── Showing the finger ──────────────────────────────────────────────── */
+/* A screen recording loses it, so a clip of the studio shows things
+   happening with nothing causing them. The layer sits over everything and
+   is deaf to the pointer: it is a record of what happened, not a thing
+   you can press. */
+.st-touch {
+    position: fixed; inset: 0; pointer-events: none; z-index: 9000; overflow: hidden;
+}
+.st-ring {
+    position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+    border-radius: 50%; border: 2px solid rgba(255, 200, 61, .95);
+    background: rgba(255, 200, 61, .18);
+    animation: st-tap .6s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+/* A press that landed on a control gets its own colour, so a video shows
+   the difference between touching the grid and pressing a button. */
+.st-ring.hit {
+    border-color: rgba(102, 204, 153, .95);
+    background: rgba(102, 204, 153, .2);
+}
+@keyframes st-tap {
+    0%   { transform: scale(.35); opacity: 1; }
+    60%  { opacity: .85; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+/* And the control itself answers, which the ring alone does not show. */
+.st-bar button:active, .pre-do button:active, .st-head:active { filter: brightness(1.5); }
