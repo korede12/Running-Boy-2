@@ -187,17 +187,36 @@ const Studio = {
         return t;
     },
 
+    /// Put a riff at a bar, clearing whatever it lands on. A riff owns
+    /// every bar it covers, so placing a two-bar riff over a one-bar one
+    /// takes the bar after it as well.
     place(track, bar, riff) {
-        const had = track.placements.find(p => p.at === bar);
-        if (had) had.riff = riff;
-        else track.add(new Placement(riff, bar));
+        const span = this.spanOf(riff);
+        for (let i = track.placements.length - 1; i >= 0; i--) {
+            const p = track.placements[i];
+            if (p.at < bar + span && bar < p.at + this.spanOf(p.riff))
+                track.placements.splice(i, 1);
+        }
+        track.add(new Placement(riff, bar));
+        track.placements.sort((a, b) => a.at - b.at);
         return riff;
     },
 
+    /// How many bars a riff covers. One, for anything that has not said.
+    spanOf(riff) { return Math.max(1, (riff && riff.bars) | 0); },
+
+    /// The placement covering a bar — which is not necessarily one that
+    /// starts there, now that a riff can be longer than a bar.
+    placedAt(track, bar) {
+        return track.placements.find(
+            p => p.at <= bar && bar < p.at + this.spanOf(p.riff)) || null;
+    },
+
     riffAt(track, bar) {
-        const p = track.placements.find(x => x.at === bar);
+        const p = this.placedAt(track, bar);
         return p ? p.riff : null;
     },
+
 
     // ── Chrome ────────────────────────────────────────────────────────────
 
@@ -328,11 +347,11 @@ const Studio = {
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
                 b('Clear', 'clearRiff()', 'Empty this riff') +
-                '<select class="st-len" title="How long every riff is" ' +
+                '<select class="st-len" title="How long this riff is" ' +
                     'onchange="Studio.setRiffBars(+this.value)">' +
                     this.LENGTHS.map(n =>
                         '<option value="' + n + '"' +
-                        (n === this.song.bars ? ' selected' : '') + '>' +
+                        (n === this.riffBars() ? ' selected' : '') + '>' +
                         n + (n === 1 ? ' bar' : ' bars') + '</option>').join('') +
                 '</select>' +
                 tempo;
@@ -343,107 +362,118 @@ const Studio = {
     BPM_MAX: 260,
     LENGTHS: [1, 2, 4, 8],   // bars a riff may be
 
-    /// How long every riff is, in bars. Vibe's own model: one number for
-    /// the song, stored in the file.
+    /// How long the riff the control would act on is.
+    riffBars() {
+        const w = this.lengthTarget();
+        return w ? this.spanOf(w.p.riff) : 1;
+    },
+
+    /// How long ONE riff is, in bars.
     ///
-    /// Changing it REGROUPS rather than rescales, so the music stays where
-    /// it is. Going longer merges consecutive riffs into one; going
-    /// shorter splits them back. Either way every note is at the same
-    /// moment in the song afterwards — only the packaging changed.
+    /// Growing swallows the bars after it, taking whatever was there into
+    /// itself at the right offset — so four bars of drums become one
+    /// four-bar riff that still sounds the same. Shrinking hands the tail
+    /// back as its own riff in the bars it just gave up, so nothing is
+    /// lost either way.
+    ///
+    /// A riff placed more than once is copied first. There is no honest
+    /// alternative: the bars after each repeat hold different music, so
+    /// one answer cannot serve them all.
     setRiffBars(bars) {
-        const want = Math.max(1, Math.min(16, bars | 0));
-        const had = this.song.bars;
+        const where = this.lengthTarget();
+        if (!where) { this.say('Select a riff first'); return; }
+        const { track, p } = where;
+        const want = Math.max(1, Math.min(this.BARS, bars | 0));
+        const had = this.spanOf(p.riff);
         if (want === had) return;
-        if (want % had !== 0 && had % want !== 0) {
-            this.say('Riff length changes by halving or doubling');
+
+        // Riffs in the way are swallowed, not refused; the arrangement
+        // running out is the only thing that can stop it.
+        if (p.at + want > this.BARS) {
+            this.say('No room for ' + want + ' bars at bar ' + (p.at + 1));
             return;
         }
 
         this.mark('Riff length');
-        const shared = this.sharedRiffs();
-        if (want > had) this.mergeRiffs(want / had);
-        else this.splitRiffs(had / want);
+        let copied = false;
+        if (this.timesPlaced(p.riff) > 1) {
+            p.riff = this.song.addRiff(Riff.copy(p.riff));
+            copied = true;
+        }
+        if (want > had) this.absorb(track, p, want);
+        else this.shedTail(track, p, want);
 
-        // The loop is stored in slots and the slots just changed size; the
-        // bars it covers have not.
-        const scale = want / had;
-        this.song.loopStart = Math.floor(this.song.loopStart / scale);
-        this.song.loopEnd = Math.max(this.song.loopStart,
-            Math.ceil((this.song.loopEnd + 1) / scale) - 1);
-
-        this.song.bars = want;
-        for (const r of this.song.riffs) r.bars = want;
         this.tidy();
         this.selectNone();
-        this.bar = Math.min(this.bar, this.BARS - 1);
+        if (this.view === 'edit') this.editing = p.riff;
         this.keep();
         this.toolbar(); this.layout(); this.refreshAct(); this.draw();
-        this.say('Riffs are ' + want + (want === 1 ? ' bar' : ' bars') + ' long' +
-            (shared ? ' — repeats were made into separate riffs' : ''));
+        this.say(p.riff.name + ' is ' + want + (want === 1 ? ' bar' : ' bars') +
+                 (copied ? ' — copied, because it was repeated' : ''));
     },
 
-    /// Is any riff placed more than once? Regrouping cannot keep that, and
-    /// it is worth saying so rather than letting somebody discover it by
-    /// editing a repeat and finding the others unchanged.
-    sharedRiffs() {
-        const seen = new Set();
+    /// Which riff the length control is talking about: the one open in the
+    /// editor, or the single selected block.
+    lengthTarget() {
+        if (this.view === 'edit' && this.editing) {
+            const track = this.song.tracks[this.track];
+            const p = track && track.placements.find(x => x.riff === this.editing);
+            return p ? { track, p } : null;
+        }
+        const places = this.selPlaces();
+        if (places.length === 1) return { track: places[0].track, p: places[0].p };
+        const track = this.song.tracks[this.track];
+        const p = track && this.placedAt(track, this.bar);
+        return p ? { track, p } : null;
+    },
+
+    timesPlaced(riff) {
+        let n = 0;
         for (const t of this.song.tracks)
-            for (const p of t.placements) {
-                if (seen.has(p.riff)) return true;
-                seen.add(p.riff);
-            }
-        return false;
+            for (const p of t.placements) if (p.riff === riff) n++;
+        return n;
     },
 
-    /// Fold every N consecutive slots into one longer riff.
-    mergeRiffs(by) {
-        const wide = this.song.bars * by;
-        for (const t of this.song.tracks) {
-            const groups = new Map();
-            for (const p of t.placements) {
-                const g = Math.floor(p.at / by);
-                if (!groups.has(g)) groups.set(g, []);
-                groups.get(g).push(p);
+    /// Grow a riff over the bars after it, taking their music with it.
+    absorb(track, p, want) {
+        const from = p.at + this.spanOf(p.riff);
+        const taken = [];
+        for (let b = from; b < p.at + want; b++) {
+            const other = track.placements.find(x => x !== p && x.at === b);
+            if (!other) continue;
+            const off = (other.at - p.at) * 16;
+            for (const e of other.riff.events) {
+                if (!e.isNote) continue;
+                p.riff.add(Event.note(e.data[0], e.data[1], e.dur, e.tick + off));
             }
-            t.placements = [];
-            for (const [g, ps] of groups) {
-                const riff = new Riff(ps[0].riff.name, wide);
-                for (const p of ps) {
-                    const off = (p.at - g * by) * this.song.bars * 16;
-                    for (const e of p.riff.events) {
-                        if (!e.isNote) continue;
-                        riff.add(Event.note(e.data[0], e.data[1], e.dur, e.tick + off));
-                    }
-                }
-                this.song.addRiff(riff);
-                t.add(new Placement(riff, g));
-            }
-            t.placements.sort((a, b) => a.at - b.at);
+            taken.push(other);
         }
+        for (const other of taken)
+            track.placements.splice(track.placements.indexOf(other), 1);
+        p.riff.bars = want;
     },
 
-    /// Cut every riff into N shorter ones. A piece with nothing in it
-    /// becomes no riff at all rather than an empty block.
-    splitRiffs(by) {
-        const narrow = this.song.bars / by;
-        const span = narrow * 16;
-        for (const t of this.song.tracks) {
-            const out = [];
-            for (const p of t.placements) {
-                for (let k = 0; k < by; k++) {
-                    const from = k * span;
-                    const notes = p.riff.events.filter(
-                        e => e.isNote && e.tick >= from && e.tick < from + span);
-                    if (!notes.length) continue;
-                    const riff = new Riff(p.riff.name, narrow);
-                    for (const e of notes)
-                        riff.add(Event.note(e.data[0], e.data[1], e.dur, e.tick - from));
-                    this.song.addRiff(riff);
-                    out.push(new Placement(riff, p.at * by + k));
-                }
-            }
-            t.placements = out.sort((a, b) => a.at - b.at);
+    /// Shrink a riff, handing back what no longer fits as its own riff in
+    /// the bars just freed. Those bars were this riff's, so there is
+    /// always somewhere for the tail to go.
+    shedTail(track, p, want) {
+        const keep = want * 16;
+        const tail = p.riff.events.filter(e => e.isNote && e.tick >= keep);
+        p.riff.events = p.riff.events.filter(e => !(e.isNote && e.tick >= keep));
+        p.riff.bars = want;
+
+        // Each freed bar that holds something becomes a riff of its own,
+        // rather than one long riff of mostly silence.
+        const had = tail.length ? Math.max(...tail.map(e => e.tick)) : -1;
+        for (let b = want; b * 16 <= had; b++) {
+            const here = tail.filter(e => e.tick >= b * 16 && e.tick < (b + 1) * 16);
+            if (!here.length) continue;
+            const riff = this.song.addRiff(new Riff(p.riff.name, 1));
+            for (const e of here)
+                riff.add(Event.note(e.data[0], e.data[1], e.dur, e.tick - b * 16));
+            track.add(new Placement(riff, p.at + b));
         }
+        track.placements.sort((a, b) => a.at - b.at);
     },
 
     /// Change the tempo. If it is playing, the clock has to be re-timed —
@@ -488,15 +518,38 @@ const Studio = {
     // longer than a bar: the arrangement is drawn in bars, placements are
     // indexed by slot.
     headBar() { return Math.floor(this.head / 16); },
-    headSlot() { return Math.floor(this.head / this.steps()); },
     headStep() { return this.head % this.steps(); },
+
+    /// The riff on screen, and where it sits.
+    editPlace() {
+        const t = this.song.tracks[this.track];
+        if (!t) return null;
+        if (this.editing) {
+            const p = t.placements.find(x => x.riff === this.editing);
+            if (p) return p;
+        }
+        return this.placedAt(t, this.bar);
+    },
+    /// Is the playhead inside the riff being edited, and how far in? A
+    /// riff can be several bars, so this is about a span rather than
+    /// about two numbers matching.
+    headInRiff() {
+        const p = this.editPlace();
+        if (!p) return false;
+        const b = this.headBar();
+        return b >= p.at && b < p.at + this.spanOf(p.riff);
+    },
+    headTick() {
+        const p = this.editPlace();
+        return p ? this.head - p.at * 16 : this.head % 16;
+    },
 
     /// Where it is now: following the transport while it runs, and sitting
     /// where you put it when it is not.
     liveHead() {
         if (this._timer && this._step >= 0) {
-            const slot = this._playBar >= 0 ? this._playBar : this.headSlot();
-            return slot * this.steps() + this._step;
+            const bar = this._playBar >= 0 ? this._playBar : this.headBar();
+            return bar * 16 + this._step;
         }
         return this.head;
     },
@@ -518,7 +571,7 @@ const Studio = {
     /// Where the riff editor should begin: the head if it falls inside the
     /// riff being edited, and the top of the riff if it does not.
     startStep() {
-        return this.headSlot() === this.slotOf(this.bar) ? this.headStep() : 0;
+        return this.headInRiff() ? this.headTick() : 0;
     },
 
     /// Kept for the riff ruler, which thinks in steps within the riff.
@@ -871,8 +924,7 @@ const Studio = {
         for (let i = 0; i < c.cols; i++) {
             const bar = this.bar0 + i;
             const x = c.x0 + i * c.w;
-            const slot = this.slotOf(bar);
-            const inLoop = slot >= this.song.loopStart && slot <= this.song.loopEnd;
+            const inLoop = bar >= this.song.loopStart && bar <= this.song.loopEnd;
             cx.fillStyle = inLoop ? '#ffc83d' : '#4a5160';
             // A column is a bar, so the number is simply the bar.
             cx.fillText(String(bar + 1), x + 3, 8);
@@ -895,17 +947,18 @@ const Studio = {
 
             // The empty grid first: one cell per bar.
             const playCol = this._playBar >= 0
-                ? this.barOf(this._playBar) + Math.floor(Math.max(0, this._step) / 16) : -1;
+                ? this._playBar : -1;
             for (let i = 0; i < c.cols; i++) {
                 const bar = this.bar0 + i;
                 cx.fillStyle = bar === playCol ? '#2e2e40' : '#14141c';
                 cx.fillRect(c.x0 + i * c.w + 1, y + 1, c.w - 2, c.h - 2);
             }
 
-            // Then the riffs, each as wide as it is long.
-            const wide = this.song.bars;
+            // Then the riffs, each as wide as it is long — which is now a
+            // property of the riff rather than of the song.
             for (const p of t.placements) {
-                const from = this.barOf(p.at);
+                const wide = this.spanOf(p.riff);
+                const from = p.at;
                 if (from + wide <= this.bar0 || from >= this.bar0 + c.cols) continue;
                 const bar = from;
                 const x = this.colX(from);
@@ -1182,7 +1235,7 @@ const Studio = {
 
             // And down every bar line, so a long riff does not become a
             // field of identical squares.
-            if (this.song.bars > 1) {
+            if (this.editing && this.spanOf(this.editing) > 1) {
                 cx.fillStyle = '#2f2f3e';
                 for (let j = 0; j < c.cols; j++)
                     if ((this.ecol0 + j) % 16 === 0 && j > 0)
@@ -1208,7 +1261,7 @@ const Studio = {
         // tall roll is easy to lose.
         {
             const at = this._step >= 0 ? this._step
-                     : (this.headSlot() === this.slotOf(this.bar) ? this.headStep() : -1);
+                     : (this.headInRiff() ? this.headTick() : -1);
             if (at >= 0 && this.stepOn(at)) {
                 cx.globalAlpha = this._step >= 0 ? 0.5 : 0.3;
                 cx.fillStyle = this._step >= 0 ? '#ffc83d' : '#4cd964';
@@ -1261,7 +1314,7 @@ const Studio = {
         // The playhead. One marker rather than two: where you are while it
         // runs, where you will start when it does not.
         const here = this._step >= 0 ? this._step
-                   : (this.headSlot() === this.slotOf(this.bar) ? this.headStep() : -1);
+                   : (this.headInRiff() ? this.headTick() : -1);
         if (here >= 0 && this.stepOn(here)) {
             const x = this.stepX(here);
             const live = this._step >= 0;
@@ -1653,7 +1706,7 @@ const Studio = {
     // ── Arrangement commands, in Vibe's own words ─────────────────────────
 
     edit() {
-        const riff = this.riffAt(this.song.tracks[this.track], this.slotOf(this.bar));
+        const riff = this.riffAt(this.song.tracks[this.track], this.bar);
         if (!riff) { this.newRiff(); return; }
         this.editing = riff;
         this.view = 'edit';
@@ -1710,8 +1763,8 @@ const Studio = {
         const t = this.song.tracks[this.track];
         const riff = this.song.addRiff(new Riff(
             (t.channel === 9 ? 'Beat ' : 'Riff ') + (this.song.riffs.length + 1),
-            this.song.bars));
-        this.place(t, this.slotOf(this.bar), riff);
+            1));
+        this.place(t, this.bar, riff);
         this.editing = riff;
         this.view = 'edit';
         this.toolbar(); this.layout(); this.refreshAct();
@@ -1816,14 +1869,16 @@ const Studio = {
         const to = editing ? 0 : this.song.loopEnd;
         // Begin at the playhead when it is inside the loop, which is what
         // "start from here" means; otherwise at the top of the loop.
-        const headIn = !editing && this.headSlot() >= from && this.headSlot() <= to;
-        const steps = this.song.stepsPerRiff;
+        const headIn = !editing && this.headBar() >= from && this.headBar() <= to;
+        // A bar at a time in the arrangement; the whole riff when editing
+        // one, which may now be several bars long.
+        const steps = editing ? this.editing.steps : 16;
         // Inside a riff it begins wherever the head is within the riff, so
         // you can work on the last two beats without hearing the first two
         // every time round. In the arrangement it begins at the head.
-        let bar = headIn ? this.headSlot() : from;
+        let bar = headIn ? this.headBar() : from;
         let step = editing ? Math.min(this.startStep(), steps - 1)
-                 : (headIn ? this.headStep() : 0);
+                 : (headIn ? this.head % 16 : 0);
 
         const beat = () => {
             this._step = step;
@@ -1836,7 +1891,7 @@ const Studio = {
             if (!editing && step % 16 === 0) {
                 const now = this.synth.ctx.currentTime;
                 const spb = 16 * (15 / this.song.tempo);
-                const atBar = this.barOf(bar) + step / 16;
+                const atBar = bar;
                 if (step === 0 && bar === (Mic.rolling() ? Mic.takeBar() : from))
                     Mic.passStart(now);
                 // A soloed or muted lane is handled here rather than inside
@@ -1859,10 +1914,15 @@ const Studio = {
                 for (let ti = 0; ti < this.song.tracks.length; ti++) {
                     if (!this.rowHeard(ti)) continue;
                     const t = this.song.tracks[ti];
-                    const riff = this.riffAt(t, bar);
-                    if (!riff) continue;
+                    const p = this.placedAt(t, bar);
+                    if (!p) continue;
+                    // Where this bar falls inside the riff: a riff placed
+                    // at bar 6 and three bars long is on its third bar
+                    // when the clock reaches bar 8.
+                    const riff = p.riff;
+                    const into = (bar - p.at) * 16 + step;
                     for (const e of riff.events)
-                        if (e.isNote && e.tick === step)
+                        if (e.isNote && e.tick === into)
                             this.synth.hit(t.channel, e.data[0], e.data[1],
                                            Math.max(1, e.dur) * (15 / this.song.tempo));
                 }
@@ -2036,12 +2096,11 @@ const Studio = {
         if (this.view === 'arrange') {
             const t = this.song.tracks[this.track];
             const first = Math.max(this.song.loopStart,
-                                   Math.min(this.song.loopEnd, this.headSlot()));
+                                   Math.min(this.song.loopEnd, this.headBar()));
             for (let slot = first; slot <= this.song.loopEnd; slot++) {
                 if (this.riffAt(t, slot)) continue;
                 const riff = this.song.addRiff(new Riff(
-                    (t.channel === 9 ? 'Beat ' : 'Riff ') + (this.song.riffs.length + 1),
-                    this.song.bars));
+                    (t.channel === 9 ? 'Beat ' : 'Riff ') + (this.song.riffs.length + 1), 1));
                 this.place(t, slot, riff);
                 made.push(riff);
             }
@@ -2298,9 +2357,9 @@ const Studio = {
         Tape.ctx = this.synth.ctx;
         // From the playhead to the end of the loop, so a take can start
         // anywhere rather than always at the top.
-        const at = Math.max(this.barOf(this.song.loopStart),
-                            Math.min(this.barOf(this.song.loopEnd), this.headBar()));
-        const bars = Math.max(1, this.barOf(this.song.loopEnd + 1) - at);
+        const at = Math.max(this.song.loopStart,
+                            Math.min(this.song.loopEnd, this.headBar()));
+        const bars = Math.max(1, this.song.loopEnd + 1 - at);
         const spb = this.context().barSeconds;
         if (Tape.room(at, bars) === -1) {
             this.say('Every audio lane is busy over the loop. Clear one first.');
@@ -2346,16 +2405,9 @@ const Studio = {
     // row index runs through both, which is what lets one selection, one
     // marquee and one clipboard cover the lot.
 
-    // A COLUMN of the arrangement is one bar. A SLOT is where the file
-    // puts a riff, and is however many bars a riff is. These two functions
-    // are the only place that conversion happens.
-    slotOf(bar) { return Math.floor(bar / this.song.bars); },
-    barOf(slot) { return slot * this.song.bars; },
-    maxSlot() { return Math.max(1, Math.floor(this.BARS / this.song.bars)); },
-
-    /// The riff sounding at a musical bar, and the slot it belongs to.
-    riffAtBar(track, bar) { return this.riffAt(track, this.slotOf(bar)); },
-
+    // song.bars stays 1: a placement's position is a BAR, and how long a
+    // riff is belongs to the riff. The format writes both, so this is the
+    // same file either way — the original simply never varied the second.
     rowCount() { return this.song.tracks.length + this.audioRows(); },
 
     // ── Turning things off ────────────────────────────────────────────────
@@ -2429,12 +2481,11 @@ const Studio = {
     objAt(row, bar) {
         if (row < 0 || bar < 0) return null;
         if (row < this.song.tracks.length) {
-            // The grid is in bars; a riff lives in a slot, and covers
-            // every bar of it.
-            const slot = this.slotOf(bar);
+            // A riff covers every bar of its span, so pointing anywhere
+            // inside it means that riff.
             const t = this.song.tracks[row];
-            return t && t.placements.some(p => p.at === slot)
-                ? { k: 'riff', t: row, at: slot } : null;
+            const p = t && this.placedAt(t, bar);
+            return p ? { k: 'riff', t: row, at: p.at } : null;
         }
         const c = Tape.at(this.laneOf(row), bar);
         return c ? { k: 'clip', id: c.id } : null;
@@ -2555,14 +2606,14 @@ const Studio = {
         // The anchor is a bar, so a riff and a clip copied together
         // keep their spacing on a grid that measures bars.
         let bar0 = Infinity;
-        for (const x of places) bar0 = Math.min(bar0, this.barOf(x.p.at));
+        for (const x of places) bar0 = Math.min(bar0, x.p.at);
         for (const c of clips) bar0 = Math.min(bar0, c.at);
 
         this._board = {
             count: places.length + clips.length,
             riffs: places.length,
             clips: clips.length,
-            items: places.map(x => ({ k: 'riff', t: x.ti, dBar: this.barOf(x.p.at) - bar0, riff: x.p.riff }))
+            items: places.map(x => ({ k: 'riff', t: x.ti, dBar: x.p.at - bar0, riff: x.p.riff }))
                 .concat(clips.map(c => ({ k: 'clip', lane: c.lane, dBar: c.at - bar0, clip: c }))),
         };
         this.toolbar(); this.refreshAct();
@@ -2611,7 +2662,6 @@ const Studio = {
             if (it.k === 'riff') {
                 const t = this.song.tracks[it.t];
                 if (!t) { short++; continue; }
-                const slot = this.slotOf(at);
                 // A riff from another beat has to be adopted, or the
                 // placement points at something the file does not contain
                 // and the bar comes back empty. Across songs there is no
@@ -2622,8 +2672,8 @@ const Studio = {
                     ? this.song.addRiff(Riff.copy(it.riff))
                     : it.riff;
                 if (foreign) adopted++;
-                this.place(t, slot, riff);
-                made.push({ k: 'riff', t: it.t, at: slot });
+                this.place(t, at, riff);
+                made.push({ k: 'riff', t: it.t, at });
             } else {
                 const twin = Tape.twin(it.clip);
                 twin.at = at;
@@ -2764,12 +2814,8 @@ const Studio = {
     moveFits(dBar, dRow) {
         const mine = new Set(this._move.items.map(i => i.k === 'clip' ? i.c : i.riff));
         for (const i of this._move.items) {
-            // A riff moves in slots, a clip in bars, and the drag is
-            // measured in bars — so a riff only moves on whole slots.
-            const by = i.k === 'riff' ? Math.round(dBar / this.song.bars) : dBar;
-            const at = i.at + by;
-            if (at < 0) return false;
-            if (i.k === 'riff' ? at >= this.maxSlot() : at >= this.BARS) return false;
+            const at = i.at + dBar;
+            if (at < 0 || at >= this.BARS) return false;
 
             if (i.k === 'clip') {
                 const lane = i.lane + dRow;
@@ -2808,7 +2854,7 @@ const Studio = {
                 Tape.stopOne(i.c);
             } else {
                 const t = this.song.tracks[i.t + dRow];
-                this.place(t, i.at + Math.round(dBar / this.song.bars), i.riff);
+                this.place(t, i.at + dBar, i.riff);
             }
         }
         Tape._json = undefined;
@@ -2816,7 +2862,7 @@ const Studio = {
         // The selection names a riff by where it is, so it moves too.
         this._sel = m.items.map(i => i.k === 'clip'
             ? { k: 'clip', id: i.c.id }
-            : { k: 'riff', t: i.t + dRow, at: i.at + Math.round(dBar / this.song.bars) });
+            : { k: 'riff', t: i.t + dRow, at: i.at + dBar });
         m.dBar = dBar; m.dRow = dRow;
     },
 
