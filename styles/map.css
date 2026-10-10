@@ -1406,3 +1406,40 @@ body.in-place { overflow: hidden; }
     background: #16161f; border: 1px solid #23232e; border-radius: 8px;
     padding: 7px 9px; cursor: pointer;
 }
+
+/* ── The preset browser ──────────────────────────────────────────────── */
+/* A list you scan rather than read: what it is, where it is from, and one
+   line about why you would want it. */
+.pre-tabs { display: flex; gap: 4px; margin-bottom: 7px; flex-wrap: wrap; }
+.pre-tab {
+    flex: 1 1 auto; font-family: monospace; font-size: 11.5px; padding: 7px 4px;
+    color: #8b93a6; background: #16161f; border: 1px solid #23232e;
+    border-radius: 8px; cursor: pointer;
+}
+.pre-tab.on { color: #0e0e14; background: #66cc99; border-color: #66cc99; font-weight: bold; }
+.pre-styles { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.pre-chip {
+    font-family: monospace; font-size: 10.5px; padding: 4px 8px;
+    color: #8b93a6; background: #12121a; border: 1px solid #23232e;
+    border-radius: 20px; cursor: pointer;
+}
+.pre-chip.on { color: #ffc83d; border-color: #ffc83d; }
+.pre-list { max-height: 44vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pre-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0; border-bottom: 1px solid #1b1b24;
+}
+.pre-what { flex: 1; min-width: 0; }
+.pre-what b { display: block; font-family: monospace; font-size: 12px; color: #e8edf6; }
+.pre-what i {
+    display: block; font-family: monospace; font-size: 10px;
+    color: #66cc99; font-style: normal; margin-top: 1px;
+}
+.pre-what span { display: block; font-size: 10.5px; color: #6a7183; margin-top: 2px; }
+.pre-do { display: flex; gap: 4px; flex: 0 0 auto; }
+.pre-do button {
+    font-family: monospace; font-size: 11px; padding: 6px 11px;
+    color: #e8edf6; background: #1d2a24; border: 1px solid #2f5a44;
+    border-radius: 7px; cursor: pointer;
+}
+.pre-do .pre-bpm { color: #ffc83d; background: #241f12; border-color: #5a4a1a; }

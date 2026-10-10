@@ -324,6 +324,8 @@ const Studio = {
                 b('&minus;', 'zoomBy(-1)', 'Zoom out', this.zoom <= this.ZOOM_MIN ? 'st-dim' : '') +
                 b('+', 'zoomBy(1)', 'Zoom in', this.zoom >= this.ZOOM_MAX ? 'st-dim' : '') +
                 (this.solo ? b('Unsolo', 'clearSolo()', 'Hear everything again', 'st-go on') : '') +
+                b('&#9834; Presets', 'presetPanel()', 'Patterns to start from',
+                  this._presetOpen ? 'st-hot' : '') +
                 b('&#9707;', 'mixPanel()', 'The mix', this._mixOpen ? 'st-hot' : '') +
                 b('&#8595;', 'exportAs(\'mp3\')', 'Export an mp3 of the loop') +
                 b(Mic.rolling() ? '&#9632; Audio' : '&#127908; Audio', 'audioPanel()',
@@ -367,6 +369,8 @@ const Studio = {
                 b('Delete', 'noteDelete()', 'Delete the notes you are holding',
                   held ? '' : 'st-dim') +
                 b('All', 'holdAll()', 'Hold every note in this riff') +
+                b('&#9834; Presets', 'presetPanel()', 'Patterns to start from',
+                  this._presetOpen ? 'st-hot' : '') +
                 b('Clear', 'clearRiff()', 'Empty this riff') +
                 '<select class="st-len" title="How long this riff is" ' +
                     'onchange="Studio.setRiffBars(+this.value)">' +
@@ -1577,6 +1581,121 @@ const Studio = {
         this.tap(press.ev);
     },
 
+    // ── Presets ──────────────────────────────────────────────
+
+    _preset: null,          // the panel's state: {kind, style}
+
+    presetPanel() {
+        this._presetOpen = !this._presetOpen;
+        if (this._presetOpen) {
+            this._audio = false; this._mixOpen = false;
+            if (!this._preset) {
+                // Open on something the current track can actually use.
+                const t = this.song.tracks[this.track];
+                this._preset = { kind: t && t.channel === 9 ? 'drums' : 'chords', style: null };
+            }
+        }
+        this.toolbar(); this.refreshAct();
+    },
+
+    pickKind(kind) {
+        this._preset = { kind, style: null };
+        this.refreshAct();
+    },
+
+    pickStyle(style) {
+        this._preset.style = style || null;
+        this.refreshAct();
+    },
+
+    /// Where a preset would go, and whether it can.
+    ///
+    /// A drum preset belongs on the drum track and a chord preset does
+    /// not. Rather than refuse, this says which track it is about to use,
+    /// because "wrong track" is the only way this can go wrong and it is
+    /// easy to say out loud.
+    presetTarget(preset) {
+        if (!preset) return null;
+        const wantDrums = preset.kind === 'drums';
+        const here = this.song.tracks[this.track];
+        if (here && (here.channel === 9) === wantDrums) return this.track;
+        // The first track of the right sort, if the cursor is on the wrong one.
+        const i = this.song.tracks.findIndex(t => (t.channel === 9) === wantDrums);
+        return i === -1 ? null : i;
+    },
+
+    /// Take a preset: write it into a riff on a suitable track.
+    ///
+    /// It replaces what is in the riff rather than layering onto it. A
+    /// preset is a starting point, and the one thing worse than the wrong
+    /// starting point is the wrong one mixed into the right one — undo is
+    /// one key away either side.
+    usePreset(id) {
+        const preset = Presets.get(id);
+        if (!preset) return;
+        const ti = this.presetTarget(preset);
+        if (ti == null) {
+            this.say(preset.kind === 'drums'
+                ? 'No drum track to put that on' : 'No melodic track to put that on');
+            return;
+        }
+
+        this.mark('Preset');
+        const track = this.song.tracks[ti];
+        const bar = this.view === 'edit' ? (this.editPlace() || {}).at ?? this.bar : this.bar;
+        const want = preset.bars || 1;
+
+        // A riff to put it in: the one already there if it is long enough,
+        // and otherwise a new one of the right length.
+        let p = this.placedAt(track, bar);
+        if (p && this.spanOf(p.riff) !== want) {
+            // Resizing would absorb neighbours; for a preset it is kinder
+            // to leave them alone and start a fresh riff of the right size.
+            p = null;
+        }
+        if (!p) {
+            const riff = this.song.addRiff(new Riff(preset.name.slice(0, 20), want));
+            this.place(track, bar, riff);
+            p = this.placedAt(track, bar);
+        }
+
+        const mus = this.context();
+        const notes = Presets.realise(preset, {
+            tonic: mus.tonic,
+            at: this.gridFor(track).at || (track.channel === 9 ? 0 : 60),
+        });
+
+        p.riff.events = [];
+        for (const e of notes) p.riff.add(Event.note(e.pitch, e.vel, e.dur, e.tick));
+
+        this.track = ti;
+        this.bar = bar;
+        this.holdNone();
+        this.selectNone();
+        if (this.view === 'edit') { this.editing = p.riff; this.lookAtNotes(); }
+        this.tidy();
+        this.keep();
+        this.toolbar(); this.layout(); this.refreshAct(); this.draw();
+
+        const style = Presets.styleOf(preset.style);
+        this.say(preset.name + ' → ' + track.name + ', bar ' + (bar + 1) +
+                 (preset.kind === 'drums' ? ''
+                  : ' · in ' + mus.name) +
+                 (style && style.tempo !== this.song.tempo
+                  ? ' · it wants ' + style.tempo + ' bpm' : ''));
+    },
+
+    /// Take the style's tempo and swing as well. Offered separately
+    /// because a dembow preset at your song's tempo is a decision, not a
+    /// mistake, and the app should not quietly overrule it.
+    usePresetTempo(styleId) {
+        const style = Presets.styleOf(styleId);
+        if (!style) return;
+        this.setTempo(style.tempo);
+        this.refreshAct();
+        this.say('Tempo ' + style.tempo + ' · ' + style.name);
+    },
+
     // ── Notes in the roll ─────────────────────────────────────────────────
 
     /// The note at a step and pitch, if there is one.
@@ -2629,6 +2748,7 @@ const Studio = {
 
     async audioPanel() {
         if (this._audio) { this.audioClose(); return; }
+        this._presetOpen = false;
         this._audio = true;
         this.refreshAct(); this.toolbar(); this.layout();
         if (!Mic.stream && !Mic.why()) {
@@ -3596,7 +3716,7 @@ const Studio = {
 
     mixPanel() {
         this._mixOpen = !this._mixOpen;
-        if (this._mixOpen) this._audio = false;
+        if (this._mixOpen) { this._audio = false; this._presetOpen = false; }
         this.refreshAct(); this.toolbar(); this.layout();
     },
 
@@ -4361,7 +4481,76 @@ const Studio = {
         if (n) n.textContent = msg;
     },
 
+    /// The preset browser: what kind of part, in what style, and a list.
+    presetAct() {
+        const act = document.getElementById('st-act');
+        if (!act) return;
+        const esc = t => String(t).replace(/[<>&"]/g, ch =>
+            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[ch]));
+        const want = this._preset || { kind: 'drums', style: null };
+
+        let html = '<div class="pre-tabs">';
+        for (const k of Presets.KINDS)
+            html += '<button class="pre-tab' + (k.id === want.kind ? ' on' : '') +
+                '" onclick="Studio.pickKind(\'' + k.id + '\')">' + k.name + '</button>';
+        html += '</div>';
+
+        const styles = Presets.stylesWith(want.kind);
+        html += '<div class="pre-styles">';
+        html += '<button class="pre-chip' + (want.style ? '' : ' on') +
+            '" onclick="Studio.pickStyle(\'\')">All</button>';
+        for (const st of styles)
+            html += '<button class="pre-chip' + (st.id === want.style ? ' on' : '') +
+                '" onclick="Studio.pickStyle(\'' + st.id + '\')">' + esc(st.name) + '</button>';
+        html += '</div>';
+
+        const list = Presets.byKind(want.kind, want.style);
+        if (!list.length) {
+            html += '<div class="st-note">Nothing here yet.</div>';
+        } else {
+            html += '<div class="pre-list">';
+            for (const p of list) {
+                const st = Presets.styleOf(p.style);
+                html += '<div class="pre-row">' +
+                    '<div class="pre-what">' +
+                        '<b>' + esc(p.name) + '</b>' +
+                        '<i>' + esc(st ? st.name : '') + ' \u00b7 ' +
+                            (p.bars || 1) + (p.bars > 1 ? ' bars' : ' bar') +
+                            (st ? ' \u00b7 ' + st.tempo + ' bpm' : '') + '</i>' +
+                        '<span>' + esc(p.note || '') + '</span>' +
+                    '</div>' +
+                    '<div class="pre-do">' +
+                        '<button onclick="Studio.usePreset(\'' + p.id + '\')">Use</button>' +
+                        (st && st.tempo !== this.song.tempo
+                            ? '<button class="pre-bpm" title="Take this style\u2019s tempo" ' +
+                              'onclick="Studio.usePresetTempo(\'' + st.id + '\')">' +
+                              st.tempo + '</button>'
+                            : '') +
+                    '</div>' +
+                '</div>';
+            }
+            html += '</div>';
+        }
+
+        // Where it will land, because that is the only thing that can
+        // surprise you about pressing Use.
+        const sample = list[0];
+        const ti = sample ? this.presetTarget(sample) : null;
+        const mus = this.context();
+        html += '<div class="st-note">' +
+            (ti == null
+                ? 'No track of the right kind for these.'
+                : 'Lands on <b>' + esc(this.song.tracks[ti].name) + '</b> at bar ' +
+                  (this.bar + 1) +
+                  (want.kind === 'drums' ? '' : ', in ' + esc(mus.name)) +
+                  ', replacing what is there.') +
+            '</div>';
+
+        act.innerHTML = html + '<div class="st-say"></div>';
+    },
+
     refreshAct() {
+        if (this._presetOpen) { this.presetAct(); return; }
         if (this._mixOpen) { this.mixAct(); return; }
         if (this._audio) { this.audioAct(); return; }
         if (this._rec) { this.recAct(); return; }
