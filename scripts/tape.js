@@ -308,7 +308,7 @@ const Tape = {
             if (c.fx && c.fx.on && !c.render && c.buffer &&
                 typeof Voice !== 'undefined' && this.ctxInfo) {
                 try {
-                    const out = Voice.render(this.ctx, c.buffer, c.fx, this.ctxInfo);
+                    const out = await Voice.render(this.ctx, c.buffer, c.fx, this.ctxInfo);
                     if (out) { c.render = out; c.peaks = this.peaks(c); }
                 } catch (_) { /* play it raw rather than not at all */ }
             }

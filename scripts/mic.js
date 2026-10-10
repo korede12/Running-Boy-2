@@ -196,6 +196,11 @@ const Mic = {
 
     rolling() { return this.state === 'armed' || this.state === 'rolling'; },
 
+    /// Which bar the take being recorded is aligned to. The studio needs
+    /// this to know when the playhead has come round to it, and reaching
+    /// into _at from outside was asking for it to be renamed one day.
+    takeBar() { return this._at; },
+
     /// Start rolling now and align to the loop top AFTER the next one, so
     /// there is always exactly one pass of count-in. `bars` is how much to
     /// keep, `spb` how long one bar lasts, `at` which bar the take begins on.

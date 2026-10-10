@@ -173,8 +173,9 @@ const Voice = {
     /// Retune a channel so every voiced moment lands on a note in the key.
     /// `strength` is how far towards the note to go: 1 is hard tuning, which
     /// this genre actually wants, and 0.6 keeps the performance.
-    retune(data, rate, ctx, opts) {
+    async retune(data, rate, ctx, opts) {
         const strength = opts && opts.strength != null ? opts.strength : 0.9;
+        const tick = opts && opts.tick;
         const hop = Math.round(rate * 0.01);
         const pitch = this.track(data, rate, hop, 2048);
         const out = new Float32Array(data.length);
@@ -183,8 +184,14 @@ const Voice = {
         let at = 0;              // where we are reading
         let outAt = 0;           // where we are writing
         let moved = 0, voiced = 0;
+        // Hand control back now and then, or nothing can be drawn while
+        // this runs and the page simply stops for a second. Every few
+        // hundred grains is often enough to look alive and rare enough to
+        // cost nothing.
+        let grains = 0;
 
         while (at < data.length) {
+            if (tick && ++grains % 300 === 0) await tick(at / data.length);
             const frame = Math.min(pitch.hz.length - 1, Math.round(at / hop));
             const hz = frame >= 0 ? pitch.hz[frame] : 0;
 
@@ -410,7 +417,7 @@ const Voice = {
 
     /// Everything the sample domain has to do, in one pass: gate, then tune.
     /// Returns a new AudioBuffer, or null when there is nothing to change.
-    render(actx, buffer, fx, ctx) {
+    async render(actx, buffer, fx, ctx, tick) {
         if (!buffer) return null;
         const set = fx && fx.set ? fx.set : this.preset('lead');
         const wantGate = !!(set.gate && set.gate.on);
@@ -424,9 +431,12 @@ const Voice = {
 
         for (let ch = 0; ch < chans; ch++) {
             let d = buffer.getChannelData(ch);
+            if (tick) await tick(ch / chans, 'Gating');
             if (wantGate) d = this.gate(d, rate, set.gate);
             if (wantTune) {
-                const done = this.retune(d, rate, ctx, fx.tune);
+                const opts = Object.assign({}, fx.tune);
+                if (tick) opts.tick = (f) => tick((ch + f) / chans, 'Tuning');
+                const done = await this.retune(d, rate, ctx, opts);
                 d = done.data;
                 if (!report) report = { voiced: done.voiced, moved: done.moved };
             }

@@ -73,7 +73,7 @@ const Ctx = {
     /// Everything automatic in the studio starts here.
     read(song, tape) {
         const tempo = song ? song.tempo : 120;
-        const steps = song ? song.stepsPerRiff : 16;
+        const steps = song ? song.stepsPerRiff : 16;      // steps to a SLOT
         const stepSeconds = 15 / tempo;
         const weights = this.weigh(song);
         const found = this.key(weights);
@@ -82,7 +82,14 @@ const Ctx = {
             tempo,
             steps,
             stepSeconds,
-            barSeconds: steps * stepSeconds,
+            // A bar is a bar: sixteen steps, always. A SLOT is one cell of
+            // the arrangement, which is however many bars a riff is. They
+            // are the same thing only while a riff is one bar long, and
+            // conflating them is how a one-bar drum loop ends up stretched
+            // to four.
+            barSeconds: 16 * stepSeconds,
+            slotSeconds: steps * stepSeconds,
+            barsPerSlot: Math.max(1, Math.round(steps / 16)),
             // A dotted eighth, which is the delay time the whole genre uses.
             dottedEighth: (60 / tempo) * 0.75,
             eighth: (60 / tempo) * 0.5,
