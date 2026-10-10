@@ -76,12 +76,19 @@ const Bounce = {
 
             for (const t of song.tracks) {
                 if (t.muted) continue;          // off is off, including here
-                const p = t.placements.find(x => x.at === bar);
+                // The placement COVERING this bar, not one starting on it:
+                // a riff is allowed to be longer than a bar, and a loop
+                // that begins partway through one still plays the rest.
+                const p = t.placements.find(
+                    x => x.at <= bar && bar < x.at + Math.max(1, x.riff.bars | 0));
                 if (!p) continue;
+                // Only this bar's share of it, or a four-bar riff would be
+                // fired in full four times over.
+                const from = (bar - p.at) * 16, to = from + 16;
                 for (const e of p.riff.events) {
-                    if (!e.isNote) continue;
+                    if (!e.isNote || e.tick < from || e.tick >= to) continue;
                     synth.hit(t.channel, e.data[0], e.data[1],
-                              Math.max(1, e.dur) * stepLen, at + e.tick * stepLen);
+                              Math.max(1, e.dur) * stepLen, at + (e.tick - from) * stepLen);
                 }
             }
 

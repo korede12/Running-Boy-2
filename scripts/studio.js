@@ -323,6 +323,9 @@ const Studio = {
                 tempo;
         } else {
             const t = this.song.tracks[this.track];
+            // Through heldNotes(), which drops anything an undo replaced —
+            // the raw array can be full of notes that no longer exist.
+            const held = this.heldNotes().length;
             let inst;
             if (t.channel === 9) {
                 // Channel 10 is the kit, and a General MIDI program number
@@ -346,6 +349,15 @@ const Studio = {
                 b('+', 'zoomBy(1)', 'Zoom in', this.zoom >= this.ZOOM_MAX ? 'st-dim' : '') +
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
+                b('Copy', 'noteCopy()', 'Copy the notes you are holding',
+                  held ? '' : 'st-dim') +
+                b('Cut', 'noteCut()', 'Cut the notes you are holding',
+                  held ? '' : 'st-dim') +
+                b('Paste', 'notePaste()', 'Paste notes at the playhead',
+                  this._nboard ? '' : 'st-dim') +
+                b('Delete', 'noteDelete()', 'Delete the notes you are holding',
+                  held ? '' : 'st-dim') +
+                b('All', 'holdAll()', 'Hold every note in this riff') +
                 b('Clear', 'clearRiff()', 'Empty this riff') +
                 '<select class="st-len" title="How long this riff is" ' +
                     'onchange="Studio.setRiffBars(+this.value)">' +
@@ -361,6 +373,12 @@ const Studio = {
     BPM_MIN: 40,
     BPM_MAX: 260,
     LENGTHS: [1, 2, 4, 8],   // bars a riff may be
+
+    // Notes held in the roll, as Event objects. Not indices: events shift
+    // about inside riff.events as notes are written around them, so an
+    // index is a reference that silently starts meaning a different note.
+    _notes: [],
+    _nboard: null,          // the note clipboard, shaped relative to itself
 
     /// How long the riff the control would act on is.
     riffBars() {
@@ -512,7 +530,9 @@ const Studio = {
 
     // ── The playhead ──────────────────────────────────────────────────────
 
-    steps() { return this.song.stepsPerRiff; },
+    // The head is measured in bars of sixteen steps. This used to answer
+    // stepsPerRiff, which agreed only while a riff was one bar.
+    steps() { return 16; },
     // The head is in steps from the start of the arrangement. Which BAR
     // that is, and which SLOT, are different questions once a riff is
     // longer than a bar: the arrangement is drawn in bars, placements are
@@ -524,11 +544,18 @@ const Studio = {
     editPlace() {
         const t = this.song.tracks[this.track];
         if (!t) return null;
+        // The one under the cursor first. A riff placed twice is the same
+        // object in both bars, so finding it by identity would answer with
+        // the first repeat however far down the song you opened it — and
+        // then the playhead, and a paste, would measure from the wrong
+        // bar entirely.
+        const here = this.placedAt(t, this.bar);
+        if (here && (!this.editing || here.riff === this.editing)) return here;
         if (this.editing) {
             const p = t.placements.find(x => x.riff === this.editing);
             if (p) return p;
         }
-        return this.placedAt(t, this.bar);
+        return here;
     },
     /// Is the playhead inside the riff being edited, and how far in? A
     /// riff can be several bars, so this is about a span rather than
@@ -548,8 +575,12 @@ const Studio = {
     /// where you put it when it is not.
     liveHead() {
         if (this._timer && this._step >= 0) {
-            const bar = this._playBar >= 0 ? this._playBar : this.headBar();
-            return bar * 16 + this._step;
+            // In the arrangement _step counts into the bar, so the bar is
+            // the transport's. In the roll it counts into the RIFF, which
+            // may be four bars, so the bar is the riff's own.
+            if (this._playBar >= 0) return this._playBar * 16 + this._step;
+            const p = this.editPlace();
+            return (p ? p.at : this.headBar()) * 16 + this._step;
         }
         return this.head;
     },
@@ -560,7 +591,7 @@ const Studio = {
         if (at === this.head) return;
         this.head = at;
         if (this.view === 'arrange') this.reveal(null, this.headBar());
-        else this.reveal(null, this.headStep());
+        else this.reveal(null, Math.max(0, this.headTick()));
         this.draw();
         if (!quiet) {
             const p = this.stamp(at);
@@ -1311,6 +1342,16 @@ const Studio = {
             }
         }
 
+        this.drawHeld(cx, c);
+
+        if (this._band) {
+            const b = this._band;
+            cx.fillStyle = 'rgba(255, 122, 69, 0.16)';
+            cx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+            cx.strokeStyle = '#ff7a45'; cx.lineWidth = 1;
+            cx.strokeRect(b.x0 + 0.5, b.y0 + 0.5, b.x1 - b.x0 - 1, b.y1 - b.y0 - 1);
+        }
+
         // The playhead. One marker rather than two: where you are while it
         // runs, where you will start when it does not.
         const here = this._step >= 0 ? this._step
@@ -1430,9 +1471,22 @@ const Studio = {
         const bar = this.onScrollbar(p);
         if (bar) { this.scrollGrab(bar, p); grab(); return; }
 
-        // Inside a riff a tap is a note and should land immediately; there is
-        // nothing to drag there, so there is nothing to wait for.
-        if (this.view !== 'arrange') { this.tap(ev); return; }
+        // In the roll a drag draws a box over notes, so the write waits
+        // for the release rather than landing on the press. A press on the
+        // keyboard or the ruler is neither, and goes straight through.
+        if (this.view !== 'arrange') {
+            const c = this.cell;
+            if (!c || p.y < c.y0 || p.x < c.x0) { this.tap(ev); return; }
+            this._press = {
+                x: p.x, y: p.y, under: null, note: true,
+                add: !!(ev.shiftKey || ev.ctrlKey || ev.metaKey),
+                ev: { clientX: ev.clientX, clientY: ev.clientY,
+                      shiftKey: ev.shiftKey, ctrlKey: ev.ctrlKey, metaKey: ev.metaKey },
+            };
+            this._band = null;
+            grab();
+            return;
+        }
 
         // M and S come before the marquee, or it swallows them.
         const btn = this.rowButton(p.x, p.y);
@@ -1504,10 +1558,167 @@ const Studio = {
         if (this._band) {
             const box = this._band;
             this._band = null;
-            this.bandSelect(box, press.add);
+            if (press.note) this.noteBand(box, press.add);
+            else this.bandSelect(box, press.add);
             return;
         }
+        // A plain tap in the roll writes or erases a note, and lets go of
+        // anything held — which is what clicking away means everywhere.
+        if (press.note && !press.add) this.holdNone();
         this.tap(press.ev);
+    },
+
+    // ── Notes in the roll ─────────────────────────────────────────────────
+
+    /// The note at a step and pitch, if there is one.
+    noteAt(tick, pitch) {
+        if (!this.editing) return null;
+        return this.editing.events.find(
+            e => e.isNote && e.tick === tick && e.data[0] === pitch) || null;
+    },
+
+    heldNote(ev) { return this._notes.indexOf(ev) !== -1; },
+    heldNotes() {
+        if (!this.editing) { this._notes = []; return this._notes; }
+        // Anything removed since it was selected is no longer a note.
+        this._notes = this._notes.filter(e => this.editing.events.indexOf(e) !== -1);
+        return this._notes;
+    },
+
+    holdNote(ev, add) {
+        if (!ev) { if (!add) this._notes = []; return; }
+        if (!add) { this._notes = [ev]; return; }
+        const i = this._notes.indexOf(ev);
+        if (i === -1) this._notes.push(ev); else this._notes.splice(i, 1);
+    },
+
+    holdNone() { this._notes = []; },
+
+    /// Every note the box touches. The roll is a grid of steps and pitches,
+    /// so this works in those rather than in pixels once the corners are
+    /// converted.
+    noteBand(box, add) {
+        const c = this.cell, t = this.song.tracks[this.track];
+        if (!c || !this.editing || !t) return;
+        const rows = this.rows(t);
+        const from = Math.max(0, this.ecol0 + Math.floor((box.x0 - c.x0) / c.w));
+        const to = Math.max(0, this.ecol0 + Math.floor((box.x1 - c.x0) / c.w));
+        const top = Math.max(0, this.erow0 + Math.floor((box.y0 - c.y0) / c.h));
+        const low = Math.max(0, this.erow0 + Math.floor((box.y1 - c.y0) / c.h));
+
+        const pitches = new Set();
+        for (let r = top; r <= low && r < rows.length; r++) pitches.add(rows[r]);
+        if (!add) this._notes = [];
+        for (const e of this.editing.events) {
+            if (!e.isNote || e.tick < from || e.tick > to) continue;
+            if (!pitches.has(e.data[0])) continue;
+            if (this._notes.indexOf(e) === -1) this._notes.push(e);
+        }
+        this.toolbar(); this.draw();
+        this.say(this._notes.length
+            ? this._notes.length + (this._notes.length === 1 ? ' note' : ' notes') + ' held'
+            : 'Nothing there');
+    },
+
+    /// Every note in the riff.
+    holdAll() {
+        if (!this.editing) return;
+        this._notes = this.editing.events.filter(e => e.isNote);
+        this.toolbar(); this.draw();
+        this.say(this._notes.length + (this._notes.length === 1 ? ' note' : ' notes') + ' held');
+    },
+
+    // ── Copy, paste and delete ────────────────────────────────────────────
+
+    /// The clipboard keeps shape, not position: offsets from the earliest
+    /// note held, so a paste lands wherever the playhead is.
+    noteCopy(quiet) {
+        if (!this.editing) return false;
+        const held = this.heldNotes();
+        if (!held.length) { this.say('Hold some notes first'); return false; }
+        const at = Math.min(...held.map(e => e.tick));
+        this._nboard = held.map(e => ({
+            dTick: e.tick - at, pitch: e.data[0], vel: e.data[1], dur: e.dur,
+        })).sort((a, b) => a.dTick - b.dTick);
+        if (!quiet) this.say(held.length + (held.length === 1 ? ' note' : ' notes') + ' copied');
+        this.toolbar();
+        return true;
+    },
+
+    noteCut() {
+        if (!this.noteCopy(true)) return;
+        const held = this.heldNotes().slice();
+        this.mark('Cut notes');
+        for (const e of held) this.editing.remove(e);
+        this.holdNone();
+        this.keep();
+        this.toolbar(); this.draw(); this.refreshAct();
+        this.say(held.length + (held.length === 1 ? ' note' : ' notes') + ' cut');
+    },
+
+    /// Paste at the playhead when it is inside this riff, and at the start
+    /// when it is not — the same rule the arrangement uses for its cursor.
+    notePaste() {
+        if (!this._nboard || !this._nboard.length) { this.say('Nothing copied yet'); return; }
+        if (!this.editing) return;
+        const t = this.song.tracks[this.track];
+        const at = this.headInRiff() ? Math.max(0, this.headTick()) : 0;
+        const rows = this.rows(t);
+        const can = new Set(rows);
+
+        this.mark('Paste notes');
+        const made = [];
+        let past = 0, off = 0;
+        for (const it of this._nboard) {
+            const tick = at + it.dTick;
+            if (tick >= this.editing.steps) { past++; continue; }
+            // A drum pattern copied onto a melodic track, or the other way
+            // about, has pitches the grid cannot show. Dropping them beats
+            // writing notes that are invisible and still sound.
+            if (!can.has(it.pitch)) { off++; continue; }
+            const had = this.noteAt(tick, it.pitch);
+            if (had) this.editing.remove(had);
+            made.push(this.editing.add(Event.note(it.pitch, it.vel, it.dur, tick)));
+        }
+        this._notes = made;
+        this.keep();
+        this.toolbar(); this.draw(); this.refreshAct();
+
+        const why = [];
+        if (past) why.push(past + ' past the end');
+        if (off) why.push(off + ' not on this kit');
+        this.say(made.length
+            ? made.length + (made.length === 1 ? ' note' : ' notes') + ' pasted at bar ' +
+              (Math.floor(at / 16) + 1) + (why.length ? ' — ' + why.join(', ') + ' left out' : '')
+            : 'Nothing fitted here' + (why.length ? ': ' + why.join(', ') : ''));
+    },
+
+    noteDelete() {
+        if (!this.editing) return;
+        const held = this.heldNotes().slice();
+        if (!held.length) { this.say('Hold some notes first'); return; }
+        this.mark('Delete notes');
+        for (const e of held) this.editing.remove(e);
+        this.holdNone();
+        this.keep();
+        this.toolbar(); this.draw(); this.refreshAct();
+        this.say(held.length + (held.length === 1 ? ' note' : ' notes') + ' deleted');
+    },
+
+    /// A ring round every held note, drawn over the notes themselves.
+    drawHeld(cx, c) {
+        const held = this.heldNotes();
+        if (!held.length) return;
+        const t = this.song.tracks[this.track];
+        const rows = this.rows(t);
+        cx.strokeStyle = '#ff7a45';
+        cx.lineWidth = 2;
+        for (const e of held) {
+            const col = e.tick - this.ecol0;
+            const row = rows.indexOf(e.data[0]) - this.erow0;
+            if (col < 0 || col >= c.cols || row < 0 || row >= c.rows) continue;
+            cx.strokeRect(c.x0 + col * c.w + 1, c.y0 + row * c.h + 1, c.w - 2, c.h - 2);
+        }
     },
 
     /// Everything the box touches, across the whole grid: riffs on the MIDI
@@ -1711,6 +1922,7 @@ const Studio = {
         this.editing = riff;
         this.view = 'edit';
         this.ecol0 = 0;
+        this.holdNone();
         this.toolbar(); this.layout();
         this.lookAtNotes();
         this.refreshAct();
@@ -1753,6 +1965,7 @@ const Studio = {
     back() {
         this.view = 'arrange';
         this.editing = null;
+        this.holdNone();
         const grid = document.getElementById('st-grid');
         if (grid) grid.style.display = '';
         this.toolbar(); this.layout(); this.refreshAct();
@@ -2067,8 +2280,7 @@ const Studio = {
         const take = this._rec;
         // Leave the head where it got to, so pressing play again carries
         // on rather than jumping back.
-        if (this._timer && this._step >= 0 && this.view === 'arrange')
-            this.head = this.liveHead();
+        if (this._timer && this._step >= 0) this.head = this.liveHead();
         this._rec = false;
         this._halt();
         if (take) this.endTake();
@@ -2212,16 +2424,30 @@ const Studio = {
             else if (k === 'y') { ev.preventDefault(); this.redo(); }
             // Copy, cut and paste go to the clips when clips are what you are
             // holding, and to the riffs otherwise.
-            else if (k === 'a' && this.view === 'arrange') { ev.preventDefault(); this.selectAll(); }
+            else if (k === 'a') {
+                ev.preventDefault();
+                this.view === 'arrange' ? this.selectAll() : this.holdAll();
+            }
             // Ctrl and the zoom keys, which is what every other app uses.
             else if (k === '=' || ev.key === '+') { ev.preventDefault(); this.zoomBy(1); }
             else if (k === '-') { ev.preventDefault(); this.zoomBy(-1); }
             else if (k === '0') { ev.preventDefault(); this.setZoom(1); this.draw(); }
-            else if (k === 'c') { ev.preventDefault(); this._sel.length ? this.clipCopy() : this.copy(); }
-            else if (k === 'x') { ev.preventDefault(); this._sel.length ? this.clipCut() : this.cut(); }
+            // In the roll these mean notes. Nowhere else do they.
+            else if (k === 'c') {
+                ev.preventDefault();
+                if (this.view !== 'arrange') this.noteCopy();
+                else this._sel.length ? this.clipCopy() : this.copy();
+            }
+            else if (k === 'x') {
+                ev.preventDefault();
+                if (this.view !== 'arrange') this.noteCut();
+                else this._sel.length ? this.clipCut() : this.cut();
+            }
             else if (k === 'v') {
                 ev.preventDefault();
-                if (this._board) this.clipPaste(); else this.paste(ev.shiftKey);
+                if (this.view !== 'arrange') this.notePaste();
+                else if (this._board) this.clipPaste();
+                else this.paste(ev.shiftKey);
             }
             return;
         }
@@ -2263,7 +2489,16 @@ const Studio = {
             this.toolbar(); this.draw();
             return;
         }
-        if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._sel.length && !this._rec) {
+        if ((ev.key === 'Delete' || ev.key === 'Backspace') && !this._rec) {
+            // In the roll it means the notes being held; in the
+            // arrangement, whatever is selected there.
+            if (this.view !== 'arrange') {
+                if (!this._notes.length) return;
+                ev.preventDefault();
+                this.noteDelete();
+                return;
+            }
+            if (!this._sel.length) return;
             ev.preventDefault();
             this.clipDrop();
             return;
@@ -3669,7 +3904,7 @@ const Studio = {
 
     _apply(snap) {
         this.stop();
-        this.song = readVbm(snap.vbm);
+        this.song = this.modernise(readVbm(snap.vbm));
         Tape.restore(snap.clips);
         this.mixSet = Mixer.settle(snap.mix);
         this.applyMutes(snap.mutes);
@@ -3679,6 +3914,8 @@ const Studio = {
         // back means building it again.
         if (this.synth && this.synth.ctx) this.wire(this.synth.ctx, this.context());
 
+        // Every held note belonged to the song that was just thrown away.
+        this.holdNone();
         this.editing = snap.where.riff
             ? this.song.riffs.find(r => String(r.id) === snap.where.riff) || null
             : null;
@@ -3753,6 +3990,24 @@ const Studio = {
     /// the original reader and its job is to agree with it, not to judge.
     /// Handed rubbish it returns a tidy Song with tempo 0 and no tracks,
     /// and everything downstream then divides by that.
+    /// A song from before riff length belonged to the riff. Its bars-per-
+    /// riff is a SLOT size and its placements are counted in slots, so the
+    /// positions have to be multiplied out before anything reads them as
+    /// bars. Each riff already records its own length, which is what makes
+    /// this lossless.
+    modernise(song) {
+        if (!song) return song;
+        const per = Math.max(1, song.bars | 0);
+        if (per === 1) return song;
+        for (const t of song.tracks)
+            for (const p of t.placements) p.at *= per;
+        song.loopStart *= per;
+        song.loopEnd = song.loopEnd * per + (per - 1);
+        for (const r of song.riffs) if (!r.bars || r.bars < 1) r.bars = per;
+        song.bars = 1;
+        return song;
+    },
+
     plausible(song) {
         return !!song
             && song.tracks && song.tracks.length > 0
@@ -3765,11 +4020,12 @@ const Studio = {
         try {
             const b = localStorage.getItem(this.BENCH);
             if (!b) return false;
-            const song = readVbm(this._bytes(b));
+            const song = this.modernise(readVbm(this._bytes(b)));
             if (!this.plausible(song)) return false;
             this.song = song;
             this.track = 0; this.bar = 0;
             this.view = 'arrange'; this.editing = null;
+            this.holdNone();
             try { Tape.fromJSON(JSON.parse(localStorage.getItem(this.BENCH_AUDIO))); } catch (_) {}
             try { this.mixSet = Mixer.settle(JSON.parse(localStorage.getItem(this.BENCH_MIX))); }
             catch (_) { this.mixSet = Mixer.fresh(); }
@@ -3800,7 +4056,7 @@ const Studio = {
         try {
             this.mark('Open a beat');
             this.stop();
-            const song = readVbm(this._bytes(row.data));
+            const song = this.modernise(readVbm(this._bytes(row.data)));
             if (!this.plausible(song)) {
                 this._undo.pop();              // nothing happened, no history
                 this.say('That beat will not open');
@@ -3935,7 +4191,7 @@ const Studio = {
                 const i = list.length - 1 - k;
                 let note = '';
                 try {
-                    const sng = readVbm(this._bytes(row.data));
+                    const sng = this.modernise(readVbm(this._bytes(row.data)));
                     if (!this.plausible(sng)) throw new Error('not a song');
                     const bars = new Set();
                     let notes = 0;
