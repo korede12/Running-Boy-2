@@ -30,6 +30,22 @@ const Tape = {
     MAX_CLIP: 1400000,            // per clip, base64 characters
     MAX_ALL: 3600000,             // all clips in one beat
     MAX_LANES: 4,
+
+    // What will fit in a phone. A three-minute mp3 is about three
+    // megabytes of bytes and seventy of decoded float32, so the byte
+    // limit is generous and the limit that actually bites is the length.
+    //
+    // These are checked BEFORE reading and BEFORE decoding, because the
+    // failure being prevented is an allocation, and an allocation that
+    // has already happened cannot be apologised for.
+    MAX_FILE: 40 * 1024 * 1024,   // bytes on disk
+    MAX_SECONDS: 8 * 60,          // decoded length
+
+    // The ones that matter. Decoded audio is float32 — a minute of
+    // stereo at 48k is 23 MB however small the file was — so these are
+    // what stands between a long import and a dead tab.
+    MAX_ONE: 120 * 1024 * 1024,   // decoded, one clip
+    MAX_HELD: 220 * 1024 * 1024,  // decoded, everything on the tape
     KINDS: { mic: 'Mic', file: 'Sample' },
 
     clips: [],
@@ -476,12 +492,61 @@ const Tape = {
         if (!this.looksAudio(file)) { this.error = '"' + (file && file.name || 'that') + '" is not audio.'; return null; }
         if (!this.ctx) { this.error = 'The studio has to be making sound first.'; return null; }
 
+        // Before reading a byte of it. Decoding allocates several times
+        // the file, so a file too big to decode has to be turned away
+        // while it is still only a file.
+        const size = file.size || 0;
+        if (size > this.MAX_FILE) {
+            this.error = this.mb(size) + ' is too big to bring in — ' +
+                this.mb(this.MAX_FILE) + ' is the limit. Trim it or export it smaller.';
+            return null;
+        }
+
+        // A wav will say how big it becomes. Anything else has to be
+        // decoded to find out, and is checked below.
+        const peek = await this.peekWav(file);
+        if (peek && (peek.bytes > this.MAX_ONE || peek.seconds > this.MAX_SECONDS)) {
+            this.error = 'That is ' + Math.round(peek.seconds / 60) + ' minutes of ' +
+                'uncompressed audio — ' + this.mb(peek.bytes) + ' once it is open. ' +
+                'Too much to hold.';
+            return null;
+        }
+
         let bytes, buffer;
         try {
             bytes = new Uint8Array(await file.arrayBuffer());
             buffer = await this.ctx.decodeAudioData(bytes.slice().buffer);
         } catch (_) {
             this.error = 'This browser cannot read "' + (file.name || 'that file') + '".';
+            return null;
+        }
+
+        // Decoded audio is float32: a minute of stereo at 48k is twenty
+        // megabytes whatever the file weighed. Let go of it rather than
+        // hold something that will not fit alongside the rest.
+        if (buffer.duration > this.MAX_SECONDS) {
+            const mins = Math.round(buffer.duration / 60);
+            buffer = null; bytes = null;
+            this.error = 'That is ' + mins + ' minutes long. ' +
+                Math.round(this.MAX_SECONDS / 60) +
+                ' is as much audio as this can hold at once.';
+            return null;
+        }
+
+        // What it costs open, on its own and alongside what is already
+        // here. Let go of it before saying no, so the refusal is not
+        // itself the thing that runs the memory out.
+        const costs = this.held(buffer);
+        if (costs > this.MAX_ONE) {
+            buffer = null; bytes = null;
+            this.error = 'That comes to ' + this.mb(costs) + ' once it is open, ' +
+                'which is more than one clip may hold.';
+            return null;
+        }
+        if (costs + this.heldAll() > this.MAX_HELD) {
+            buffer = null; bytes = null;
+            this.error = 'No room for another ' + this.mb(costs) + ' — the tape is ' +
+                'already holding ' + this.mb(this.heldAll()) + '. Remove a clip first.';
             return null;
         }
 
@@ -509,6 +574,57 @@ const Tape = {
     // audio each time would make typing in a hi-hat feel broken. The result
     // is cached and only rebuilt when a clip actually changes.
 
+    /// What a decoded buffer occupies: float32 per sample per channel.
+    held(buffer) {
+        if (!buffer || !buffer.length) return 0;
+        return buffer.length * Math.max(1, buffer.numberOfChannels || 1) * 4;
+    },
+
+    /// What the tape is holding decoded, right now.
+    heldAll(except) {
+        let total = 0;
+        for (const c of this.clips)
+            if (c !== except && c.buffer) total += this.held(c.buffer);
+        return total;
+    },
+
+    /// A wav says how long it is in its first few dozen bytes, so the
+    /// worst case — an enormous uncompressed file — can be turned away
+    /// before it is read rather than after it has become floats.
+    ///
+    /// Returns the decoded size in bytes, or 0 when this is not a wav or
+    /// the header is not where it should be. Guessing is not the job: a
+    /// wrong answer here would refuse a file that was fine.
+    async peekWav(file) {
+        if (!file || !file.slice || !(file.size > 44)) return 0;
+        let head;
+        try {
+            head = new DataView(await file.slice(0, 64).arrayBuffer());
+        } catch (_) { return 0; }
+        if (head.byteLength < 44) return 0;
+        const tag = (at) => String.fromCharCode(
+            head.getUint8(at), head.getUint8(at + 1),
+            head.getUint8(at + 2), head.getUint8(at + 3));
+        if (tag(0) !== 'RIFF' || tag(8) !== 'WAVE' || tag(12) !== 'fmt ') return 0;
+        const channels = head.getUint16(22, true);
+        const rate = head.getUint32(24, true);
+        const bits = head.getUint16(34, true);
+        if (!channels || !rate || !bits) return 0;
+        // Everything after the header, near enough — a few hundred bytes
+        // of chunks either way does not change the answer.
+        const audioBytes = Math.max(0, file.size - 44);
+        const frames = audioBytes / (channels * (bits / 8));
+        return { bytes: frames * channels * 4, seconds: frames / rate };
+    },
+
+    /// A size a person can read.
+    mb(bytes) {
+        const m = bytes / (1024 * 1024);
+        return m >= 10 ? Math.round(m) + ' MB'
+             : m >= 1 ? m.toFixed(1) + ' MB'
+             : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    },
+
     _b64(bytes) {
         let s = '';
         for (let i = 0; i < bytes.length; i += 0x8000)
@@ -528,6 +644,12 @@ const Tape = {
         let total = 0, skipped = 0;
         for (const c of this.clips) {
             if (!c.bytes) continue;
+            // base64 is four characters for every three bytes, so whether
+            // it fits is known from the byte count — and encoding forty
+            // megabytes to find out costs a fifty-three megabyte string
+            // built on the main thread and thrown away.
+            const willBe = Math.ceil(c.bytes.length / 3) * 4;
+            if (willBe > this.MAX_CLIP || total + willBe > this.MAX_ALL) { skipped++; continue; }
             let data;
             try { data = this._b64(c.bytes); } catch (_) { skipped++; continue; }
             if (data.length > this.MAX_CLIP || total + data.length > this.MAX_ALL) { skipped++; continue; }

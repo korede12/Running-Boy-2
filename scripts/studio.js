@@ -4283,16 +4283,38 @@ const Studio = {
     keep() {
         if (!this.song) return;
         try { localStorage.setItem(this.BENCH, this._b64(writeVbm(this.song))); } catch (_) {}
-        // Audio is big, so it is written separately and only when it has
-        // actually changed — Tape caches its own serialisation.
+
+        // Each of these on its own. The audio is the big one and the
+        // first to run out of room, and when it threw it used to take the
+        // two writes after it with it — so one oversized clip silently
+        // cost you your mixer settings and your mutes as well.
+        let lost = false;
         try {
             const aud = Tape.toJSON();
             if (aud) localStorage.setItem(this.BENCH_AUDIO, JSON.stringify(aud));
             else localStorage.removeItem(this.BENCH_AUDIO);
-            localStorage.setItem(this.BENCH_MIX, JSON.stringify(this.mix()));
-            localStorage.setItem(this.BENCH_MUTE, JSON.stringify(this.mutes()));
-        } catch (_) {}
+        } catch (_) {
+            lost = true;
+            // Better no copy than a half-written one that loads as
+            // something you did not make.
+            try { localStorage.removeItem(this.BENCH_AUDIO); } catch (_) {}
+        }
+        try { localStorage.setItem(this.BENCH_MIX, JSON.stringify(this.mix())); } catch (_) {}
+        try { localStorage.setItem(this.BENCH_MUTE, JSON.stringify(this.mutes())); } catch (_) {}
+
+        // Running out of room and being over the save cap are the same
+        // event to whoever is using this, and the cap already says so.
+        // Silence was the one answer that could not be right.
+        if (lost && !this._saidFull) {
+            this._saidFull = true;
+            this.say('No room left to keep the audio — the notes are safe, ' +
+                     'the clips will not come back. Export the beat, or remove a clip.');
+        } else if (!lost) {
+            this._saidFull = false;
+        }
     },
+
+    _saidFull: false,
 
     /// Does this look like a song? readVbm will not say — it is a port of
     /// the original reader and its job is to agree with it, not to judge.
