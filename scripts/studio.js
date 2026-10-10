@@ -32,7 +32,38 @@ const Studio = {
     ZOOM_MIN: 0.6,
     ZOOM_MAX: 2.4,
     solo: null,              // rows being soloed, or null for none
-    _follow: true,           // keep the playhead in view until told otherwise
+    _follow: true,           // transient: dropped by a hand on the scrollbar
+    FOLLOW_OFF: 'rb_no_follow',
+    _followOff: null,        // the decision, which outlives the transient one
+
+    /// Is the view meant to chase the playhead at all?
+    following() {
+        if (this._followOff == null) {
+            let saved = null;
+            try { saved = localStorage.getItem(this.FOLLOW_OFF); } catch (_) {}
+            this._followOff = saved === '1';
+        }
+        return !this._followOff;
+    },
+
+    /// Switch chasing on or off for good, rather than until the next
+    /// press of play.
+    setFollow(on) {
+        const want = on == null ? !this.following() : !!on;
+        this._followOff = !want;
+        try { localStorage.setItem(this.FOLLOW_OFF, want ? '0' : '1'); } catch (_) {}
+        // Turning it back on should catch up immediately rather than at
+        // the next bar line, which may be a while at this tempo.
+        this._follow = want;
+        if (want) {
+            if (this.view === 'edit') this.followRoll();
+            else if (this._playBar >= 0) this.followPlayhead(this._playBar);
+        }
+        this.toolbar();
+        this.draw();
+        this.say(want ? 'The view follows the playhead'
+                      : 'The view stays where you put it');
+    },
 
     song: null,
     synth: null,
@@ -351,6 +382,9 @@ const Studio = {
                 (this.solo ? b('Unsolo', 'clearSolo()', 'Hear everything again', 'st-go on') : '') +
                 b('&#9834; Presets', 'presetPanel()', 'Patterns to start from',
                   this._presetOpen ? 'st-hot' : '') +
+                b('&#8597;&#8596;', 'setFollow()',
+                  'Follow the playhead, or stay where you put the view',
+                  this.following() ? 'st-hot' : 'st-dim') +
                 b('&#9995;', 'showTouch()',
                   'Show where the screen is touched — for recording',
                   this.touchShown() ? 'st-hot' : 'st-dim') +
@@ -405,6 +439,9 @@ const Studio = {
                 b('All', 'holdAll()', 'Hold every note in this riff') +
                 b('&#9834; Presets', 'presetPanel()', 'Patterns to start from',
                   this._presetOpen ? 'st-hot' : '') +
+                b('&#8597;&#8596;', 'setFollow()',
+                  'Follow the playhead, or stay where you put the view',
+                  this.following() ? 'st-hot' : 'st-dim') +
                 b('Clear', 'clearRiff()', 'Empty this riff') +
                 '<select class="st-len" title="How long this riff is" ' +
                     'onchange="Studio.setRiffBars(+this.value)">' +
@@ -1518,7 +1555,7 @@ const Studio = {
     /// is moved by hand, or playing a long arrangement would drag the view
     /// away from whoever is trying to look at bar 2.
     followPlayhead(bar) {
-        if (!this._follow) return false;
+        if (!this._follow || !this.following()) return false;
         if (this.view === 'edit') return this.followRoll();
         return this.reveal(null, bar);
     },
@@ -1530,7 +1567,8 @@ const Studio = {
     /// one. Only while it is actually in this riff: with the arrangement
     /// playing elsewhere there is nothing to follow.
     followRoll() {
-        if (!this._follow || this.view !== 'edit' || !this.editing) return false;
+        if (!this._follow || !this.following()) return false;
+        if (this.view !== 'edit' || !this.editing) return false;
         const at = this.rollHead();
         if (at < 0) return false;
         const v = this.span();
@@ -2314,7 +2352,10 @@ const Studio = {
     /// On the arrange screen this plays the loop across bars; inside a riff
     /// it loops that one bar, which is what you want while editing it.
     async play() {
-        this._follow = true;         // a fresh start earns the view back
+        // A fresh start earns the view back — unless following has been
+        // switched off, in which case pressing play is not consent to
+        // start dragging the window about again.
+        this._follow = this.following();
         await this.synth.start();
         Tape.ctx = this.synth.ctx;
         this.context();              // the tape rebuilds its processing against this
