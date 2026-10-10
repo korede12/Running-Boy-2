@@ -904,6 +904,16 @@ const Studio = {
     keyY(row) { return this.cell.y0 + (row - this.erow0) * this.cell.h; },
     stepOn(step) { return step >= this.ecol0 && step < this.ecol0 + this.cell.cols; },
 
+    /// Is this note sounding right now?
+    ///
+    /// A note holds for its own length, so "playing" is a span and not a
+    /// step — otherwise a held chord would flash for a sixteenth and go
+    /// dark while you could still hear it.
+    sounding(e, at) {
+        if (at < 0 || !e.isNote) return false;
+        return at >= e.tick && at < e.tick + Math.max(1, e.dur);
+    },
+
     /// Where the playhead sits INSIDE the riff on screen, or -1 when it
     /// is not in it at all.
     ///
@@ -1343,6 +1353,12 @@ const Studio = {
             }
         }
 
+        // Which notes are sounding, so they can be lit and their keys with
+        // them. Worked out once rather than per note per row.
+        const at = this.rollHead();
+        const live = this._step >= 0;
+        const ringing = new Set();
+
         for (const e of this.editing.events) {
             if (!e.isNote) continue;
             const r = this.rowOf(t, e.data[0]);
@@ -1350,11 +1366,33 @@ const Studio = {
             const from = Math.max(e.tick, this.ecol0);
             const to = Math.min(e.tick + Math.max(1, e.dur), this.ecol0 + c.cols);
             if (to <= from) continue;
-            cx.globalAlpha = 0.35 + 0.65 * (e.data[1] / 127);
+            const on = live && this.sounding(e, at);
+            if (on) ringing.add(r);
+            // A sounding note goes to full brightness and gains an edge,
+            // rather than changing colour — the colour already means
+            // which kind of track this is.
+            cx.globalAlpha = on ? 1 : 0.35 + 0.65 * (e.data[1] / 127);
             cx.fillStyle = drums ? '#ffc83d' : '#4cd964';
             cx.fillRect(this.stepX(from) + 1, this.keyY(r) + 2,
                         (to - from) * c.w - 2, c.h - 4);
+            if (on) {
+                cx.strokeStyle = '#ffffff';
+                cx.lineWidth = 1.5;
+                cx.strokeRect(this.stepX(from) + 1.5, this.keyY(r) + 2.5,
+                              (to - from) * c.w - 3, c.h - 5);
+            }
             cx.globalAlpha = 1;
+        }
+
+        // And the key it is on, which is the easiest thing to read while
+        // your eyes are on the notes.
+        if (ringing.size) {
+            for (const r of ringing) {
+                if (!this.keyOn(r)) continue;
+                const y = this.keyY(r);
+                cx.fillStyle = drums ? '#ffc83d' : '#4cd964';
+                cx.fillRect(0, y + 1, drums ? 3 : c.x0 - 2, c.h - 1);
+            }
         }
 
         // Down the grid as well as in the ruler: a mark at the top of a
@@ -1481,7 +1519,30 @@ const Studio = {
     /// away from whoever is trying to look at bar 2.
     followPlayhead(bar) {
         if (!this._follow) return false;
+        if (this.view === 'edit') return this.followRoll();
         return this.reveal(null, bar);
+    },
+
+    /// Keep the playhead on screen in the roll.
+    ///
+    /// A four-bar riff does not fit, so without this the playhead walks
+    /// off the right edge and you are watching a still picture of bar
+    /// one. Only while it is actually in this riff: with the arrangement
+    /// playing elsewhere there is nothing to follow.
+    followRoll() {
+        if (!this._follow || this.view !== 'edit' || !this.editing) return false;
+        const at = this.rollHead();
+        if (at < 0) return false;
+        const v = this.span();
+        if (at >= v.col0 && at < v.col0 + v.cols) return false;   // already on screen
+        // Page rather than creep. reveal() scrolls by the one column it
+        // has to, which under a moving playhead means the whole roll
+        // sliding a step at a time — unreadable, and it puts the thing
+        // you are watching hard against the edge. Jump so it lands near
+        // the left and plays across the window instead.
+        this.putSpan(Math.max(0, at - 1), null);
+        this.draw();
+        return true;
     },
 
     /// Which scrollbar a point is on, if either.
@@ -2392,6 +2453,7 @@ const Studio = {
         this._playBar = at.bar;
         this._beatAt = at.when;
         if (turned) this.followPlayhead(at.bar);
+        else this.followRoll();
         this.draw();
     },
 
