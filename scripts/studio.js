@@ -49,9 +49,18 @@ const Studio = {
     _rec: false,              // a take is running
     _recMade: null,           // riffs the take created, so empty ones can go
     _recHits: 0,
-    _beatAt: 0,               // when the current step started, for quantising
-    _step: -1,
+    // How far ahead of the audio clock to schedule, and how often to top
+    // it up. The lookahead is the price of a steady groove: notes already
+    // queued cannot be taken back, so Stop has to cancel them, and a
+    // tempo change lands this long after you make it.
+    LOOKAHEAD: 0.12,
+    SCHED_MS: 25,
+
+    _beatAt: 0,               // audio time the audible step began, for quantising
+    _step: -1,                // the step SOUNDING, not the one being scheduled
     _playBar: -1,
+    _sched: [],               // (when, step, bar) handed to the audio clock
+    _raf: null,
     _sold: null,
 
     // C1 to C8. Every semitone, highest at the top, the way a piano roll
@@ -2093,36 +2102,33 @@ const Studio = {
         let step = editing ? Math.min(this.startStep(), steps - 1)
                  : (headIn ? this.head % 16 : 0);
 
-        const beat = () => {
-            this._step = step;
-            this._beatAt = this._now();
+        // Hand one step to the audio clock at an exact time, and move on.
+        // Nothing here touches the screen: this runs ahead of what you can
+        // hear, and drawing it would show the future.
+        const put = (when) => {
             // A bar line: start any clip that begins here, and tell the
-            // microphone when the loop came round. That is all the timing
-            // either of them gets, and all either of them needs.
-            // A bar line, which inside a long riff comes round more than
-            // once: clips are placed in bars and have to fire in bars.
+            // microphone when the loop came round. Inside a long riff this
+            // comes round more than once, because clips are placed in bars.
             if (!editing && step % 16 === 0) {
-                const now = this.synth.ctx.currentTime;
                 const spb = 16 * (15 / this.song.tempo);
-                const atBar = bar;
                 if (step === 0 && bar === (Mic.rolling() ? Mic.takeBar() : from))
-                    Mic.passStart(now);
+                    Mic.passStart(when);
                 // A soloed or muted lane is handled here rather than inside
                 // the tape, which knows about clips and not about rows.
                 if (!Mic.rolling()) {
                     const heard = [];
                     for (let l = 0; l < this.audioRows(); l++)
                         if (this.rowHeard(this.song.tracks.length + l)) heard.push(l);
-                    Tape.barStart(atBar, now, spb, heard);
+                    Tape.barStart(bar, when, spb, heard);
                 }
             }
-            this._playBar = editing ? -1 : bar;
+
+            const hold = (e) => Math.max(1, e.dur) * (15 / this.song.tempo);
             if (editing) {
                 const t = this.song.tracks[this.track];
                 for (const e of this.editing.events)
                     if (e.isNote && e.tick === step)
-                        this.synth.hit(t.channel, e.data[0], e.data[1],
-                                       Math.max(1, e.dur) * (15 / this.song.tempo));
+                        this.synth.hit(t.channel, e.data[0], e.data[1], hold(e), when);
             } else {
                 for (let ti = 0; ti < this.song.tracks.length; ti++) {
                     if (!this.rowHeard(ti)) continue;
@@ -2132,16 +2138,18 @@ const Studio = {
                     // Where this bar falls inside the riff: a riff placed
                     // at bar 6 and three bars long is on its third bar
                     // when the clock reaches bar 8.
-                    const riff = p.riff;
                     const into = (bar - p.at) * 16 + step;
-                    for (const e of riff.events)
+                    for (const e of p.riff.events)
                         if (e.isNote && e.tick === into)
-                            this.synth.hit(t.channel, e.data[0], e.data[1],
-                                           Math.max(1, e.dur) * (15 / this.song.tempo));
+                            this.synth.hit(t.channel, e.data[0], e.data[1], hold(e), when);
                 }
             }
-            if (!editing && step === 0) this.followPlayhead(bar);
-            this.draw();
+
+            // The trail the display and the quantiser read, so both talk
+            // about the step you can hear rather than the one that has
+            // already been handed over.
+            this._sched.push({ when, step, bar: editing ? -1 : bar });
+
             step++;
             if (step >= steps) {
                 // Round again from the top of the loop, not from where
@@ -2150,17 +2158,67 @@ const Studio = {
                 if (!editing) bar = bar >= to ? from : bar + 1;
             }
         };
-        // Absolute scheduling: each step aims at a time, not at a delay, so
-        // the clock neither drifts nor needs rebuilding when the tempo moves.
-        let next = this._now();
-        const tick = () => {
-            beat();
-            next += 15000 / this.song.tempo;
-            this._timer = setTimeout(tick, Math.max(0, next - this._now()));
+
+        // A little slack before the first note, so the first bar is not
+        // the one bar that starts late.
+        let when = this.synth.ctx.currentTime + 0.06;
+        const pump = () => {
+            const ctx = this.synth && this.synth.ctx;
+            if (!ctx) return;
+            // Seconds per step, read fresh: a tempo change takes effect on
+            // the next step scheduled rather than needing a new clock.
+            while (when < ctx.currentTime + this.LOOKAHEAD) {
+                put(when);
+                when += 15 / this.song.tempo;
+            }
+            this._timer = setTimeout(pump, this.SCHED_MS);
         };
+
         if (this._timer) clearTimeout(this._timer);     // never two clocks
-        tick();
+        this._sched = [];
+        pump();
+        this.watch();
         this.toolbar();
+    },
+
+    /// Follow the audible position and redraw when it moves.
+    ///
+    /// On a frame rather than on a step: the beat is already safe in the
+    /// audio clock, so a slow frame now costs a frame instead of costing
+    /// the groove.
+    watch() {
+        const frame = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame : null;
+        const show = () => {
+            this._raf = null;
+            if (!this._timer) return;
+            this.readClock();
+            if (frame) this._raf = frame(show);
+        };
+        if (this._raf && frame && typeof cancelAnimationFrame === 'function')
+            cancelAnimationFrame(this._raf);
+        show();
+    },
+
+    /// Which step is sounding, from the trail the scheduler left.
+    readClock() {
+        const ctx = this.synth && this.synth.ctx;
+        if (!ctx || !this._sched.length) return;
+        const now = ctx.currentTime;
+        // Drop everything the clock has gone past, keeping the last one —
+        // that is the step you are hearing, and _beatAt is when it began.
+        let i = 0;
+        while (i + 1 < this._sched.length && this._sched[i + 1].when <= now) i++;
+        if (i) this._sched.splice(0, i);
+        const at = this._sched[0];
+        if (!at || at.when > now) return;
+        if (at.step === this._step && at.bar === this._playBar) return;
+        const turned = at.bar >= 0 && at.bar !== this._playBar;
+        this._step = at.step;
+        this._playBar = at.bar;
+        this._beatAt = at.when;
+        if (turned) this.followPlayhead(at.bar);
+        this.draw();
     },
 
     /// Which tracks are off. Not in the .vbm, because the .vbm is the 2010
@@ -2270,7 +2328,15 @@ const Studio = {
     _halt() {
         if (this._timer) clearTimeout(this._timer);
         this._timer = null;
+        if (this._raf != null && typeof cancelAnimationFrame === 'function')
+            cancelAnimationFrame(this._raf);
+        this._raf = null;
         this._step = -1; this._playBar = -1;
+        // Anything already handed to the audio clock has to be taken back,
+        // or Stop leaves a lookahead of notes still to come. allOff stops
+        // oscillators that have not started yet too: a stop time before
+        // the start time means it never sounds.
+        this._sched = [];
         if (this.synth) this.synth.allOff();
         Tape.hush();
         if (Mic.rolling()) Mic.finish();
@@ -2348,8 +2414,14 @@ const Studio = {
     /// you were aiming at only if you were early; past halfway you meant the
     /// next one, which may be the first step of the next bar.
     _slot() {
-        const ms = 15000 / this.song.tempo;
-        let step = this._step + (this._now() - this._beatAt > ms / 2 ? 1 : 0);
+        // Against the audio clock, because _beatAt is a time on it. The
+        // step being scheduled is up to a lookahead ahead of the one you
+        // are playing along to, and you are playing along to what you can
+        // hear.
+        const ctx = this.synth && this.synth.ctx;
+        const sec = 15 / this.song.tempo;
+        const now = ctx ? ctx.currentTime : 0;
+        let step = this._step + (now - this._beatAt > sec / 2 ? 1 : 0);
         let bar = this.view === 'edit' ? -1 : this._playBar;
         if (step >= this.song.stepsPerRiff) {
             step = 0;
