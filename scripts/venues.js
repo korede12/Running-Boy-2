@@ -83,6 +83,11 @@ const CITIES = [
               gx: 1,  gy: 19, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
               blurb: 'Find out what is actually wrong.', tag: 'CLINIC' },
 
+            { id: 'quibbles_lag', name: 'Quibbles', kind: 'hangout', open: [0, 24],
+              gx: 17, gy: 6, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
+              blurb: 'Same arguments as Abeokuta, louder.',
+              tag: 'HANG OUT' },
+
             { id: 'market', name: 'Balogun Market', kind: 'open', open: [7, 19], modal: 'shop-modal',
               gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
               blurb: 'Skubu, and what it buys.' },
