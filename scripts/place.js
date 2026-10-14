@@ -424,6 +424,18 @@ const Place = {
                 ],
                 spots: [{ id: 'go', gx: 4, gy: 4, label: 'Travel out of town' }],
             }),
+            // Nothing to buy or do yet: a room with seats and a counter,
+            // and the door is the only spot.
+            hangout: () => ({
+                floorA: '#3a2a22', floorB: '#35261f', floorLine: '#2a1e18',
+                wallA: '#2e2018', wallB: '#271b14',
+                props: [
+                    { gx: 1, gy: 1, w: 3, d: 1, h: 30, top: '#d35400', side: '#8a3700', label: 'Counter' },
+                    { gx: 6, gy: 1, w: 2, d: 1, h: 18, top: '#6a4a34', side: '#46301f', label: 'Seats' },
+                    { gx: 6, gy: 3, w: 2, d: 1, h: 18, top: '#6a4a34', side: '#46301f' },
+                ],
+                spots: [],
+            }),
             span: () => ({
                 floorA: '#3a3a46', floorB: '#35353f', floorLine: '#2b2b35',
                 wallA: '#1b2a3a', wallB: '#15222e',
