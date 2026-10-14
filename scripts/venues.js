@@ -146,7 +146,7 @@ const CITIES = [
               gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
               blurb: 'Adire, skubu, and what it buys.' },
 
-            { id: 'quibbles', name: 'Quibbles', kind: 'hangout', open: [9, 23],
+            { id: 'quibbles', name: 'Quibbles', kind: 'hangout', open: [0, 24],
               gx: 19, gy: 0, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
               blurb: 'Somewhere to sit, and somebody always arguing about something.',
               tag: 'HANG OUT' },
