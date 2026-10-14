@@ -1,0 +1,270 @@
+/* ── Theme ─────────────────────────────────────────────────────────────────
+   One set of colours and three typefaces, laid over the rest. It loads last,
+   so it wins ties; where the older rules are more specific it says so with an
+   id-weighted scope instead of !important.
+
+   Display — Bricolage Grotesque: titles, names, the brand.
+   UI      — Inter: everything you read.
+   Numbers — JetBrains Mono: money, time, stats; anything that should line up.
+
+   The studio (#studio) is deliberately outside the scope: its grids are laid
+   out on a fixed-width face and look wrong without it. */
+
+:root {
+    --bg:        #0b0b12;
+    --panel:     #13131c;
+    --panel-2:   #1a1a26;
+    --line:      #262634;
+    --line-2:    #33334a;
+    --text:      #eef1f7;
+    --text-2:    #b4bccc;
+    --text-3:    #838ca0;
+    --gold:      #ffc83d;
+    --gold-2:    #e0ac2a;
+    --gold-ink:  #1a1306;
+    --green:     #4ccc5a;
+    --red:       #ff6a5a;
+    --blue:      #4cb3ff;
+
+    --radius:    12px;
+    --radius-sm: 9px;
+    --shadow:    0 10px 34px rgba(0, 0, 0, .5);
+
+    --font-display: 'Bricolage Grotesque', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-ui:      'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --font-num:     'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/* ── Type ──────────────────────────────────────────────────────────────── */
+
+body { font-family: var(--font-ui); }
+#studio { font-family: 'Courier New', monospace; }   /* kept as it was; see above */
+
+:is(#hud, #nav, #goal, #find-me, #life-strip, #skubu-badge, #place, #intro, #journey,
+    #view-home, #view-profile, .modal-backdrop) :where(*),
+:is(#nav, #goal, #find-me, #life-strip, #skubu-badge) {
+    font-family: var(--font-ui);
+    letter-spacing: normal;
+}
+
+/* Small capitals labels keep a little air; they were drawn for it. */
+:is(#hud, #nav, #place, #view-home, #view-profile, .modal-backdrop, #find-me)
+:is(.nav-btn, .nv-sub, .nv-vital > span:first-child, .est-head, .rm-time, .rm-class-top span,
+    .qb-lab, .pl-act button, .wk-exp, .ht-sub, .v-tag, .nv-row em) {
+    letter-spacing: .1em;
+}
+#find-me { letter-spacing: .08em; }
+
+/* Names and titles. */
+:is(#hud, #place, #view-home, #view-profile, .modal-backdrop, #intro)
+:is(.ht-name, .modal-title, .nv-who b, .rm-label b, .rm-class-top b, .pl-name,
+    .qb-me-txt b, .qb-comm-txt b, .nv-tile b, .est-name) {
+    font-family: var(--font-display);
+}
+
+/* Numbers line up. */
+:is(#hud, #nav, #life-strip, #skubu-badge, #place, #view-home, #view-profile, .modal-backdrop, #journey)
+:is(.nv-purse, .nv-vital b, .nv-row b, .est-bal, .rm-time, .nv-clock, .jr-clock,
+    #life-skubu-wrap, .qb-foot > span, .qb-post-top span) {
+    font-family: var(--font-num);
+    letter-spacing: 0;
+}
+
+/* ── The brand ─────────────────────────────────────────────────────────── */
+
+#hud-title .ht-name {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -.01em;
+    line-height: .95;
+}
+
+/* ── Map labels ────────────────────────────────────────────────────────── */
+
+.v-name { font-family: var(--font-display); font-weight: 700; letter-spacing: 0; }
+.v-tag  { font-family: var(--font-ui); font-weight: 700; }
+
+/* ── Panels: Home and Profile ──────────────────────────────────────────── */
+
+.view { background: var(--bg); }
+@keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+body[data-view="home"] #view-home,
+body[data-view="profile"] #view-profile { animation: viewIn .2s ease-out; }
+
+.nv-av, .nv-vitals, .nv-tile, .rm-class, .rm-scene {
+    background: var(--panel); border-color: var(--line); border-radius: var(--radius);
+}
+.nv-tile { transition: transform .1s, border-color .15s, background .15s; }
+.nv-tile:hover { border-color: var(--line-2); background: var(--panel-2); }
+
+.nv-who b      { font-size: 20px; font-weight: 700; color: var(--text); }
+.nv-who span   { font-size: 12.5px; color: var(--text-2); }
+.nv-who .nv-clock { font-size: 11.5px; color: var(--text-3); }
+.nv-purse      { font-size: 17px; color: var(--gold); }
+
+.nv-vital > span:first-child { font-size: 10.5px; color: var(--text-3); font-weight: 600; }
+.nv-vital b    { font-size: 12.5px; color: var(--text); }
+
+.nv-next       { border-radius: var(--radius); }
+.nv-next-text  { font-size: 14px; line-height: 1.5; font-weight: 500; }
+
+.nv-sub {
+    font-size: 11px; font-weight: 700; color: var(--text-3);
+    border-bottom-color: var(--line);
+}
+.nv-tile b     { font-size: 15px; font-weight: 600; color: var(--text); }
+.nv-tile span  { font-size: 12px; color: var(--text-2); }
+.nv-tile em    { font-size: 11px; font-weight: 600; }
+
+.nv-row        { font-size: 13.5px; color: var(--text); border-bottom-color: var(--line); padding: 9px 2px; }
+.nv-row.led span { color: var(--text-2); }
+.nv-row b      { font-size: 13px; color: var(--text-2); }
+.nv-none, .nv-empty { font-size: 13px; color: var(--text-3); }
+
+.rm-label b    { font-size: 17px; font-weight: 700; }
+.rm-label span { font-size: 12px; }
+.rm-time       { font-size: 11px; }
+.rm-class-top b    { font-size: 17px; font-weight: 700; }
+.rm-class-top span { font-size: 10px; font-weight: 600; color: var(--text-3); }
+.rm-class p    { font-size: 13.5px; line-height: 1.55; color: var(--text-2); }
+.rm-loan       { font-size: 13px; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+/* Two kinds everywhere: primary (gold, the thing to do) and ghost (quiet).
+   Before this, .ghost and .primary were only styled inside one screen and
+   fell back to the browser's grey button everywhere else. */
+
+.primary, .ghost {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 20px; border-radius: 999px; cursor: pointer;
+    font-family: var(--font-ui); font-size: 14px; font-weight: 600; letter-spacing: normal;
+    transition: background .15s, border-color .15s, color .15s, transform .08s;
+}
+.primary { background: var(--gold); color: var(--gold-ink); border: 1px solid var(--gold); }
+.primary:hover  { background: var(--gold-2); border-color: var(--gold-2); }
+.ghost   { background: transparent; color: var(--text-2); border: 1px solid var(--line-2); }
+.ghost:hover    { color: var(--text); border-color: var(--text-3); background: rgba(255,255,255,.03); }
+.primary:active, .ghost:active { transform: scale(.97); }
+.nv-danger .ghost { color: var(--red); border-color: #4a2420; }
+.nv-danger .ghost:hover { background: rgba(255,106,90,.07); border-color: var(--red); }
+.nv-danger { border-top-color: var(--line); }
+
+.est-btn {
+    padding: 9px 15px; border-radius: 999px;
+    font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; letter-spacing: .02em;
+    border-color: var(--gold); background: rgba(255, 200, 61, .1); color: var(--gold);
+    transition: background .15s, transform .08s;
+}
+.est-btn:hover:not([disabled]) { background: rgba(255, 200, 61, .2); }
+.est-btn:active:not([disabled]) { transform: scale(.96); }
+.est-btn[disabled] { border-color: var(--line); background: transparent; color: var(--text-3); }
+
+.pl-act button {
+    font-family: var(--font-ui); font-size: 14px; font-weight: 700;
+    padding: 14px 28px; box-shadow: 0 6px 22px rgba(255, 200, 61, .25);
+}
+.pl-out { font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; letter-spacing: normal; }
+
+/* ── Pop-ups ───────────────────────────────────────────────────────────── */
+
+.modal-backdrop { background: rgba(4, 4, 10, .72); backdrop-filter: blur(4px); }
+/* Above the tab bar, the panels and the find-me button (all 300–400), still
+   under a room you are standing in (600). */
+.modal-backdrop { z-index: 500; }
+.hs-empty { color: var(--text-3); }
+.modal {
+    width: min(440px, calc(100vw - 24px));
+    background: var(--panel); border: 1px solid var(--line-2);
+    border-radius: 18px; padding: 26px 26px 22px;
+    box-shadow: var(--shadow);
+}
+.modal.wide { width: min(640px, calc(100vw - 24px)); }
+.modal-title {
+    font-family: var(--font-display);
+    font-size: 21px; font-weight: 700; letter-spacing: -.005em; text-transform: none;
+    color: var(--text); border-bottom-color: var(--line);
+    margin-bottom: 16px; padding-bottom: 12px;
+}
+.modal-close {
+    top: 18px; right: 18px; width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; color: var(--text-3); background: var(--panel-2);
+}
+.modal-close:hover { color: var(--text); background: var(--line); }
+
+.est-head  { font-size: 11px; font-weight: 700; color: var(--text-3); }
+.est-now   { font-size: 13.5px; color: var(--text-2); }
+.est-row   { border-top-color: var(--line); padding: 12px 0; }
+/* The button was placed before the name by the grid's auto-placement, so it
+   landed in the first column. Pin each part to its column. */
+.est-row > .est-name, .est-row > .est-sub { grid-column: 1; }
+.est-row > .est-btn { grid-column: 2; }
+.est-name  { font-size: 15px; font-weight: 600; color: var(--text); }
+.est-sub   { font-size: 12px; color: var(--text-3); line-height: 1.45; }
+.est-none  { font-size: 13.5px; color: var(--text-2); }
+.warn, .shut-when, .shop-note, .trv-to { font-size: 13px; }
+
+/* Quibbles, in the same voice. */
+.qb-comm, .qb-chip, .qb-input { background: var(--panel-2); border-color: var(--line); }
+.qb-comm:hover, .qb-chip:hover { border-color: var(--line-2); }
+.qb-comm-txt b  { font-size: 15px; font-weight: 600; }
+.qb-comm-txt span { font-size: 12.5px; color: var(--text-2); }
+.qb-comm-txt small { font-size: 11px; color: var(--text-3); }
+.qb-about       { font-size: 13.5px; color: var(--text-2); }
+.qb-post        { border-top-color: var(--line); }
+.qb-post-top b  { font-size: 14px; font-weight: 600; }
+.qb-post-top span { font-size: 11px; color: var(--text-3); }
+.qb-post-txt    { font-size: 14px; color: var(--text); }
+.qb-me-txt b    { font-size: 19px; font-weight: 700; }
+.qb-me-txt      { font-size: 12.5px; color: var(--text-2); }
+.qb-input       { font-size: 14px; border-radius: 10px; }
+.qb-input:focus { outline: none; border-color: var(--gold); }
+.qb-link        { font-size: 13px; color: var(--blue); text-decoration: none; font-weight: 600; }
+.qb-del         { font-size: 12px; font-weight: 600; }
+
+/* ── Inside a place ────────────────────────────────────────────────────── */
+
+#place { background: radial-gradient(120% 80% at 50% 45%, #171724 0%, var(--bg) 70%); }
+.pl-top  { border-bottom-color: var(--line); }
+.pl-name { font-size: 18px; font-weight: 700; }
+.pl-lab  {
+    font-family: var(--font-ui); font-size: 14px; font-weight: 700; letter-spacing: .02em;
+    fill: var(--text); stroke: rgba(8, 8, 14, .85); stroke-width: 4px;
+}
+.pl-hint { font-size: 12px; color: var(--text-3); letter-spacing: normal; }
+
+/* ── Bottom bar and the map's floating bits ────────────────────────────── */
+
+#nav { background: rgba(11, 11, 18, .94); border-top-color: var(--line); }
+.nav-btn { font-size: 10.5px; font-weight: 600; color: var(--text-3); }
+.nav-btn svg path { fill: var(--text-3); }
+.nav-btn.on { color: var(--gold); }
+.nav-btn.on svg path { fill: var(--gold); }
+
+.goal { border-radius: 16px; }
+.goal-text { font-size: 14px; font-weight: 500; }
+#find-me { font-size: 12px; font-weight: 700; }
+
+/* On a phone the status badges sat on top of the goal bar. They go up to
+   the top-right corner, opposite the title, and the button that finds you
+   sits just above the goal. */
+@media (max-width: 680px) {
+    body[data-view="map"] #life-strip {
+        top: calc(12px + env(safe-area-inset-top, 0)); bottom: auto; left: auto; right: 12px;
+    }
+    body[data-view="map"] #skubu-badge {
+        top: calc(92px + env(safe-area-inset-top, 0)); bottom: auto; right: 12px;
+    }
+    body[data-view="map"] #find-me { bottom: calc(136px + env(safe-area-inset-bottom, 0)); right: 12px; }
+
+    /* Smaller labels so neighbours stop running into each other. */
+    .v-name { font-size: 16px; }
+    .v-tag  { font-size: 10.5px; }
+
+    .modal { padding: 22px 18px 18px; border-radius: 16px; }
+    .modal-title { font-size: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-view] .view { animation: none !important; }
+}
