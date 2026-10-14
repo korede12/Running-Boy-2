@@ -45,11 +45,14 @@ const Scene = {
             `</linearGradient></defs>` +
 
             `<rect width="320" height="190" fill="url(#scSky)"/>` +
-            this._skyline(night) +
+            this._heavens(hour, night) +
+            this._skyline(night, true) +
+            this._skyline(night, false) +
             this._front(v, roof, lit) +
-            `<rect y="150" width="320" height="40" fill="${night ? '#2a2a33' : '#3d3d47'}"/>` +
-            `<rect y="150" width="320" height="3" fill="${night ? '#35353f' : '#4a4a55'}"/>` +
+            this._ground(night) +
+            this._lamp(night) +
             this._props(v, p, night) +
+            `<ellipse cx="${this._standX(v)}" cy="169" rx="15" ry="3.5" fill="#000" opacity="0.3"/>` +
             Room._figure(this._standX(v), 168, 1.05, false) +
             this._sign(v, roof, lit) +
             '</svg>';
@@ -57,21 +60,78 @@ const Scene = {
 
     /// Where the figure stands, so it never sits on top of the props.
     _standX(v) {
-        return ({ shop: 236, market: 236, play: 60, work: 250, travel: 64 }[v.kind]) || 60;
+        return ({ shop: 236, market: 236, play: 60, work: 250, travel: 64, hangout: 64 }[v.kind]) || 60;
     },
 
-    _skyline(night) {
+    /// Stars and a moon at night, a sun and a cloud or two by day, and the
+    /// sun sitting low at either end of it.
+    _heavens(hour, night) {
         let g = '';
-        const bars = [[8, 64, 30], [44, 52, 22], [72, 76, 26], [104, 46, 20],
-                      [206, 58, 24], [238, 80, 30], [276, 50, 22]];
-        for (const [x, h, w] of bars) {
-            g += `<rect x="${x}" y="${100 - h}" width="${w}" height="${h}" ` +
-                 `fill="${night ? '#1b2134' : '#56657f'}" opacity="0.85"/>`;
-            if (night) {
-                for (let i = 0; i < 3; i++)
-                    g += `<rect x="${x + 4 + (i % 2) * 9}" y="${106 - h + i * 11}" width="4" height="5" fill="#ffd98a" opacity="0.6"/>`;
+        if (night) {
+            for (let i = 0; i < 26; i++) {
+                const x = (i * 97 + 13) % 320, y = (i * 53 + 7) % 70;
+                g += `<circle cx="${x}" cy="${y}" r="${i % 5 ? 0.7 : 1.2}" fill="#fff" opacity="${0.35 + (i % 4) * 0.15}"/>`;
             }
+            g += `<circle cx="276" cy="24" r="11" fill="#f2ead2"/><circle cx="281" cy="21" r="10" fill="${'#141a2c'}"/>`;
+            return g;
         }
+        const low = hour < 9 || hour >= 17;
+        const sx = hour < 12 ? 40 : 280, sy = low ? 62 : 26;
+        g += `<circle cx="${sx}" cy="${sy}" r="${low ? 26 : 18}" fill="#ffd98a" opacity="0.18"/>` +
+             `<circle cx="${sx}" cy="${sy}" r="${low ? 13 : 10}" fill="${low ? '#ffb86a' : '#fff2c4'}"/>`;
+        if (!low) for (const [x, y, k] of [[70, 22, 1], [196, 34, 0.8]])
+            g += `<g fill="#ffffff" opacity="0.55" transform="translate(${x} ${y}) scale(${k})">` +
+                 `<ellipse cx="0" cy="0" rx="18" ry="6"/><ellipse cx="10" cy="-4" rx="11" ry="6"/><ellipse cx="-9" cy="-2" rx="9" ry="5"/></g>`;
+        return g;
+    },
+
+    /// Rooftops. The far row is paler and has no windows; the near row has
+    /// windows lit at night and the water tanks every Lagos roof carries.
+    _skyline(night, far) {
+        let g = '';
+        const bars = far
+            ? [[0, 70, 40], [36, 84, 30], [86, 62, 34], [196, 76, 30], [250, 90, 36], [290, 66, 30]]
+            : [[8, 64, 30], [44, 52, 22], [72, 76, 26], [104, 46, 20], [206, 58, 24], [238, 80, 30], [276, 50, 22]];
+        const col = far ? (night ? '#161b2b' : '#7088a6') : (night ? '#1b2134' : '#56657f');
+        for (const [x, h, w] of bars) {
+            g += `<rect x="${x}" y="${100 - h}" width="${w}" height="${h}" fill="${col}" opacity="${far ? 0.6 : 0.9}"/>`;
+            if (far) continue;
+            // A water tank on some roofs, an aerial on others.
+            if (x % 3 === 0) g += `<rect x="${x + w / 2 - 5}" y="${92 - h}" width="10" height="8" rx="2" fill="${night ? '#252b40' : '#46536b'}"/>`;
+            else g += `<rect x="${x + w - 6}" y="${88 - h}" width="1.5" height="12" fill="${col}"/>`;
+            const rows = Math.floor((h - 10) / 11);
+            for (let r = 0; r < rows; r++)
+                for (let c = 0; c < 2; c++) {
+                    const on = night && ((x + r * 3 + c) % 4 !== 0);
+                    g += `<rect x="${x + 5 + c * (w - 14)}" y="${106 - h + r * 11}" width="4" height="5" ` +
+                         `fill="${on ? '#ffd98a' : (night ? '#141826' : '#43506a')}" opacity="${on ? 0.7 : 0.8}"/>`;
+                }
+        }
+        return g;
+    },
+
+    /// Pavement, kerb and the road in front of it.
+    _ground(night) {
+        let g = `<rect y="150" width="320" height="22" fill="${night ? '#2a2a33' : '#4a4a55'}"/>` +
+                `<rect y="150" width="320" height="2" fill="${night ? '#3a3a46' : '#5d5d6a'}"/>`;
+        for (let x = 16; x < 320; x += 32)
+            g += `<rect x="${x}" y="152" width="1" height="20" fill="#000" opacity="0.18"/>`;
+        g += `<rect y="172" width="320" height="3" fill="${night ? '#55555f' : '#8a8a94'}"/>` +
+             `<rect y="175" width="320" height="15" fill="${night ? '#1a1a20' : '#2c2c33'}"/>`;
+        for (let x = 6; x < 320; x += 40)
+            g += `<rect x="${x}" y="182" width="20" height="2" fill="#e8d27a" opacity="0.55"/>`;
+        return g;
+    },
+
+    /// A street lamp at the kerb. At night it throws a cone of light.
+    _lamp(night) {
+        let g = '';
+        if (night) g += `<path d="M14 44 L-14 172 L58 172 Z" fill="#ffd98a" opacity="0.08"/>` +
+                        `<ellipse cx="22" cy="172" rx="34" ry="5" fill="#ffd98a" opacity="0.14"/>`;
+        g += `<rect x="12" y="44" width="3" height="128" fill="#3a3a46"/>` +
+             `<path d="M13 44 Q13 36 24 36 L30 36" stroke="#3a3a46" stroke-width="3" fill="none"/>` +
+             `<rect x="24" y="35" width="12" height="5" rx="2" fill="#4a4a56"/>` +
+             `<rect x="26" y="40" width="8" height="2" fill="${night ? '#fff2c4' : '#8a8a94'}"/>`;
         return g;
     },
 
@@ -80,17 +140,32 @@ const Scene = {
         const wide = v.kind === 'shop' || v.id === 'market' || v.id === 'itoku';
         const x = wide ? 96 : 118, w = wide ? 208 : 186;
         let g = `<rect x="${x}" y="54" width="${w}" height="98" fill="#2b2b36"/>`;
-        g += `<rect x="${x - 6}" y="46" width="${w + 12}" height="12" rx="2" fill="${roof}"/>`;
-        // Windows, lit or not.
+        for (let y = 62; y < 150; y += 10)
+            g += `<rect x="${x}" y="${y}" width="${w}" height="1" fill="#000" opacity="0.12"/>`;
+        g += `<rect x="${x - 6}" y="46" width="${w + 12}" height="12" rx="2" fill="${roof}"/>` +
+             `<rect x="${x - 6}" y="56" width="${w + 12}" height="2" fill="#000" opacity="0.25"/>`;
+        // Windows, framed and silled, lit or not; one has an AC unit.
         for (let r = 0; r < 2; r++)
             for (let c = 0; c < 4; c++) {
                 const wx = x + 14 + c * ((w - 28) / 4), wy = 68 + r * 30;
-                g += `<rect x="${wx}" y="${wy}" width="22" height="18" rx="2" ` +
-                     `fill="${lit ? '#ffd98a' : '#1a2432'}" opacity="${lit ? 0.75 : 0.9}"/>`;
+                g += `<rect x="${wx - 2}" y="${wy - 2}" width="26" height="22" rx="2" fill="#1d1d26"/>` +
+                     `<rect x="${wx}" y="${wy}" width="22" height="18" rx="1" ` +
+                     `fill="${lit ? '#ffd98a' : '#1a2432'}" opacity="${lit ? 0.8 : 0.95}"/>` +
+                     `<rect x="${wx + 10.5}" y="${wy}" width="1" height="18" fill="#1d1d26" opacity="0.7"/>` +
+                     (lit && (r + c) % 3 === 0 ? `<rect x="${wx}" y="${wy}" width="8" height="18" fill="#c0563a" opacity="0.45"/>` : '') +
+                     `<rect x="${wx - 3}" y="${wy + 18}" width="28" height="2.5" fill="#44445a"/>`;
+                if (r === 0 && c === 3) g += `<rect x="${wx + 2}" y="${wy + 21}" width="18" height="9" rx="1.5" fill="#c9ccd4"/>` +
+                    `<rect x="${wx + 4}" y="${wy + 23}" width="14" height="1" fill="#8a8e98"/><rect x="${wx + 4}" y="${wy + 26}" width="14" height="1" fill="#8a8e98"/>`;
             }
-        // The doorway.
-        g += `<rect x="${x + w / 2 - 20}" y="112" width="40" height="40" rx="3" fill="#15151d"/>`;
-        g += `<rect x="${x + w / 2 - 20}" y="112" width="40" height="5" fill="${roof}" opacity="0.7"/>`;
+        // The doorway, under a striped awning, with a light beside it.
+        const dx = x + w / 2 - 20;
+        g += `<rect x="${dx}" y="112" width="40" height="40" rx="3" fill="#15151d"/>` +
+             `<rect x="${dx + 31}" y="132" width="3" height="3" rx="1" fill="#8a8e98"/>`;
+        for (let i = 0; i < 6; i++)
+            g += `<path d="M${dx - 8 + i * 9.33} 106 L${dx - 8 + (i + 1) * 9.33} 106 L${dx - 6 + (i + 1) * 9.33} 114 L${dx - 6 + i * 9.33} 114 Z" ` +
+                 `fill="${i % 2 ? '#f2ead2' : roof}"/>`;
+        g += `<rect x="${dx + 44}" y="118" width="5" height="7" rx="1.5" fill="${lit ? '#fff2c4' : '#55555f'}"/>` +
+             (lit ? `<circle cx="${dx + 46.5}" cy="121.5" r="10" fill="#ffd98a" opacity="0.18"/>` : '');
         return g;
     },
 
@@ -102,8 +177,8 @@ const Scene = {
             `<rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="5" fill="#10101a" ` +
             `stroke="${roof}" stroke-width="2.5"/>` +
             (lit ? `<rect x="${-w / 2}" y="-13" width="${w}" height="26" rx="5" fill="${roof}" opacity="0.16"/>` : '') +
-            `<text x="0" y="5" text-anchor="middle" font-family="monospace" font-size="11" ` +
-            `letter-spacing="1.4" fill="${roof}">${label}</text></g>`;
+            `<text x="0" y="4.5" text-anchor="middle" font-family="Bricolage Grotesque, Inter, sans-serif" font-weight="800" font-size="12" ` +
+            `letter-spacing="1" fill="${roof}">${label}</text></g>`;
     },
 
     // ── What is outside each kind of place ────────────────────────────────
@@ -117,6 +192,7 @@ const Scene = {
         if (v.kind === 'clinic') return this._clinic();
         if (v.kind === 'work')   return this._yard();
         if (v.kind === 'travel') return this._danfo();
+        if (v.kind === 'hangout') return this._hangout();
         return this._generic(v);
     },
 
@@ -190,7 +266,7 @@ const Scene = {
             `<rect x="214" y="134" width="7" height="10" rx="2" fill="#c8912e"/>` +
             `<rect x="226" y="134" width="7" height="10" rx="2" fill="#c8912e"/>` +
             `<rect x="238" y="134" width="7" height="10" rx="2" fill="#c8912e"/></g>` +
-            `<text x="233" y="114" text-anchor="middle" font-family="monospace" font-size="8" ` +
+            `<text x="233" y="114" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="8" ` +
             `fill="#8b93a6" letter-spacing="1">RECEPTION</text>`;
     },
 
@@ -227,6 +303,25 @@ const Scene = {
             `<rect x="232" y="112" width="28" height="13" rx="2" fill="#2b3a44"/>` +
             `<circle cx="178" cy="148" r="10" fill="#15151d"/>` +
             `<circle cx="252" cy="148" r="10" fill="#15151d"/>`;
+    },
+
+    /// Plastic tables on the pavement and people who have opinions.
+    _hangout() {
+        let g = '';
+        for (const [x, c] of [[196, '#d35400'], [270, '#2874a6']]) {
+            g += `<path d="M${x - 24} 104 L${x} 92 L${x + 24} 104 Z" fill="${c}"/>` +
+                 `<rect x="${x - 1}" y="104" width="2" height="30" fill="#8a8e98"/>` +
+                 `<rect x="${x - 16}" y="132" width="32" height="4" rx="2" fill="#f2ead2"/>` +
+                 `<rect x="${x - 12}" y="136" width="2" height="14" fill="#c9ccd4"/><rect x="${x + 10}" y="136" width="2" height="14" fill="#c9ccd4"/>` +
+                 `<rect x="${x - 6}" y="128" width="6" height="4" rx="1" fill="#c0563a"/>` +
+                 `<rect x="${x + 3}" y="127" width="4" height="5" rx="1" fill="#8ab04a"/>`;
+        }
+        g += Room._figure(176, 152, 0.7, false) + Room._figure(216, 152, 0.7, false) + Room._figure(292, 152, 0.7, false);
+        // Something is being argued about.
+        g += `<g transform="translate(196 84)"><rect x="-13" y="-9" width="26" height="14" rx="5" fill="#fff" opacity="0.9"/>` +
+             `<path d="M-3 5 L0 10 L3 5 Z" fill="#fff" opacity="0.9"/>` +
+             `<text x="0" y="2" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800" font-size="9" fill="#d35400">?!</text></g>`;
+        return g;
     },
 
     /// Anything else: a board outside, which is what these places are.

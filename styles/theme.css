@@ -268,3 +268,45 @@ body[data-view="profile"] #view-profile { animation: viewIn .2s ease-out; }
 @media (prefers-reduced-motion: reduce) {
     body[data-view] .view { animation: none !important; }
 }
+
+/* ── Home and Profile on a wide screen ─────────────────────────────────── */
+/* A phone column, centred, rather than a picture stretched across a laptop. */
+@media (min-width: 760px) {
+    #view-home, #view-profile { padding-left: max(16px, calc((100vw - 680px) / 2)); padding-right: max(16px, calc((100vw - 680px) / 2)); }
+}
+
+/* ── Map labels ────────────────────────────────────────────────────────── */
+/* Long names have a short form; a phone shows that one. */
+.v-short { display: none; }
+@media (max-width: 680px) {
+    .v-full  { display: none; }
+    .v-short { display: inline; }
+}
+
+/* ── Money moving ──────────────────────────────────────────────────────── */
+
+.juice-bump { display: inline-block; animation: juiceBump .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes juiceBump { 0% { transform: scale(1); } 35% { transform: scale(1.28); } 100% { transform: scale(1); } }
+
+.juice-chip {
+    position: fixed; left: 50%; top: calc(18px + env(safe-area-inset-top, 0)); z-index: 900;
+    transform: translateX(-50%);
+    padding: 8px 16px; border-radius: 999px; pointer-events: none;
+    font-family: var(--font-num); font-size: 16px; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+    animation: juiceFloat 1.5s ease-out forwards;
+}
+.juice-chip.up   { background: #10241a; color: #7ef0a0; border: 1px solid #2f6b3a; }
+.juice-chip.down { background: #2a1410; color: #ff9a7a; border: 1px solid #5a2420; }
+@keyframes juiceFloat {
+    0%   { opacity: 0; transform: translate(-50%, 10px) scale(.9); }
+    15%  { opacity: 1; transform: translate(-50%, 0) scale(1.04); }
+    25%  { transform: translate(-50%, 0) scale(1); }
+    75%  { opacity: 1; transform: translate(-50%, -6px); }
+    100% { opacity: 0; transform: translate(-50%, -22px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .juice-bump { animation: none; }
+    .juice-chip { animation-duration: 2s; animation-name: juiceFade; }
+    @keyframes juiceFade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+}
