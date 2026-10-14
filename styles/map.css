@@ -1502,3 +1502,61 @@ body.in-place { overflow: hidden; }
 }
 /* And the control itself answers, which the ring alone does not show. */
 .st-bar button:active, .pre-do button:active, .st-head:active { filter: brightness(1.5); }
+
+/* ── Quibbles ─────────────────────────────────────────────────────────── */
+/* Opens over the room you are standing in, which sits at 600. */
+
+#qb-modal { z-index: 700; }
+.qb-list { display: flex; flex-direction: column; gap: 8px; }
+.qb-comm {
+    display: flex; gap: 10px; align-items: flex-start; text-align: left;
+    padding: 10px 12px; border-radius: 9px; cursor: pointer;
+    border: 1px solid #1c2440; background: #0d1222; color: inherit;
+}
+.qb-comm:hover { border-color: #2f4a80; }
+.qb-comm-txt { display: flex; flex-direction: column; gap: 3px; font-family: monospace; }
+.qb-comm-txt b { font-size: 13px; color: #e8edf6; font-weight: normal; }
+.qb-comm-txt span { font-size: 11px; color: #9aa3b4; line-height: 1.4; }
+.qb-comm-txt small { font-size: 10px; color: #5f6a80; letter-spacing: .04em; }
+.qb-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; margin-top: 3px; display: inline-block; }
+
+.qb-bar { margin-bottom: 10px; }
+.qb-link {
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: monospace; font-size: 11px; color: #4cc9ff; text-decoration: underline;
+}
+.qb-about { display: flex; gap: 8px; font-family: monospace; font-size: 12px; color: #9aa3b4; line-height: 1.45; }
+.qb-actions { display: flex; gap: 8px; margin: 12px 0 6px; }
+.est-btn.qb-on { border-color: #1f7a4d; background: #10241a; color: #6fe0a0; }
+
+.qb-feed { display: flex; flex-direction: column; }
+.qb-post { padding: 10px 0; border-top: 1px solid #1c1c26; font-family: monospace; }
+.qb-post-top { display: flex; gap: 8px; align-items: baseline; font-size: 11px; color: #5f6a80; }
+.qb-post-top b { color: #e8edf6; font-weight: normal; font-size: 12px; }
+.qb-post-txt { margin-top: 4px; font-size: 12.5px; color: #c9d1e0; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.qb-del {
+    margin-left: auto; background: none; border: none; cursor: pointer;
+    font-family: monospace; font-size: 10px; color: #a8452f;
+}
+
+.qb-me { display: flex; gap: 14px; align-items: center; }
+.qb-av { flex: 0 0 auto; width: 64px; height: 100px; }
+.qb-me-txt { display: flex; flex-direction: column; gap: 4px; font-family: monospace; font-size: 11px; color: #9aa3b4; }
+.qb-me-txt b { font-size: 15px; color: #e8edf6; font-weight: normal; }
+.qb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.qb-chip {
+    display: inline-flex; gap: 6px; align-items: center; padding: 5px 10px; border-radius: 99px;
+    border: 1px solid #1c2440; background: #0d1222; color: #e8edf6; cursor: pointer;
+    font-family: monospace; font-size: 11px;
+}
+.qb-chip .qb-dot { margin-top: 0; width: 8px; height: 8px; }
+
+.qb-lab { display: block; font-family: monospace; font-size: 10px; letter-spacing: .14em; color: #5f6a80; text-transform: uppercase; margin: 12px 0 6px; }
+.qb-input {
+    width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 8px;
+    border: 1px solid #1c2440; background: #0d1222; color: #e8edf6;
+    font-family: monospace; font-size: 13px;
+}
+.qb-text { min-height: 110px; resize: vertical; line-height: 1.45; }
+.qb-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-family: monospace; font-size: 10px; color: #5f6a80; }
+.qb-note { margin-top: 8px; font-family: monospace; font-size: 11px; color: #ff9a7a; min-height: 1em; }
