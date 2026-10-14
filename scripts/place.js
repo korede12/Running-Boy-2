@@ -112,7 +112,12 @@ const Place = {
         const stage = document.getElementById('pl-stage');
         if (!stage) return;
         const pl = this._plan, s = [];
-        s.push(`<svg id="pl-svg" viewBox="0 0 ${this.W} ${this.H}" ` +
+        // Cropped to the room itself, walls and labels included, so it fills
+        // the screen instead of floating in a fixed canvas.
+        const left = this._iso(0, pl.rows)[0], right = this._iso(pl.cols, 0)[0];
+        const top = this._iso(0, 0, 76)[1] - 34, bottom = this._iso(pl.cols, pl.rows)[1] + 18;
+        const vb = [left - 16, top, right - left + 32, bottom - top];
+        s.push(`<svg id="pl-svg" viewBox="${vb.map(n => n.toFixed(1)).join(' ')}" ` +
                `xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${this._venue.name}">`);
 
         // Floor.
@@ -168,9 +173,13 @@ const Place = {
         const C = this._iso(p.gx + w, p.gy + d, h), D = this._iso(p.gx, p.gy + d, h);
         const B0 = this._iso(p.gx + w, p.gy, 0),    C0 = this._iso(p.gx + w, p.gy + d, 0);
         const D0 = this._iso(p.gx, p.gy + d, 0);
-        let g = `<polygon points="${D} ${C} ${C0} ${D0}" fill="${p.side || '#2f2f3b'}"/>` +
+        const sh = [this._iso(p.gx + 0.15, p.gy + d + 0.2, 0), this._iso(p.gx + w + 0.2, p.gy + d + 0.2, 0),
+                    this._iso(p.gx + w + 0.2, p.gy + 0.15, 0)];
+        let g = `<polygon points="${D0} ${sh[0]} ${sh[1]} ${sh[2]} ${B0} ${C0}" fill="#000" opacity="0.28"/>` +
+                `<polygon points="${D} ${C} ${C0} ${D0}" fill="${p.side || '#2f2f3b'}"/>` +
                 `<polygon points="${B} ${C} ${C0} ${B0}" fill="${p.side2 || '#3a3a48'}"/>` +
-                `<polygon points="${A} ${B} ${C} ${D}" fill="${p.top || '#4a4a58'}"/>`;
+                `<polygon points="${A} ${B} ${C} ${D}" fill="${p.top || '#4a4a58'}"/>` +
+                `<polyline points="${D} ${C} ${B}" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="1.2"/>`;
         if (p.glow) {
             const m = this._iso(p.gx + w / 2, p.gy + d / 2, h + 10);
             g += `<ellipse cx="${m[0].toFixed(1)}" cy="${m[1].toFixed(1)}" rx="${18 * w}" ry="${9 * d}" ` +
@@ -220,10 +229,14 @@ const Place = {
         if (stage) stage.onclick = e => {
             const svg = document.getElementById('pl-svg');
             if (!svg) return;
-            const r = svg.getBoundingClientRect();
-            const sx = (e.clientX - r.left) / r.width * this.W;
-            const sy = (e.clientY - r.top) / r.height * this.H;
-            const [gx, gy] = this._unIso(sx, sy);
+            // Through the SVG's own transform, so the crop and the letterbox
+            // that keeps its aspect ratio are both accounted for.
+            const m = svg.getScreenCTM();
+            if (!m) return;
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            const p = pt.matrixTransform(m.inverse());
+            const [gx, gy] = this._unIso(p.x, p.y);
             if (this._walkable(gx, gy)) this._to = { gx, gy };
         };
         document.onkeydown = e => {
