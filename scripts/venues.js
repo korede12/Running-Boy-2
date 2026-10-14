@@ -18,7 +18,7 @@
 // gx/gy are tiles on that city's grid; gw/gd the footprint in tiles.
 //
 // A venue starts a run (`mode`), opens a panel (`modal`), or leaves town
-// (`to`). `characters` lists who the place will take — a street will run with
+// (`to`). A `hangout` does none of those: you go there and walk in. `characters` lists who the place will take — a street will run with
 // anyone, but a chase and a fight need art only Portable has, so picking
 // those skips a chooser that would have had one option.
 
@@ -145,6 +145,11 @@ const CITIES = [
             { id: 'itoku', name: 'Itoku Market', kind: 'open', open: [7, 18], modal: 'shop-modal',
               gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
               blurb: 'Adire, skubu, and what it buys.' },
+
+            { id: 'quibbles', name: 'Quibbles', kind: 'hangout', open: [0, 24],
+              gx: 19, gy: 0, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
+              blurb: 'Somewhere to sit, and somebody always arguing about something.',
+              tag: 'HANG OUT' },
 
             { id: 'exit_lag', name: 'Lagos Expressway', kind: 'travel', open: [0, 24], to: 'lagos',
               gx: 19, gy: 15, gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',

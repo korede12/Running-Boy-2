@@ -607,6 +607,7 @@ const CityMap = {
         if (v.kind === 'open')   { openModal(v.modal); return; }
         if (v.kind === 'hotel')  { openHotel(v); return; }
         if (v.kind === 'clinic') { openClinic(v); return; }
+        if (v.kind === 'hangout') { if (typeof Place !== 'undefined') Place.enter(v.id); return; }
 
         // Travel: the road out is a place you go to, and getting down it
         // costs either the fare or most of a day.
