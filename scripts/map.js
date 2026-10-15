@@ -522,7 +522,8 @@ const CityMap = {
             g += `<g class="v-icon" transform="translate(${top[0].toFixed(1)} ${top[1].toFixed(1)}) scale(1.55)" fill="${play ? '#8a6410' : '#44506a'}" fill-rule="evenodd"><path d="${MAP_ICONS[v.icon] || MAP_ICONS.home}"/></g>`;
 
             const lab = iso(v.gx + w / 2, v.gy + d / 2, h + 130);
-            g += `<text class="v-name" x="${lab[0].toFixed(1)}" y="${lab[1].toFixed(1)}" text-anchor="middle">${v.name}</text>`;
+            g += `<text class="v-name${v.short ? ' v-full' : ''}" x="${lab[0].toFixed(1)}" y="${lab[1].toFixed(1)}" text-anchor="middle">${v.name}</text>`;
+            if (v.short) g += `<text class="v-name v-short" x="${lab[0].toFixed(1)}" y="${lab[1].toFixed(1)}" text-anchor="middle">${v.short}</text>`;
             if (v.tag) g += `<text class="v-tag" x="${lab[0].toFixed(1)}" y="${(lab[1] + 20).toFixed(1)}" text-anchor="middle">${v.tag}</text>`;
 
             // One hit area over building, disc and label together.

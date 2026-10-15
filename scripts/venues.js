@@ -15,7 +15,8 @@
 // `open` is [from, to) on a 24-hour clock. A window running past 24 is a
 // place that keeps going into the small hours — the club shuts at four.
 //
-// gx/gy are tiles on that city's grid; gw/gd the footprint in tiles.
+// gx/gy are tiles on that city's grid; gw/gd the footprint in tiles. `short`
+// is the label a phone shows, where the full names run into each other.
 //
 // A venue starts a run (`mode`), opens a panel (`modal`), or leaves town
 // (`to`). A `hangout` does none of those: you go there and walk in. `characters` lists who the place will take — a street will run with
@@ -46,7 +47,7 @@ const CITIES = [
               gx: 5,  gy: 1,  gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
-            { id: 'exit_abk', name: 'Abeokuta Expressway', kind: 'travel', open: [0, 24], to: 'abeokuta',
+            { id: 'exit_abk', name: 'Abeokuta Expressway', short: 'To Abeokuta', kind: 'travel', open: [0, 24], to: 'abeokuta',
               gx: 11, gy: 0,  gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Out of town, north.', tag: 'TRAVEL' },
 
@@ -54,7 +55,7 @@ const CITIES = [
               gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
               blurb: 'Make a beat, sell a beat.', tag: 'STUDIO' },
 
-            { id: 'game_lag', name: 'Oshodi Game House', kind: 'play', open: [10, 26], mode: 'run',
+            { id: 'game_lag', name: 'Oshodi Game House', short: 'Oshodi', kind: 'play', open: [10, 26], mode: 'run',
               gx: 6,  gy: 6,  gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Cabinets in the back. Play well, get paid.', tag: 'GAME HOUSE' },
@@ -70,12 +71,12 @@ const CITIES = [
               blurb: 'Portable is in there, and he does not lose quietly.',
               tag: 'FIGHT PORTABLE' },
 
-            { id: 'work_lag', name: 'Oshodi Labour Junction', kind: 'work', open: [6, 18],
+            { id: 'work_lag', name: 'Oshodi Labour Junction', short: 'Labour Junction', kind: 'work', open: [6, 18],
               gx: 12, gy: 19, gw: 2, gd: 2, vh: 104, icon: 'desk', roof: '#5b6b7a',
               blurb: 'Stand here from six and somebody will have a day for you.',
               tag: 'WORK' },
 
-            { id: 'hotel_lag', name: 'Ikeja Guest Inn', kind: 'hotel', open: [0, 24],
+            { id: 'hotel_lag', name: 'Ikeja Guest Inn', short: 'Ikeja Inn', kind: 'hotel', open: [0, 24],
               gx: 12, gy: 13, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'A bed, a lock, and a full night.', tag: 'SLEEP' },
 
@@ -88,7 +89,7 @@ const CITIES = [
               blurb: 'Same arguments as Abeokuta, louder.',
               tag: 'HANG OUT' },
 
-            { id: 'market', name: 'Balogun Market', kind: 'open', open: [7, 19], modal: 'shop-modal',
+            { id: 'market', name: 'Balogun Market', short: 'Balogun', kind: 'open', open: [7, 19], modal: 'shop-modal',
               gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
               blurb: 'Skubu, and what it buys.' },
         ],
@@ -115,21 +116,21 @@ const CITIES = [
               gx: 15, gy: 1, gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
               blurb: 'Half what Lagos asks, and half the hurry.' },
 
-            { id: 'centenary', name: 'Centenary Hall', kind: 'open', open: [10, 20], modal: 'hs-modal',
+            { id: 'centenary', name: 'Centenary Hall', short: 'Centenary', kind: 'open', open: [10, 20], modal: 'hs-modal',
               gx: 9,  gy: 1, gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
-            { id: 'secretariat', name: 'Ogun Secretariat', kind: 'work', open: [8, 16],
+            { id: 'secretariat', name: 'Ogun Secretariat', short: 'Secretariat', kind: 'work', open: [8, 16],
               gx: 1,  gy: 9, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
               blurb: 'Grade levels, desks, and a wage that comes every week.',
               tag: 'WORK' },
 
-            { id: 'lafenwa', name: 'Lafenwa Bridge', kind: 'play', open: [0, 24], mode: 'chase',
+            { id: 'lafenwa', name: 'Lafenwa Bridge', short: 'Lafenwa', kind: 'play', open: [0, 24], mode: 'chase',
               gx: 15, gy: 9, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Over the Ogun, with someone behind you.', tag: 'CHASE' },
 
-            { id: 'game_abk', name: 'Kuto Game House', kind: 'play', open: [10, 24], mode: 'run',
+            { id: 'game_abk', name: 'Kuto Game House', short: 'Kuto', kind: 'play', open: [10, 24], mode: 'run',
               gx: 9,  gy: 17, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Quieter room, smaller takings.', tag: 'GAME HOUSE' },
@@ -139,7 +140,7 @@ const CITIES = [
               characters: ['portable'],
               blurb: 'Portable tours. Tonight he is here.', tag: 'FIGHT PORTABLE' },
 
-            { id: 'hotel_abk', name: 'Gateway Lodge', kind: 'hotel', open: [0, 24],
+            { id: 'hotel_abk', name: 'Gateway Lodge', short: 'Gateway', kind: 'hotel', open: [0, 24],
               gx: 9,  gy: 11, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'Quiet enough to actually sleep.', tag: 'SLEEP' },
 
@@ -156,7 +157,7 @@ const CITIES = [
               blurb: 'Somewhere to sit, and somebody always arguing about something.',
               tag: 'HANG OUT' },
 
-            { id: 'exit_lag', name: 'Lagos Expressway', kind: 'travel', open: [0, 24], to: 'lagos',
+            { id: 'exit_lag', name: 'Lagos Expressway', short: 'To Lagos', kind: 'travel', open: [0, 24], to: 'lagos',
               gx: 19, gy: 15, gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Back down to the coast.', tag: 'TRAVEL' },
         ],
