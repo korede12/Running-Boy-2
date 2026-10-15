@@ -15,7 +15,10 @@
 // `open` is [from, to) on a 24-hour clock. A window running past 24 is a
 // place that keeps going into the small hours — the club shuts at four.
 //
-// gx/gy are tiles on that city's grid; gw/gd the footprint in tiles. `short`
+// gx/gy are tiles on that city's grid; gw/gd the footprint in tiles. A city
+// drawn with room between its buildings has a `scale`: its grid is that many
+// times larger than the distances fares are priced on, so spreading a town
+// out on the map does not make every trip across it dearer. `short`
 // is the label a phone shows, where the full names run into each other.
 //
 // A venue starts a run (`mode`), opens a panel (`modal`), or leaves town
@@ -30,67 +33,67 @@ const CITIES = [
         id: 'lagos', name: 'Lagos', tag: 'the mainland',
         // How built-up it is. skip = share of plots left empty, so a higher
         // number is a quieter town; vary is how far the heights reach.
-        feel: { skip: 0.52, base: 30, vary: 130, tower: 100, wide: 0.90,
-                trees: 0.88, adStep: 6, carSkip: 0.42, walkers: 5 },
-        grid: 24,
-        roadsGX: [4, 10, 16], roadsGY: [4, 11, 18],
+        feel: { skip: 0.71, base: 28, vary: 105, tower: 95, wide: 0.92,
+                trees: 0.78, adStep: 8, carSkip: 0.42, walkers: 6 },
+        grid: 36, scale: 1.5,
+        roadsGX: [6, 15, 24], roadsGY: [6, 17, 27],
         // The lagoon takes everything past this column; one road crosses it.
-        water: { from: 19, bridgeGY: 11 },
+        water: { from: 29, bridgeGY: 17 },
         // The expressway, carried off the top of the grid toward Abeokuta.
-        exit: { axis: 'gx', at: 10, from: -5, to: -1 },
+        exit: { axis: 'gx', at: 15, from: -5, to: -1 },
         venues: [
             { id: 'agent_lag', name: 'Estate Agent', kind: 'open', open: [9, 17], modal: 'estate-modal',
-              gx: 1,  gy: 1,  gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
+              gx: 2, gy: 2,  gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
               blurb: 'Rooms, flats, and what a house costs here.' },
 
             { id: 'hall', name: 'Hall of Fame', kind: 'open', open: [10, 20], modal: 'hs-modal',
-              gx: 5,  gy: 1,  gw: 2, gd: 2, icon: 'cup',
+              gx: 8, gy: 2,  gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
             { id: 'exit_abk', name: 'Abeokuta Expressway', short: 'To Abeokuta', kind: 'travel', open: [0, 24], to: 'abeokuta',
-              gx: 11, gy: 0,  gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
+              gx: 16, gy: 0,  gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Out of town, north.', tag: 'TRAVEL' },
 
             { id: 'studio', name: 'Naijabeats', kind: 'studio', open: [11, 22],
-              gx: 12, gy: 6,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
+              gx: 18, gy: 9,  gw: 2, gd: 2, icon: 'music', roof: '#6a4d93',
               blurb: 'Make a beat, sell a beat.', tag: 'STUDIO' },
 
             { id: 'game_lag', name: 'Oshodi Game House', short: 'Oshodi', kind: 'play', open: [10, 26], mode: 'run',
-              gx: 6,  gy: 6,  gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
+              gx: 9, gy: 9,  gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Cabinets in the back. Play well, get paid.', tag: 'GAME HOUSE' },
 
             { id: 'bridge', name: 'Third Mainland', kind: 'play', open: [0, 24], mode: 'chase',
-              gx: 17, gy: 12, gw: 2, gd: 2, vh: 92, icon: 'chase',
+              gx: 26, gy: 18, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Three lanes, and someone on your heels.', tag: 'CHASE' },
 
             { id: 'club', name: 'Club Zazuu', kind: 'play', open: [20, 28], mode: 'fight', opponent: 'portable',
-              gx: 6,  gy: 13, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
+              gx: 9, gy: 20, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
               characters: ['portable'],
               blurb: 'Portable is in there, and he does not lose quietly.',
               tag: 'FIGHT PORTABLE' },
 
             { id: 'work_lag', name: 'Oshodi Labour Junction', short: 'Labour Junction', kind: 'work', open: [6, 18],
-              gx: 12, gy: 19, gw: 2, gd: 2, vh: 104, icon: 'desk', roof: '#5b6b7a',
+              gx: 18, gy: 29, gw: 2, gd: 2, vh: 104, icon: 'desk', roof: '#5b6b7a',
               blurb: 'Stand here from six and somebody will have a day for you.',
               tag: 'WORK' },
 
             { id: 'hotel_lag', name: 'Ikeja Guest Inn', short: 'Ikeja Inn', kind: 'hotel', open: [0, 24],
-              gx: 12, gy: 13, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
+              gx: 18, gy: 20, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'A bed, a lock, and a full night.', tag: 'SLEEP' },
 
             { id: 'clinic_lag', name: 'Marina Clinic', kind: 'clinic', open: [8, 18],
-              gx: 1,  gy: 19, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
+              gx: 2, gy: 29, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
               blurb: 'Find out what is actually wrong.', tag: 'CLINIC' },
 
             { id: 'quibbles_lag', name: 'Quibbles', kind: 'hangout', open: [0, 24],
-              gx: 17, gy: 6, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
+              gx: 26, gy: 9, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
               blurb: 'Same arguments as Abeokuta, louder.',
               tag: 'HANG OUT' },
 
             { id: 'market', name: 'Balogun Market', short: 'Balogun', kind: 'open', open: [7, 19], modal: 'shop-modal',
-              gx: 1,  gy: 13, gw: 2, gd: 2, icon: 'cart',
+              gx: 2, gy: 20, gw: 2, gd: 2, icon: 'cart',
               blurb: 'Skubu, and what it buys.' },
         ],
     },
@@ -100,65 +103,65 @@ const CITIES = [
         // Low and spread out: two plots in three left as ground, nothing
         // above four storeys, and no towers at all. More trees, fewer
         // billboards, less traffic — a town with room in it.
-        feel: { skip: 0.72, base: 18, vary: 46, tower: 999, wide: 0.97,
-                trees: 0.70, adStep: 11, carSkip: 0.66, walkers: 2 },
-        grid: 21,
-        roadsGX: [6, 13], roadsGY: [6, 14],
+        feel: { skip: 0.78, base: 18, vary: 46, tower: 999, wide: 0.97,
+                trees: 0.66, adStep: 14, carSkip: 0.66, walkers: 3 },
+        grid: 32, scale: 1.5,
+        roadsGX: [9, 20], roadsGY: [9, 21],
         // The Ogun runs as a diagonal band. Wherever a road meets it there is
         // a bridge, which falls out of the geometry rather than being placed.
-        river: { lo: 4, hi: 6 },
+        river: { lo: 6, hi: 9 },
         // Olumo, and the outcrops the town is built around.
-        rocks: [[1, 1], [2, 1], [1, 2], [2, 2], [3, 2], [2, 3], [3, 3],
-                [17, 18], [18, 18], [18, 19], [10, 10], [11, 10]],
-        exit: { axis: 'gy', at: 14, from: 21, to: 25 },
+        rocks: [[2, 2], [3, 2], [4, 2], [2, 3], [3, 3], [4, 3], [3, 4], [4, 4], [5, 4], [4, 5],
+                [26, 27], [27, 27], [27, 28], [15, 15], [16, 15]],
+        exit: { axis: 'gy', at: 21, from: 32, to: 36 },
         venues: [
             { id: 'agent_abk', name: 'Estate Agent', kind: 'open', open: [9, 17], modal: 'estate-modal',
-              gx: 15, gy: 1, gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
+              gx: 23, gy: 2, gw: 2, gd: 2, icon: 'key', roof: '#2874a6',
               blurb: 'Half what Lagos asks, and half the hurry.' },
 
             { id: 'centenary', name: 'Centenary Hall', short: 'Centenary', kind: 'open', open: [10, 20], modal: 'hs-modal',
-              gx: 9,  gy: 1, gw: 2, gd: 2, icon: 'cup',
+              gx: 14, gy: 2, gw: 2, gd: 2, icon: 'cup',
               blurb: 'Who has run the furthest.' },
 
             { id: 'secretariat', name: 'Ogun Secretariat', short: 'Secretariat', kind: 'work', open: [8, 16],
-              gx: 1,  gy: 9, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
+              gx: 2, gy: 13, gw: 2, gd: 2, vh: 118, icon: 'desk', roof: '#5b6b7a',
               blurb: 'Grade levels, desks, and a wage that comes every week.',
               tag: 'WORK' },
 
             { id: 'lafenwa', name: 'Lafenwa Bridge', short: 'Lafenwa', kind: 'play', open: [0, 24], mode: 'chase',
-              gx: 15, gy: 9, gw: 2, gd: 2, vh: 92, icon: 'chase',
+              gx: 23, gy: 14, gw: 2, gd: 2, vh: 92, icon: 'chase',
               characters: ['portable'],
               blurb: 'Over the Ogun, with someone behind you.', tag: 'CHASE' },
 
             { id: 'game_abk', name: 'Kuto Game House', short: 'Kuto', kind: 'play', open: [10, 24], mode: 'run',
-              gx: 9,  gy: 17, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
+              gx: 14, gy: 26, gw: 2, gd: 2, icon: 'arcade', roof: '#c8912e',
               characters: RUNNERS,
               blurb: 'Quieter room, smaller takings.', tag: 'GAME HOUSE' },
 
             { id: 'ake_club', name: 'Ake Club', kind: 'play', open: [20, 27], mode: 'fight', opponent: 'portable',
-              gx: 15, gy: 17, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
+              gx: 23, gy: 26, gw: 2, gd: 2, icon: 'fist', roof: '#b03a6e',
               characters: ['portable'],
               blurb: 'Portable tours. Tonight he is here.', tag: 'FIGHT PORTABLE' },
 
             { id: 'hotel_abk', name: 'Gateway Lodge', short: 'Gateway', kind: 'hotel', open: [0, 24],
-              gx: 9,  gy: 11, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
+              gx: 14, gy: 17, gw: 2, gd: 2, icon: 'bed', roof: '#2874a6',
               blurb: 'Quiet enough to actually sleep.', tag: 'SLEEP' },
 
             { id: 'clinic_abk', name: 'Ibara Clinic', kind: 'clinic', open: [8, 17],
-              gx: 2,  gy: 11, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
+              gx: 5, gy: 18, gw: 2, gd: 2, icon: 'cross', roof: '#e8e3d6',
               blurb: 'Shorter queue than Lagos.', tag: 'CLINIC' },
 
             { id: 'itoku', name: 'Itoku Market', kind: 'open', open: [7, 18], modal: 'shop-modal',
-              gx: 2,  gy: 16, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
+              gx: 3, gy: 24, gw: 2, gd: 2, icon: 'cart', roof: '#2874a6',
               blurb: 'Adire, skubu, and what it buys.' },
 
             { id: 'quibbles', name: 'Quibbles', kind: 'hangout', open: [0, 24],
-              gx: 19, gy: 0, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
+              gx: 29, gy: 0, gw: 2, gd: 2, vh: 96, icon: 'home', roof: '#d35400',
               blurb: 'Somewhere to sit, and somebody always arguing about something.',
               tag: 'HANG OUT' },
 
             { id: 'exit_lag', name: 'Lagos Expressway', short: 'To Lagos', kind: 'travel', open: [0, 24], to: 'lagos',
-              gx: 19, gy: 15, gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
+              gx: 30, gy: 22, gw: 2, gd: 1, vh: 70, icon: 'road', roof: '#1f7a4d',
               blurb: 'Back down to the coast.', tag: 'TRAVEL' },
         ],
     },

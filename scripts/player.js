@@ -498,7 +498,8 @@ const Player = {
         if (!from || !to || from.id === to.id) return 0;
         const fx = from.gx + (from.gw || 2) / 2, fy = from.gy + (from.gd || 2) / 2;
         const tx = to.gx + (to.gw || 2) / 2,     ty = to.gy + (to.gd || 2) / 2;
-        return Math.round(Math.hypot(tx - fx, ty - fy) * 10) / 10;
+        const k = (getCity(this._cityOf(to.id)) || {}).scale || 1;
+        return Math.round(Math.hypot(tx - fx, ty - fy) / k * 10) / 10;
     },
 
     /// Every way of getting there, with what it costs and how long it takes.

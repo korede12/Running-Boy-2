@@ -10,8 +10,11 @@
 const ISO = { TW: 62, TH: 31, OX: 770, OY: 312 };   // tile width, height, origin
 let CITY = null, FEEL = {}, GRID = 24, VENUES = [];
 // Cropped to what the city actually occupies, so it fills the window
-// instead of floating in dead canvas.
-const MAP_W = 1540, MAP_H = 1072;
+// instead of floating in dead canvas. Sized from the grid on each build, so
+// a bigger city is a bigger picture at the same zoom rather than the same
+// picture zoomed out. 1540 is the width the zoom was set for.
+let MAP_W = 1540, MAP_H = 1072;
+const MAP_BASE_W = 1540;
 
 // Night, as the city has always been. Only the shapes changed.
 const MAP_C = {
@@ -112,6 +115,11 @@ const CityMap = {
         FEEL = Object.assign({ skip: 0.52, base: 30, vary: 130, tower: 100, wide: 0.90,
                                trees: 0.88, adStep: 6, carSkip: 0.42, walkers: 5 }, CITY.feel || {});
         GRID = CITY.grid;
+        MAP_W = GRID * ISO.TW + 52;
+        MAP_H = ISO.OY + GRID * ISO.TH + 16;
+        ISO.OX = MAP_W / 2;
+        host.style.setProperty('--city-k', (MAP_W / MAP_BASE_W).toFixed(4));
+        host.style.setProperty('--city-r', (MAP_W / MAP_H).toFixed(4));
         ROAD_GX = CITY.roadsGX;
         ROAD_GY = CITY.roadsGY;
         VENUES = CITY.venues;
@@ -241,8 +249,10 @@ const CityMap = {
     _d(gx, gy, w, d) { return (gx + (w || 1)) + (gy + (d || 1)); },
 
     _venueTile(gx, gy) {
-        return VENUES.some(v => gx >= v.gx - 1 && gx <= v.gx + (v.gw || 2) &&
-                                gy >= v.gy - 1 && gy <= v.gy + (v.gd || 2));
+        // Two tiles of open ground around every venue, so a place you can go
+        // stands on its own rather than in a wall of towers.
+        return VENUES.some(v => gx >= v.gx - 2 && gx <= v.gx + (v.gw || 2) + 1 &&
+                                gy >= v.gy - 2 && gy <= v.gy + (v.gd || 2) + 1);
     },
 
     // ── Rock ──────────────────────────────────────────────────────────────
