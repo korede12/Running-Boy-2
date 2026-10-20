@@ -82,16 +82,65 @@ const VOICES = {
     pad:        ['triangle', 0.200, 0.40,  0.85,  0.90,  1800,  8],
     ethnic:     ['triangle', 0.004, 0.35,  0.15,  0.35,  3200,  3],
     percussive: ['sine',     0.001, 0.30,  0.02,  0.30,  5000,  0],
+
 };
 
 /// Channel 10 (index 9) is the drum kit: the note number picks a sound
-/// rather than a pitch.
-const DRUMS = {
+/// rather than a pitch, and the channel's program picks the kit, as it does
+/// in General MIDI 2.
+const STANDARD = {
     35: ['kick', 55], 36: ['kick', 65], 37: ['click', 900],
     38: ['snare', 0], 39: ['clap', 0],  40: ['snare', 0],
     42: ['hat', 0.04], 44: ['hat', 0.06], 46: ['hat', 0.28],
     49: ['crash', 0.9], 51: ['ride', 0.5],
 };
+
+/// West African hand percussion. The notes sit where General MIDI keeps
+/// its own hand drums — bongos, congas, timbale, agogo, cabasa, maracas,
+/// claves — so a GM file that uses those lands on the nearest thing here.
+///   skin:  pitch in Hz, how far above it the stroke starts, decay, slap
+///   bell:  pitch in Hz
+///   shake: centre in Hz, decay, attack
+const AFRICAN = {
+    35: ['skin', 62, 1.8, 0.55, 0.2],    // dundun, the low bass drum
+    36: ['skin', 98, 1.6, 0.40, 0.25],   // sangban, the middle one
+    64: ['skin', 78, 1.3, 0.30, 0.1],    // djembe bass, struck in the centre
+    63: ['skin', 300, 1.15, 0.22, 0.3],  // djembe tone, at the edge
+    62: ['skin', 380, 1.1, 0.09, 1.0],   // djembe slap, fingers loose
+    65: ['skin', 210, 1.25, 0.18, 0.5],  // sakara, the clay frame drum
+    61: ['skin', 165, 1.2, 0.20, 0.35],  // bata, the big head
+    60: ['skin', 260, 1.2, 0.14, 0.45],  // bata, the small head
+    67: ['bell', 940],                   // agogo, high bell
+    68: ['bell', 705],                   // agogo, low bell
+    69: ['shake', 5200, 0.16, 0.025],    // shekere, beads on a gourd
+    70: ['shake', 7000, 0.07, 0.006],    // shaker
+    75: ['click', 2500],                 // clave
+};
+
+/// Every kit, by program number. `rows` is the editor's order, loud and
+/// high to low and fundamental; `names` labels them. Kept with the sounds
+/// so a kit cannot gain a sound the editor has no row for.
+const KITS = {
+    0: {
+        name: 'Standard Kit', sounds: STANDARD,
+        rows: [51, 49, 46, 44, 42, 40, 39, 38, 37, 36, 35],
+        names: { 35: 'Kick', 36: 'Kick2', 37: 'Rim', 38: 'Snare', 39: 'Clap',
+                 40: 'Snare2', 42: 'HiHat', 44: 'Pedal', 46: 'Open',
+                 49: 'Crash', 51: 'Ride' },
+    },
+    64: {
+        name: 'African Percussion', sounds: AFRICAN,
+        rows: [70, 69, 75, 67, 68, 62, 63, 60, 61, 65, 64, 36, 35],
+        names: { 35: 'Dundun', 36: 'Sangban', 60: 'BataHi', 61: 'BataLo',
+                 62: 'Dj Slap', 63: 'Dj Tone', 64: 'Dj Bass', 65: 'Sakara',
+                 67: 'AgogoHi', 68: 'AgogoLo', 69: 'Shekere', 70: 'Shaker',
+                 75: 'Clave' },
+    },
+};
+
+/// The kit a program selects. A program with no kit of its own gets the
+/// standard one, which is what a General MIDI player does too.
+function kitFor(program) { return KITS[program] || KITS[0]; }
 
 class Synth {
     constructor() {
@@ -123,7 +172,10 @@ class Synth {
     ///
     /// Each destination keeps its own headroom gain: 0.22 is what stops a
     /// chord clipping, and it has to keep doing that on the way to a bus.
-    route(drums, music) {
+    /// `strip`, when given, answers a channel with that channel's own
+    /// input on the mixer — so every track can have a level and a pan —
+    /// and is asked once per channel, the first time it sounds.
+    route(drums, music, strip) {
         if (!this.ctx || !drums || !music) { this.routes = null; return; }
         const pad = (to) => {
             const g = this.ctx.createGain();
@@ -131,13 +183,23 @@ class Synth {
             g.connect(to);
             return g;
         };
-        this.routes = { drums: pad(drums), music: pad(music) };
+        this.routes = { drums: pad(drums), music: pad(music),
+                        strip: typeof strip === 'function' ? strip : null, pads: new Map() };
     }
 
     /// Where a channel's sound should go. Channel 10 is the kit.
     busFor(channel) {
         if (!this.routes) return this.out;
-        return channel === 9 ? this.routes.drums : this.routes.music;
+        const r = this.routes;
+        if (r.strip) {
+            let p = r.pads.get(channel);
+            if (!p) {
+                const to = r.strip(channel);
+                if (to) { p = this.ctx.createGain(); p.gain.value = 0.22; p.connect(to); r.pads.set(channel, p); }
+            }
+            if (p) return p;
+        }
+        return channel === 9 ? r.drums : r.music;
     }
 
     /// Browsers will not make a sound until a gesture starts the context.
@@ -164,13 +226,15 @@ class Synth {
 
     /// Play a note. `seconds` is how long it is held; `when` is the context
     /// time it starts, which only a bounce needs to say — live, now is the
-    /// only answer there is.
-    hit(channel, note, velocity = 100, seconds = 0.25, when = null) {
+    /// only answer there is. `ring` is for drums, which ignore `seconds`:
+    /// how long a hit drawn longer than a step is let ring, in seconds. A
+    /// drum never rings for less than its own natural length.
+    hit(channel, note, velocity = 100, seconds = 0.25, when = null, ring = 0) {
         if (!this.ctx) return;
         const t = when == null ? this.ctx.currentTime : when;
         const gain = Math.min(1, velocity / 127) * 0.9;
         const bus = this.busFor(channel);
-        if (channel === 9) this.drum(note, gain, t, bus);
+        if (channel === 9) this.drum(note, gain, t, bus, ring);
         else this.voice(this.programs.get(channel) ?? 0, note, gain, seconds, t, bus);
     }
 
@@ -213,18 +277,53 @@ class Synth {
         }
     }
 
-    drum(note, gain, t, bus) {
+    drum(note, gain, t, bus, ring = 0) {
         bus = bus || this.out;
-        const [kind, arg] = DRUMS[note] || ['hat', 0.05];
+        // Every decay goes through this, so a long note is a long tail and
+        // a short one is the drum as it always was.
+        const R = len => Math.max(len, ring);
+        // A note this kit lacks plays as the standard kit would play it, so
+        // a beat written for one kit is never silent on another.
+        const spec = kitFor(this.programs.get(9) ?? 0).sounds[note]
+                  || STANDARD[note] || ['hat', 0.05];
+        const [kind, arg] = spec;
+        if (kind === 'skin') {
+            // A hand on a membrane: the pitch settles from above as the head
+            // relaxes, the first overtone of a drumhead (about 1.59 times the
+            // fundamental) dies first, and a slap adds the crack of the skin.
+            const [, , bend, len, slap] = spec;
+            this.tone('sine', arg * bend, arg, Math.min(0.04, len * 0.3), gain, R(len), t, bus);
+            this.tone('triangle', arg * bend * 1.59, arg * 1.59, 0.02, gain * 0.3, len * 0.4, t, bus);
+            if (slap > 0) this.burst(Math.min(8000, arg * 6), 0.8, gain * slap, 0.002, 0.045, t, bus);
+            return;
+        }
+        if (kind === 'bell') {
+            // An agogo is a struck iron bell: a few inharmonic partials, the
+            // high ones gone almost at once, over a tick of the stick.
+            // Rung longer, every partial lasts longer in proportion.
+            const k = R(0.4) / 0.4;
+            this.tone('sine', arg, arg, 0, gain * 0.55, 0.4 * k, t, bus);
+            this.tone('sine', arg * 2.76, arg * 2.76, 0, gain * 0.25, 0.16 * k, t, bus);
+            this.tone('sine', arg * 5.4, arg * 5.4, 0, gain * 0.1, 0.06 * k, t, bus);
+            this.burst(3000, 2, gain * 0.25, 0.001, 0.01, t, bus);
+            return;
+        }
+        if (kind === 'shake') {
+            // Beads swept across a gourd: noise that swells rather than
+            // strikes, which is the whole difference from a hi-hat.
+            const [, , len, attack] = spec;
+            this.burst(arg, 1.5, gain * 0.7, attack, R(len), t, bus);
+            return;
+        }
         if (kind === 'kick') {
             const o = this.ctx.createOscillator(), g = this.ctx.createGain();
             o.type = 'sine';
             o.frequency.setValueAtTime(arg * 2.6, t);
             o.frequency.exponentialRampToValueAtTime(arg * 0.6, t + 0.11);
             g.gain.setValueAtTime(gain, t);
-            g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + R(0.22));
             o.connect(g).connect(bus);
-            o.start(t); o.stop(t + 0.24);
+            o.start(t); o.stop(t + R(0.22) + 0.02);
             return;
         }
         const src = this.ctx.createBufferSource();
@@ -237,12 +336,40 @@ class Synth {
         } else {
             f.type = 'highpass'; f.frequency.value = kind === 'crash' ? 4000 : 7000;
         }
-        const len = kind === 'snare' ? 0.17 : kind === 'clap' ? 0.14
-                  : kind === 'click' ? 0.05 : (typeof arg === 'number' ? arg : 0.05);
+        const len = R(kind === 'snare' ? 0.17 : kind === 'clap' ? 0.14
+                  : kind === 'click' ? 0.05 : (typeof arg === 'number' ? arg : 0.05));
+        src.loop = true;             // the noise is half a second; a tail may be longer
         g.gain.setValueAtTime(gain * 0.8, t);
         g.gain.exponentialRampToValueAtTime(0.0001, t + len);
         src.connect(f).connect(g).connect(bus);
         src.start(t); src.stop(t + len + 0.02);
+    }
+
+    /// A pitched hit that glides from `from` to `to` over `bend` seconds and
+    /// dies away over `len`.
+    tone(type, from, to, bend, peak, len, t, bus) {
+        const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+        o.type = type;
+        o.frequency.setValueAtTime(from, t);
+        if (bend > 0) o.frequency.exponentialRampToValueAtTime(to, t + bend);
+        g.gain.setValueAtTime(peak, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(g).connect(bus);
+        o.start(t); o.stop(t + len + 0.02);
+    }
+
+    /// Band-passed noise that rises over `attack` and falls over `len`.
+    burst(hz, q, peak, attack, len, t, bus) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noise();
+        src.loop = true;             // a long tail outlasts the half-second of noise
+        const f = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
+        f.type = 'bandpass'; f.frequency.value = hz; f.Q.value = q;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak, t + attack);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + attack + len);
+        src.connect(f).connect(g).connect(bus);
+        src.start(t); src.stop(t + attack + len + 0.02);
     }
 
     allOff() {
@@ -318,6 +445,9 @@ class Riff {
         const i = this.events.indexOf(ev);
         if (i !== -1) this.events.splice(i, 1);
     }
+    /// Back into tick order after notes have moved. Stable, so events that
+    /// share a tick keep the order they had.
+    sortEvents() { this.events.sort((a, b) => a.tick - b.tick); }
     get steps() { return this.bars * STEPS_PER_BAR; }
 
     /// An independent copy, events and all. Vibe names these 'Copy of X' and
@@ -433,13 +563,24 @@ function writeVbm(song) {
     w.str(song.name);
     w.i32(song.bars).i32(song.tempo).i32(song.loopStart).i32(song.loopEnd);
 
+    // A note off the step grid cannot be said in the original's whole-step
+    // fields. It is written there to the nearest step the original can
+    // play, and its true place goes in a trailer after everything the
+    // original reads — so the old app opens the file, slightly quantised,
+    // and this one gets the note back exactly where it was.
+    const fine = [];
     w.i32(song.riffs.length);
-    for (const r of song.riffs) {
+    song.riffs.forEach((r, ri) => {
         w.str(r.name).i32(r.bars).i64(r.id).i32(r.events.length);
-        for (const e of r.events) {
-            w.i32(e.tick).i32(e.status).i32(e.dur).i32(e.data.length).raw(e.data);
-        }
-    }
+        r.events.forEach((e, ei) => {
+            const tick = Math.floor(e.tick + 1e-9);
+            const dur = e.dur > 0 ? Math.max(1, Math.round(e.dur)) : e.dur;
+            if (tick !== e.tick || dur !== e.dur)
+                fine.push([ri, ei, Math.round(e.tick * TICKS_PER_STEP),
+                           Math.round(e.dur * TICKS_PER_STEP)]);
+            w.i32(tick).i32(e.status).i32(dur).i32(e.data.length).raw(e.data);
+        });
+    });
 
     w.i32(song.tracks.length);
     for (const t of song.tracks) {
@@ -447,8 +588,19 @@ function writeVbm(song) {
         w.i32(t.placements.length);
         for (const p of t.placements) w.i32(p.at).i64(p.riff.id);
     }
+
+    // Nothing at all when every note is on the grid: such a file stays
+    // byte for byte what the original writes.
+    if (fine.length) {
+        w.raw(FINE_MAGIC).i32(fine.length);
+        for (const [ri, ei, t24, d24] of fine) w.i32(ri).i32(ei).i32(t24).i32(d24);
+    }
     return w.done();
 }
+
+/// 'VBF1' — marks the trailer of off-grid positions. Never written by the
+/// original, which stops reading at the last track.
+const FINE_MAGIC = [0x56, 0x42, 0x46, 0x31];
 
 function readVbm(buf) {
     const r = new Reader(buf);
@@ -487,6 +639,21 @@ function readVbm(buf) {
         }
         song.addTrack(t);
     }
+
+    // Off-grid positions, if this app wrote any. Anything malformed is
+    // ignored: the notes are already there, merely on the nearest step.
+    if (r.b.length - r.p >= 8 && FINE_MAGIC.every((v, i) => r.b[r.p + i] === v)) {
+        r.p += 4;
+        const n = r.i32();
+        for (let k = 0; k < n && r.b.length - r.p >= 16; k++) {
+            const ri = r.i32(), ei = r.i32(), t24 = r.i32(), d24 = r.i32();
+            const e = song.riffs[ri] && song.riffs[ri].events[ei];
+            if (!e || t24 < 0 || d24 < 0) continue;
+            e.tick = t24 / TICKS_PER_STEP;
+            e.dur = d24 / TICKS_PER_STEP;
+        }
+        for (const riff of song.riffs) riff.sortEvents();
+    }
     return song;
 }
 
@@ -495,6 +662,9 @@ function readVbm(buf) {
 /// MIDI's variable-length quantity: seven bits per byte, high bit set on
 /// every byte but the last.
 function vlq(n) {
+    // An off-grid note is a fraction of a step, which is a whole number of
+    // ticks once multiplied out — give or take the float it was carried in.
+    n = Math.round(n);
     const out = [n & 0x7F];
     while ((n >>>= 7) !== 0) out.unshift((n & 0x7F) | 0x80);
     return out;

@@ -1353,6 +1353,44 @@ body.in-place { overflow: hidden; }
     color: #4cc9d9; min-width: 38px;
 }
 
+/* The mixer: a strip per track, then the buses. */
+.mx-looks i { font-style: normal; font-size: 10px; color: #7f8aa0; margin-right: 2px; }
+.mx-strips, .mx-buses { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.mx-strip, .mx-bus { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+    padding: 5px 6px; background: #15151d; border: 1px solid #1f1f2a; border-radius: 7px; }
+.mx-strip.mx-off { opacity: .5; }
+.mx-name { flex: 0 0 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: monospace; font-size: 10.5px; color: #e8edf6;
+    border-left: 3px solid #3a3a4a; padding-left: 6px; }
+.mx-ms { flex: 0 0 auto; font-family: monospace; font-size: 10px; color: #8b93a6;
+    background: #1d1d27; border: 1px solid #2d2d3a; border-radius: 5px; padding: 3px 6px; cursor: pointer; }
+.mx-ms.on { background: #e8384f; border-color: #e8384f; color: #fff; }
+.mx-ms.mx-solo.on { background: #ffc83d; border-color: #ffc83d; color: #15151d; }
+.mx-meter { position: relative; flex: 0 0 90px; height: 8px; border-radius: 4px; overflow: hidden;
+    background: #0e0e14; border: 1px solid #23232e; }
+.mx-meter i { display: block; width: 0; height: 100%; background: #4cd964; }
+.mx-meter i.warm { background: #ffc83d; }
+.mx-meter i.hot { background: #e8384f; }
+.mx-meter u { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #e8edf6; opacity: .7; }
+.mx-k { display: inline-flex; align-items: center; gap: 5px; font-family: monospace; font-size: 10px; color: #8b93a6; }
+.mx-k i { font-style: normal; }
+.mx-k input[type=range] { width: 64px; accent-color: #4cc9d9; background: none; padding: 0; margin: 0; }
+.mx-k b { font-weight: normal; font-size: 10px; color: #4cc9d9; min-width: 40px; }
+.mx-bus label { display: inline-flex; align-items: center; gap: 6px; font-family: monospace; font-size: 10px; color: #8b93a6; }
+.mx-bus input[type=range] { width: 110px; accent-color: #4cc9d9; background: none; padding: 0; margin: 0; }
+.mx-bus b { font-weight: normal; font-family: monospace; font-size: 10px; color: #4cc9d9; min-width: 38px; }
+.mx-master { border-color: #3a3050; }
+.mx-master em { font-style: normal; font-family: monospace; font-size: 9px; padding: 2px 5px; border-radius: 4px;
+    color: #5a6172; border: 1px solid #2d2d3a; }
+.mx-master em.on { color: #fff; background: #e8384f; border-color: #e8384f; }
+.mic-dials select { font-family: monospace; font-size: 10px; color: #e8edf6; background: #1d1d27;
+    border: 1px solid #2d2d3a; border-radius: 5px; padding: 2px 4px; }
+@media (max-width: 420px) {
+    .mx-name { flex-basis: 100%; }
+    .mx-meter { flex-basis: 70px; }
+    .mx-k input[type=range] { width: 54px; }
+}
+
 @media (max-width: 420px) {
     .mic-meter { flex-basis: 64px; }
     .mic-dials input[type=range] { width: 70px; }
@@ -1373,12 +1411,9 @@ body.in-place { overflow: hidden; }
    being an arrangement. Anything further down is reached by scrolling. */
 #st-grid { min-height: 150px; }
 
-/* A drum track has a kit, not a General MIDI program. */
-.st-kit {
-    font-family: monospace; font-size: 11.5px; color: #ffc83d;
-    background: #16161f; border: 1px solid #23232e; border-radius: 8px;
-    padding: 7px 10px; white-space: nowrap;
-}
+/* A drum track picks a kit, not a General MIDI program, and shows it in
+   the kit's colour. */
+.st-bar select.st-kit { color: #ffc83d; }
 
 /* Something is happening. Shown in place of the panel, because while it
    runs it is the only thing worth looking at. */

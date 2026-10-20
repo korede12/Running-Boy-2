@@ -102,15 +102,31 @@ const Studio = {
     ROW_MIN: 13,             // below this a row cannot be hit reliably
     ROW_BIG: 20,
 
-    // Every sound the synth's kit actually makes, loud-and-high to
-    // low-and-fundamental, which is the order a drum machine has always
-    // laid them out.
-    DRUM_ROWS: [51, 49, 46, 44, 42, 40, 39, 38, 37, 36, 35],
+    // The kits, their rows and their names live with their sounds in the
+    // engine (KITS in synth.js); a drum track's program says which it is.
+    kit(t) { return kitFor(t.program | 0); },
 
-    // What General MIDI calls program 0 on channel 10, and what this one
-    // actually is. There is one kit; offering a menu of eight would be a
-    // nicer lie rather than a better answer.
-    KIT_NAME: 'Standard Kit',
+    /// A drum track's rows: the kit's own, loud-and-high to
+    /// low-and-fundamental, plus one on top for any note in the riff that
+    /// the kit does not have. The synth plays those from the standard kit,
+    /// so a beat moved onto another kit still sounds — and a note you can
+    /// hear has to be a note you can see and delete.
+    drumRows(t) {
+        const kit = this.kit(t);
+        const events = this.editing ? this.editing.events : [];
+        const c = this._drumRows;
+        if (c && c.kit === kit && c.riff === this.editing && c.n === events.length) return c.rows;
+        const stray = new Set();
+        for (const e of events)
+            if (e.isNote && kit.rows.indexOf(e.data[0]) === -1) stray.add(e.data[0]);
+        const rows = [...stray].sort((a, b) => b - a).concat(kit.rows);
+        this._drumRows = { kit, riff: this.editing, n: events.length, rows };
+        return rows;
+    },
+
+    drumName(t, n) {
+        return this.kit(t).names[n] || KITS[0].names[n] || String(n);
+    },
 
     /// What sort of grid a track wants. `at` is where the window opens, as
     /// a pitch; the full range stays reachable by scrolling, because a grid
@@ -148,11 +164,7 @@ const Studio = {
     head: 0,                 // the playhead, in steps from the start
     RULER: 14,               // height of the ruler along the top
     _keys: null,              // the pitch cache — see keys(); NOT the key handler
-    // Every sound the synth's kit makes has a name here. A row labelled 44
-    // is a row you cannot act on.
-    DRUM_NAMES: { 35: 'Kick', 36: 'Kick2', 37: 'Rim', 38: 'Snare', 39: 'Clap',
-                  40: 'Snare2', 42: 'HiHat', 44: 'Pedal', 46: 'Open',
-                  49: 'Crash', 51: 'Ride' },
+    _drumRows: null,          // the kit-row cache — see drumRows()
 
     // ── Opening and closing ───────────────────────────────────────────────
 
@@ -302,6 +314,7 @@ const Studio = {
         cv.addEventListener('pointerup', e => this.up(e));
         cv.addEventListener('pointercancel', () => {
             if (this._move) this.moveEnd();
+            if (this._stretch) this.stretchEnd();
             this._press = null; this._band = null; this._scroll = null; this.draw();
         });
 
@@ -403,10 +416,15 @@ const Studio = {
             if (t.channel === 9) {
                 // Channel 10 is the kit, and a General MIDI program number
                 // means a different thing there — which is why showing the
-                // first entry of the melodic list was never right.
-                inst = '<span class="st-kit" title="' + this.DRUM_ROWS.length +
-                    ' sounds — the only kit this synth has">&#9834; ' +
-                    this.KIT_NAME + '</span>';
+                // first entry of the melodic list was never right. The menu
+                // lists the kits this synth has, not the eight GM2 names.
+                const now = this.kit(t);
+                inst = '<select class="st-kit" title="The kit this track plays"' +
+                    ' onchange="Studio.setInst(+this.value)">';
+                for (const p of Object.keys(KITS))
+                    inst += `<option value="${p}"${KITS[p] === now ? ' selected' : ''}>` +
+                            `&#9834; ${KITS[p].name}</option>`;
+                inst += '</select>';
             } else {
                 inst = '<select onchange="Studio.setInst(+this.value)">';
                 GM.forEach((n, i) =>
@@ -428,6 +446,17 @@ const Studio = {
                 '</span>' +
                 b('&lsaquo; Arrange', 'back()', 'Back to the arrangement', 'st-hot') +
                 inst +
+                // Where the lines fall, and whether notes have to sit on them.
+                '<select class="st-grid-sel" title="Grid: where the lines fall"' +
+                    ' onchange="Studio.setGrid(this.value)">' +
+                    this.SNAP_GRIDS.map(g => `<option value="${g.id}"` +
+                        `${g.id === this.grid().id ? ' selected' : ''}>&#9638; ${g.name}</option>`).join('') +
+                '</select>' +
+                b('Snap', 'setSnap()',
+                  'Snap notes to the grid — off places them anywhere (Alt while dragging does the same)',
+                  this.snapOn() ? 'st-hot' : 'st-dim') +
+                b('Quantise', 'quantize()',
+                  'Move the held notes — or all of them — onto the grid') +
                 b('Copy', 'noteCopy()', 'Copy the notes you are holding',
                   held ? '' : 'st-dim') +
                 b('Cut', 'noteCut()', 'Cut the notes you are holding',
@@ -588,7 +617,9 @@ const Studio = {
         const read = document.getElementById('st-bpm');
         if (read) read.textContent = String(bpm);
         // Nothing to restart: the clock reads the tempo on every step, so a
-        // change lands on the next one and the loop keeps its place.
+        // change lands on the next one and the loop keeps its place. The
+        // echo is timed to the beat, so it follows.
+        this.mixLive();
         this.keep();
     },
 
@@ -703,12 +734,19 @@ const Studio = {
         return this._keys;
     },
 
-    rows(t) { return t.channel === 9 ? this.DRUM_ROWS : this.keys(); },
+    rows(t) { return t.channel === 9 ? this.drumRows(t) : this.keys(); },
 
     /// Which row a pitch is on, or -1. The range is contiguous for pitched
     /// tracks, so this does not need a search.
     rowOf(t, pitch) {
-        if (t.channel === 9) return this.DRUM_ROWS.indexOf(pitch);
+        if (t.channel === 9) {
+            // The row cache is keyed on the note count, so a riff whose
+            // notes were swapped for as many others can miss; look again.
+            const r = this.drumRows(t).indexOf(pitch);
+            if (r !== -1) return r;
+            this._drumRows = null;
+            return this.drumRows(t).indexOf(pitch);
+        }
         if (pitch > this.NOTE_HIGH || pitch < this.NOTE_LOW) return -1;
         return this.NOTE_HIGH - pitch;
     },
@@ -721,7 +759,7 @@ const Studio = {
         // labelled String(undefined), which put the word "undefined" down
         // the side of every drum grid taller than the kit.
         if (n == null) return '';
-        if (t.channel === 9) return this.DRUM_NAMES[n] || String(n);
+        if (t.channel === 9) return this.drumName(t, n);
         return ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][n % 12]
              + (Math.floor(n / 12) - 1);
     },
@@ -948,7 +986,8 @@ const Studio = {
     /// dark while you could still hear it.
     sounding(e, at) {
         if (at < 0 || !e.isNote) return false;
-        return at >= e.tick && at < e.tick + Math.max(1, e.dur);
+        // A note off the grid lights from the step it falls in.
+        return at + 1 > e.tick && at < e.tick + this.noteLen(e);
     },
 
     /// Where the playhead sits INSIDE the riff on screen, or -1 when it
@@ -1364,13 +1403,20 @@ const Studio = {
                 }
             }
 
+            // On the sixteenth grid every step is its own cell, as it always
+            // was. On any other the cells would be lying about where the
+            // lines are, so a row is one strip per beat and the grid's own
+            // lines are drawn over the lot below.
+            const cells = this.grid().steps === 1;
             for (let j = 0; j < c.cols; j++) {
                 const st = this.ecol0 + j;
                 const x = c.x0 + j * c.w;
                 cx.fillStyle = st === this._step ? '#2e2e40'
                     : black ? '#101016'
-                    : (isC ? '#1d1d26' : (st % 4 === 0 ? '#191922' : '#14141c'));
-                cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
+                    : isC ? '#1d1d26'
+                    : (cells ? st % 4 === 0 : Math.floor(st / 4) % 2 === 0) ? '#191922' : '#14141c';
+                if (cells) cx.fillRect(x + 1, y + 1, c.w - 2, c.h - 2);
+                else cx.fillRect(x, y + 1, c.w, c.h - 2);
             }
 
             // A line under every C, so the octave you are in is readable
@@ -1390,6 +1436,23 @@ const Studio = {
             }
         }
 
+        // The grid's lines, when they are not the cells' own edges: down
+        // the whole roll, brighter on a beat. Dashed with snap off, as a
+        // reminder that they are only there to read by.
+        if (this.grid().steps !== 1) {
+            const u = this.grid().steps, h = c.rows * c.h;
+            const end = Math.min(this.ecol0 + c.cols, this.editing.steps);
+            const snap = this.snapOn();
+            for (let k = Math.ceil(this.ecol0 / u - 1e-6); k * u < end; k++) {
+                const st = this.fine(k * u);
+                const beat = Math.abs(st / 4 - Math.round(st / 4)) < 1e-6;
+                cx.fillStyle = st % 16 === 0 && st > 0 ? '#2f2f3e' : beat ? '#262632' : '#1e1e28';
+                const x = Math.round(this.stepX(st));
+                if (snap || beat) cx.fillRect(x, c.y0, 1, h);
+                else for (let y = c.y0; y < c.y0 + h; y += 6) cx.fillRect(x, y, 1, 3);
+            }
+        }
+
         // Which notes are sounding, so they can be lit and their keys with
         // them. Worked out once rather than per note per row.
         const at = this.rollHead();
@@ -1401,7 +1464,7 @@ const Studio = {
             const r = this.rowOf(t, e.data[0]);
             if (r < 0 || !this.keyOn(r)) continue;
             const from = Math.max(e.tick, this.ecol0);
-            const to = Math.min(e.tick + Math.max(1, e.dur), this.ecol0 + c.cols);
+            const to = Math.min(e.tick + this.noteLen(e), this.ecol0 + c.cols);
             if (to <= from) continue;
             const on = live && this.sounding(e, at);
             if (on) ringing.add(r);
@@ -1411,7 +1474,12 @@ const Studio = {
             cx.globalAlpha = on ? 1 : 0.35 + 0.65 * (e.data[1] / 127);
             cx.fillStyle = drums ? '#ffc83d' : '#4cd964';
             cx.fillRect(this.stepX(from) + 1, this.keyY(r) + 2,
-                        (to - from) * c.w - 2, c.h - 4);
+                        Math.max(2, (to - from) * c.w - 2), c.h - 4);
+            // A note's end is a grip: drag it to set the length.
+            if (to === e.tick + this.noteLen(e) && (to - from) * c.w > 9) {
+                cx.fillStyle = drums ? '#7a5c12' : '#1f5c2c';
+                cx.fillRect(this.stepX(to) - 5, this.keyY(r) + 5, 2, c.h - 10);
+            }
             if (on) {
                 cx.strokeStyle = '#ffffff';
                 cx.lineWidth = 1.5;
@@ -1483,6 +1551,16 @@ const Studio = {
                                   : String(Math.floor((st % 16) / 4) + 1),
                             x + 3, this.RULER / 2 - 2);
             }
+        }
+
+        // A grid that is not the steps gets its own short marks, so a
+        // triplet can be found from the top as well as in the roll.
+        if (this.grid().steps !== 1) {
+            const u = this.grid().steps;
+            const end = Math.min(this.ecol0 + c.cols, steps);
+            cx.fillStyle = this.snapOn() ? '#ff7a45' : '#5a6172';
+            for (let k = Math.ceil(this.ecol0 / u - 1e-6); k * u < end; k++)
+                cx.fillRect(Math.round(this.stepX(this.fine(k * u))), this.RULER - 2, 1, 2);
         }
 
         this.drawHeld(cx, c);
@@ -1639,14 +1717,17 @@ const Studio = {
 
         // In the roll a drag draws a box over notes, so the write waits
         // for the release rather than landing on the press. A press on the
-        // keyboard or the ruler is neither, and goes straight through.
+        // keyboard or the ruler is neither, and goes straight through. A
+        // drag that starts on a melody note sets its length instead.
         if (this.view !== 'arrange') {
             const c = this.cell;
             if (!c || p.y < c.y0 || p.x < c.x0) { this.tap(ev); return; }
+            const on = this.noteUnder(p);
             this._press = {
                 x: p.x, y: p.y, under: null, note: true,
+                grab: on, how: on ? this.grabOf(on, p) : null,
                 add: !!(ev.shiftKey || ev.ctrlKey || ev.metaKey),
-                ev: { clientX: ev.clientX, clientY: ev.clientY,
+                ev: { clientX: ev.clientX, clientY: ev.clientY, altKey: ev.altKey,
                       shiftKey: ev.shiftKey, ctrlKey: ev.ctrlKey, metaKey: ev.metaKey },
             };
             this._band = null;
@@ -1692,10 +1773,28 @@ const Studio = {
     move(ev) {
         if (this._scroll) { this.scrollDrag(this.point(ev)); return; }
         if (this._move) { const q = this.point(ev); this.moveDrag(q.x, q.y); return; }
-        if (!this._press) return;
+        if (this._stretch) { this.stretchDrag(this.point(ev), ev.altKey); return; }
+        if (this._nmove) { this.noteMoveDrag(this.point(ev), ev.altKey); return; }
+        if (!this._press) { this.hover(ev); return; }
         const p = this.point(ev);
         const dx = p.x - this._press.x, dy = p.y - this._press.y;
         if (!this._band && Math.abs(dx) < this.DRAG_SLOP && Math.abs(dy) < this.DRAG_SLOP) return;
+
+        // Travelling from a note: from its end, the end follows the
+        // finger; from anywhere else, the note does. Shift still means a
+        // box, as it does everywhere else.
+        if (this._press.grab && !this._press.add) {
+            const g = this._press.grab, start = this._press;
+            this._press = null;
+            if (start.how === 'stretch') {
+                this.stretchStart(g);
+                this.stretchDrag(p, ev.altKey);
+            } else {
+                this.noteMoveStart(g, start);
+                this.noteMoveDrag(p, ev.altKey);
+            }
+            return;
+        }
 
         // Travelling from something: move it. Shift is for adding to a
         // selection, so a shift-drag still draws a box.
@@ -1715,8 +1814,22 @@ const Studio = {
         this.draw();
     },
 
+    /// With nothing pressed, say with the pointer what a press would do:
+    /// a note's end stretches it, the rest of it moves it.
+    hover(ev) {
+        const cv = document.getElementById('st-grid');
+        if (!cv || !this.cell || ev.pointerType === 'touch') return;
+        const p = this.point(ev);
+        const on = this.view === 'edit' && p.x >= this.cell.x0 && p.y >= this.cell.y0
+            ? this.noteUnder(p) : null;
+        const want = !on ? '' : this.grabOf(on, p) === 'stretch' ? 'ew-resize' : 'move';
+        if (cv.style.cursor !== want) cv.style.cursor = want;
+    },
+
     up() {
         if (this._move) { this.moveEnd(); return; }
+        if (this._stretch) { this.stretchEnd(); return; }
+        if (this._nmove) { this.noteMoveEnd(); return; }
         if (this._scroll) { this._scroll = null; this.draw(); return; }
         const press = this._press;
         this._press = null;
@@ -1732,6 +1845,282 @@ const Studio = {
         // anything held — which is what clicking away means everywhere.
         if (press.note && !press.add) this.holdNone();
         this.tap(press.ev);
+    },
+
+    // ── The grid ──────────────────────────────────────────────────────────
+    //
+    // The roll is drawn in sixteenths, but a sixteenth is only what the
+    // lines are. The grid says where the lines fall — beats, eighths,
+    // thirty-seconds, or triplets that sit on none of those — and snap says
+    // whether a note has to land on one. With snap off a note goes where
+    // you put it, to the MIDI tick: 24 to a step, which is all a .mid file
+    // can say anyway. Holding Alt while dragging is snap off for that drag.
+
+    SNAP_GRIDS: [
+        { id: '1/4',   steps: 4,     name: '1/4 — beats' },
+        { id: '1/8',   steps: 2,     name: '1/8' },
+        { id: '1/16',  steps: 1,     name: '1/16 — steps' },
+        { id: '1/32',  steps: 0.5,   name: '1/32' },
+        { id: '1/8T',  steps: 4 / 3, name: '1/8 triplets' },
+        { id: '1/16T', steps: 2 / 3, name: '1/16 triplets' },
+    ],
+    GRID_KEY: 'rb_roll_grid',
+    SNAP_KEY: 'rb_roll_snap',
+    _grid: null,             // the chosen grid's id, read once from storage
+    _snapOff: null,
+
+    grid() {
+        if (this._grid == null) {
+            let saved = null;
+            try { saved = localStorage.getItem(this.GRID_KEY); } catch (_) {}
+            this._grid = this.SNAP_GRIDS.some(g => g.id === saved) ? saved : '1/16';
+        }
+        return this.SNAP_GRIDS.find(g => g.id === this._grid);
+    },
+    snapOn() {
+        if (this._snapOff == null) {
+            let saved = null;
+            try { saved = localStorage.getItem(this.SNAP_KEY); } catch (_) {}
+            this._snapOff = saved === '0';
+        }
+        return !this._snapOff;
+    },
+
+    setGrid(id) {
+        if (!this.SNAP_GRIDS.some(g => g.id === id)) return;
+        this._grid = id;
+        try { localStorage.setItem(this.GRID_KEY, id); } catch (_) {}
+        this.toolbar(); this.draw();
+        this.say('Grid ' + this.grid().name + (this.snapOn() ? '' : ' — snap is off'));
+    },
+
+    setSnap(on) {
+        const want = on == null ? !this.snapOn() : !!on;
+        this._snapOff = !want;
+        try { localStorage.setItem(this.SNAP_KEY, want ? '1' : '0'); } catch (_) {}
+        this.toolbar(); this.draw();
+        this.say(want ? 'Snap on — notes land on the ' + this.grid().id + ' grid'
+                      : 'Snap off — notes go where you put them');
+    },
+
+    /// To the nearest MIDI tick. Every position and length passes through
+    /// here, so two notes in the same place compare equal.
+    fine(x) { return Math.round(x * TICKS_PER_STEP) / TICKS_PER_STEP; },
+
+    /// Onto the grid line before (floor) or nearest (round), whether or
+    /// not snap is on.
+    onGrid(x, mode) {
+        const u = this.grid().steps;
+        const k = mode === 'floor' ? Math.floor(x / u + 1e-6) : Math.round(x / u);
+        return this.fine(k * u);
+    },
+
+    /// Where a position ends up: on the grid while snapping, and left
+    /// alone otherwise — or when `free`, which is Alt held down.
+    quant(x, mode, free) {
+        return this.snapOn() && !free ? this.onGrid(x, mode) : this.fine(x);
+    },
+
+    /// The shortest note a drag may make.
+    minLen(free) { return this.snapOn() && !free ? this.grid().steps : 0.125; },
+
+    /// A note's length on screen and in the ear. Zero means "a hit", which
+    /// the original writes for some drums; it sounds and shows as a step.
+    noteLen(e) { return e.dur > 0 ? e.dur : 1; },
+
+    /// The step under an x, to the fraction.
+    posAt(x) { return this.ecol0 + (x - this.cell.x0) / this.cell.w; },
+
+    /// A length, the way a person would say it.
+    lenWords(len) {
+        const n = +len.toFixed(2);
+        return n + (n === 1 ? ' step' : ' steps');
+    },
+
+    // ── Note lengths ──────────────────────────────────────────────────────
+
+    _stretch: null,          // a note length being dragged — see stretchStart()
+    _noteLen: null,          // what a tap writes: the last length you dragged to
+
+    /// The note covering a point in the roll, or null.
+    noteUnder(p) {
+        const t = this.song.tracks[this.track], c = this.cell;
+        if (!t || !this.editing || !c) return null;
+        const s = this.posAt(p.x);
+        const pitch = this.rows(t)[this.erow0 + Math.floor((p.y - c.y0) / c.h)];
+        if (pitch == null) return null;
+        return this.editing.events.find(e => e.isNote && e.data[0] === pitch &&
+            s >= e.tick && s < e.tick + this.noteLen(e)) || null;
+    },
+
+    /// What a drag from this point on this note means: the last stretch of
+    /// a note is its grip, and the rest of it picks it up to move. A drum
+    /// has one too — drawn longer than a step, it rings to the end.
+    grabOf(e, p) {
+        if (!e) return 'move';
+        const w = this.noteLen(e) * this.cell.w;
+        const end = this.stepX(e.tick + this.noteLen(e));
+        return end - p.x <= Math.min(w / 2, 10) ? 'stretch' : 'move';
+    },
+
+    /// Take hold of a note's end. If it is one of the held notes, they all
+    /// change by the same amount, the way a selection moves together.
+    stretchStart(e) {
+        const notes = this.heldNote(e) ? this.heldNotes() : [e];
+        this._stretch = { e, len: this.noteLen(e), marked: false,
+                          from: notes.map(n => [n, this.noteLen(n)]) };
+    },
+
+    /// The note ends on the grid line nearest the finger, or exactly on
+    /// the finger with snap off — never shorter than the grid allows, and
+    /// never past the end of the riff.
+    stretchDrag(p, free) {
+        const m = this._stretch, c = this.cell;
+        if (!m || !c || !this.editing) return;
+        const min = this.minLen(free);
+        const end = this.quant(this.posAt(p.x), 'round', free);
+        const by = Math.max(min, end - m.e.tick) - m.len;
+        let changed = false;
+        for (const [n, len] of m.from) {
+            const want = this.fine(Math.max(Math.min(min, this.editing.steps - n.tick),
+                                            Math.min(len + by, this.editing.steps - n.tick)));
+            if (n.dur === want) continue;
+            // Marked on the first real change, so a drag that goes nowhere
+            // leaves nothing to undo.
+            if (!m.marked) { this.mark('Note length'); m.marked = true; }
+            n.dur = want;
+            changed = true;
+        }
+        if (changed) this.draw();
+    },
+
+    stretchEnd() {
+        const m = this._stretch;
+        this._stretch = null;
+        if (!m || !m.marked) { this.draw(); return; }
+        this._noteLen = this.noteLen(m.e);
+        this.say('Length ' + this.lenWords(this._noteLen));
+        this.draw(); this.refreshAct(); this.keep();
+    },
+
+    // ── Moving notes ──────────────────────────────────────────────────────
+
+    _nmove: null,            // notes being dragged — see noteMoveStart()
+
+    /// Pick a note up. A held note brings the rest of the held notes with
+    /// it; any other note is held on its own, so you can see what moves.
+    noteMoveStart(e, p) {
+        const t = this.song.tracks[this.track];
+        if (!this.heldNote(e)) this._notes = [e];
+        const rows = this.rows(t);
+        this._nmove = {
+            e, x: p.x, y: p.y, rows, marked: false, pitch: e.data[0],
+            from: this.heldNotes().map(n => ({ n, tick: n.tick, row: rows.indexOf(n.data[0]) }))
+                                  .filter(f => f.row >= 0),
+        };
+        this.toolbar();
+    },
+
+    /// The grabbed note lands on the grid (or anywhere, with snap off) and
+    /// the others keep their distance from it — so a phrase moved onto the
+    /// grid keeps its own feel inside.
+    noteMoveDrag(p, free) {
+        const m = this._nmove, c = this.cell;
+        if (!m || !c) return;
+        const me = m.from.find(f => f.n === m.e);
+        if (!me) return;
+        const dt = this.quant(me.tick + (p.x - m.x) / c.w, 'round', free) - me.tick;
+        const dr = Math.round((p.y - m.y) / c.h);
+        if (this.shiftNotes(m, dt, dr, 'Move notes') && m.e.data[0] !== m.pitch) {
+            m.pitch = m.e.data[0];
+            this.preview(this.song.tracks[this.track].channel, m.pitch);
+        }
+    },
+
+    /// Put each note `dt` steps and `dr` rows from where it started, as far
+    /// as the riff and the keyboard let the whole group go.
+    shiftNotes(m, dt, dr, label) {
+        const steps = this.editing.steps;
+        let lo = -Infinity, hi = Infinity, rlo = -Infinity, rhi = Infinity;
+        for (const f of m.from) {
+            lo = Math.max(lo, -f.tick);
+            hi = Math.min(hi, steps - Math.min(this.noteLen(f.n), steps) - f.tick);
+            rlo = Math.max(rlo, -f.row);
+            rhi = Math.min(rhi, m.rows.length - 1 - f.row);
+        }
+        dt = Math.max(lo, Math.min(hi, dt));
+        dr = Math.max(rlo, Math.min(rhi, dr));
+        let changed = false;
+        for (const f of m.from) {
+            const tick = this.fine(f.tick + dt), pitch = m.rows[f.row + dr];
+            if (f.n.tick === tick && f.n.data[0] === pitch) continue;
+            if (!m.marked) { this.mark(label, m.tag); m.marked = true; }
+            f.n.tick = tick; f.n.data[0] = pitch;
+            changed = true;
+        }
+        if (changed) this.draw();
+        return changed;
+    },
+
+    /// Settle what moved: back into time order, and anything it landed
+    /// exactly on top of is gone — two of the same note at once is one note
+    /// played twice as loud on most synths, and never what was meant.
+    settleNotes(moved) {
+        const set = new Set(moved);
+        this.editing.events = this.editing.events.filter(o => set.has(o) || !o.isNote ||
+            !moved.some(n => n.tick === o.tick && n.data[0] === o.data[0]));
+        this.editing.sortEvents();
+    },
+
+    noteMoveEnd() {
+        const m = this._nmove;
+        this._nmove = null;
+        if (!m || !m.marked) { this.draw(); return; }
+        this.settleNotes(m.from.map(f => f.n));
+        const n = m.from.length;
+        this.say((n === 1 ? 'Note' : n + ' notes') + ' moved' +
+                 (this.snapOn() ? '' : ' — off the grid'));
+        this.draw(); this.refreshAct(); this.toolbar(); this.keep();
+    },
+
+    /// The arrow keys, on the held notes: a grid line sideways or a row up
+    /// and down; with Shift, a single tick sideways, for the push and pull
+    /// a grid cannot give.
+    noteNudge(dx, dy, tiny) {
+        if (!this.editing) return;
+        const t = this.song.tracks[this.track], rows = this.rows(t);
+        const held = this.heldNotes();
+        if (!held.length) return;
+        const m = { rows, marked: false, tag: 'nudge',
+                    from: held.map(n => ({ n, tick: n.tick, row: rows.indexOf(n.data[0]) }))
+                              .filter(f => f.row >= 0) };
+        const dt = dx * (tiny ? 1 / TICKS_PER_STEP : this.grid().steps);
+        if (!this.shiftNotes(m, dt, dy, 'Nudge notes')) return;
+        this.settleNotes(held);
+        if (dy && held.length === 1) this.preview(t.channel, held[0].data[0]);
+        this.refreshAct(); this.keep();
+    },
+
+    /// Every held note — or every note, with none held — onto the grid.
+    /// Only the starts: a length is a choice, a late start usually is not.
+    quantize() {
+        if (!this.editing) return;
+        const held = this.heldNotes();
+        const notes = held.length ? held : this.editing.events.filter(e => e.isNote);
+        const steps = this.editing.steps;
+        const moves = [];
+        for (const e of notes) {
+            let to = this.onGrid(e.tick, 'round');
+            if (to >= steps) to = this.onGrid(e.tick, 'floor');
+            if (to !== e.tick) moves.push([e, to]);
+        }
+        if (!moves.length) { this.say('Already on the ' + this.grid().id + ' grid'); return; }
+        this.mark('Quantise');
+        for (const [e, to] of moves) e.tick = to;
+        this.settleNotes(notes);
+        this.draw(); this.refreshAct(); this.toolbar(); this.keep();
+        this.say(moves.length + (moves.length === 1 ? ' note' : ' notes') +
+                 ' moved onto the ' + this.grid().id + ' grid');
     },
 
     // ── Presets ──────────────────────────────────────────────
@@ -1814,7 +2203,7 @@ const Studio = {
 
         const mus = this.context();
         const notes = Presets.realise(preset, {
-            tonic: mus.tonic,
+            tonic: mus.tonic, scale: mus.scale,
             at: this.gridFor(track).at || (track.channel === 9 ? 0 : 60),
         });
 
@@ -1882,8 +2271,9 @@ const Studio = {
         const c = this.cell, t = this.song.tracks[this.track];
         if (!c || !this.editing || !t) return;
         const rows = this.rows(t);
-        const from = Math.max(0, this.ecol0 + Math.floor((box.x0 - c.x0) / c.w));
-        const to = Math.max(0, this.ecol0 + Math.floor((box.x1 - c.x0) / c.w));
+        // Positions, not cells: a note off the grid is caught if the box
+        // touches any of it.
+        const from = this.posAt(box.x0), to = this.posAt(box.x1);
         const top = Math.max(0, this.erow0 + Math.floor((box.y0 - c.y0) / c.h));
         const low = Math.max(0, this.erow0 + Math.floor((box.y1 - c.y0) / c.h));
 
@@ -1891,7 +2281,7 @@ const Studio = {
         for (let r = top; r <= low && r < rows.length; r++) pitches.add(rows[r]);
         if (!add) this._notes = [];
         for (const e of this.editing.events) {
-            if (!e.isNote || e.tick < from || e.tick > to) continue;
+            if (!e.isNote || e.tick >= to || e.tick + this.noteLen(e) <= from) continue;
             if (!pitches.has(e.data[0])) continue;
             if (this._notes.indexOf(e) === -1) this._notes.push(e);
         }
@@ -1995,10 +2385,12 @@ const Studio = {
         cx.strokeStyle = '#ff7a45';
         cx.lineWidth = 2;
         for (const e of held) {
-            const col = e.tick - this.ecol0;
+            const from = Math.max(e.tick, this.ecol0);
+            const to = Math.min(e.tick + this.noteLen(e), this.ecol0 + c.cols);
             const row = rows.indexOf(e.data[0]) - this.erow0;
-            if (col < 0 || col >= c.cols || row < 0 || row >= c.rows) continue;
-            cx.strokeRect(c.x0 + col * c.w + 1, c.y0 + row * c.h + 1, c.w - 2, c.h - 2);
+            if (to <= from || row < 0 || row >= c.rows) continue;
+            cx.strokeRect(this.stepX(from) + 1, c.y0 + row * c.h + 1,
+                          Math.max(3, (to - from) * c.w - 2), c.h - 2);
         }
     },
 
@@ -2071,11 +2463,15 @@ const Studio = {
         }
 
         const t = this.song.tracks[this.track];
-        const s = this.ecol0 + Math.max(0, Math.floor((px - c.x0) / c.w));
-        if (s < 0 || s >= this.editing.steps) return;
+        const at = Math.max(this.ecol0, this.posAt(px));
+        if (at >= this.editing.steps) return;
 
         // The ruler is for moving the start, not for writing notes.
-        if (py < c.y0) { this.setStart(s); return; }
+        if (py < c.y0) { this.setStart(Math.floor(at)); return; }
+
+        // A new note starts on the grid line before the tap, or right
+        // under it with snap off (or Alt held).
+        const s = this.quant(at, 'floor', ev.altKey);
 
         const row = this.erow0 + Math.floor((py - c.y0) / c.h);
         if (row < 0 || row >= this.rows(t).length) return;
@@ -2084,11 +2480,20 @@ const Studio = {
         // what it is for, and what it does everywhere else.
         if (px < c.x0 - 1) { this.preview(t.channel, this.rows(t)[row]); return; }
         const pitch = this.rows(t)[row];
-        const found = this.editing.events.find(e => e.isNote && e.tick === s && e.data[0] === pitch);
+        // Anywhere along a long note is that note: tapping its tail used to
+        // stack a second note on top of it.
+        const found = this.editing.events.find(e => e.isNote && e.data[0] === pitch &&
+            at >= e.tick && at < e.tick + this.noteLen(e));
         this.mark(found ? 'Note off' : 'Note on');
         if (found) this.editing.remove(found);
         else {
-            this.editing.add(Event.note(pitch, 100, t.channel === 9 ? 1 : 2, s));
+            // A drum hit is a step, or one grid line on a finer grid. A
+            // melody note is as long as the last one you stretched, and one
+            // grid line until you have.
+            const unit = this.snapOn() ? this.grid().steps : 1;
+            const len = t.channel === 9 ? Math.min(1, unit)
+                      : this.fine(Math.min(this._noteLen || unit, this.editing.steps - s));
+            this.editing.add(Event.note(pitch, 100, len, s));
             this.preview(t.channel, pitch);
         }
         this.draw();
@@ -2399,12 +2804,20 @@ const Studio = {
                 }
             }
 
-            const hold = (e) => Math.max(1, e.dur) * (15 / this.song.tempo);
+            // Everything that starts inside this step, not only on it: a
+            // note off the grid sounds that far into the step.
+            const sps = 15 / this.song.tempo;
+            const hold = (e) => this.noteLen(e) * sps;
+            // A drum ignores how long it is held, but one drawn longer than
+            // a step is let ring that long.
+            const ring = (e) => e.dur > 1 ? e.dur * sps : 0;
+            const inStep = (e, s) => e.isNote && e.tick >= s && e.tick < s + 1;
             if (editing) {
                 const t = this.song.tracks[this.track];
                 for (const e of this.editing.events)
-                    if (e.isNote && e.tick === step)
-                        this.synth.hit(t.channel, e.data[0], e.data[1], hold(e), when);
+                    if (inStep(e, step))
+                        this.synth.hit(t.channel, e.data[0], e.data[1], hold(e),
+                                       when + (e.tick - step) * sps, ring(e));
             } else {
                 for (let ti = 0; ti < this.song.tracks.length; ti++) {
                     if (!this.rowHeard(ti)) continue;
@@ -2416,8 +2829,9 @@ const Studio = {
                     // when the clock reaches bar 8.
                     const into = (bar - p.at) * 16 + step;
                     for (const e of p.riff.events)
-                        if (e.isNote && e.tick === into)
-                            this.synth.hit(t.channel, e.data[0], e.data[1], hold(e), when);
+                        if (inStep(e, into))
+                            this.synth.hit(t.channel, e.data[0], e.data[1], hold(e),
+                                           when + (e.tick - into) * sps, ring(e));
                 }
             }
 
@@ -2563,30 +2977,42 @@ const Studio = {
         // cannot build one — an old browser missing a node, a stub — the
         // sound goes out the way it did before and nothing else notices.
         try {
-            this._mix = Mixer.build(actx, this.mix(), ctxInfo);
+            this._mix = Mixer.build(actx, this.mix(), ctxInfo, this.song);
+            // One settings object, shared: what the panel changes is what
+            // the graph reads.
+            this.mixSet = this._mix.set;
+            Mixer.apply(this._mix, null, true);
         } catch (_) {
             this._mix = null;
-            Tape.bus = null;
+            Tape.bus = null; Tape.laneBus = null;
             if (this.synth && this.synth.route) this.synth.route(null, null);
             return null;
         }
         if (this.synth && this.synth.route)
-            this.synth.route(this._mix.in.drums, this._mix.in.music);
+            this.synth.route(this._mix.in.drums, this._mix.in.music, this._mix.strip);
         Tape.bus = this._mix.in.audio;
+        Tape.laneBus = this._mix.lane;
         return this._mix;
+    },
+
+    /// Settings onto the running graph, without stopping anything. This is
+    /// what a fader calls; nothing about it interrupts the beat.
+    mixLive() {
+        if (!this._mix) return;
+        this._mix.song = this.song;
+        Mixer.apply(this._mix, this.mix());
     },
 
     /// A changed fader has to reach the graph, and the cheapest correct way
     /// is to build a new one. Rebuilding mid-note would cut it off, so it
     /// waits for the transport to be stopped — or takes the cut, which at a
     /// fader move is what you would expect anyway.
+    ///
+    /// No longer: every stage is always in the graph, so a change is a
+    /// parameter moving and the beat plays straight through it.
     remix(quiet) {
-        if (!this.synth || !this.synth.ctx) return;
-        const playing = !!this._timer;
-        if (playing) this._halt();
-        this.wire(this.synth.ctx, this.context());
+        this.mixLive();
         this.keep();
-        if (playing) this.play();
         if (!quiet) { this.refreshAct(); this.draw(); }
     },
 
@@ -2717,7 +3143,7 @@ const Studio = {
     padPitches() {
         const t = this.song.tracks[this.track];
         if (!t) return [];
-        if (t.channel === 9) return this.DRUM_ROWS.slice().reverse();
+        if (t.channel === 9) return this.kit(t).rows.slice().reverse();
 
         const mus = this.context();
         const home = (this.gridFor(t).at || 60);
@@ -2741,7 +3167,7 @@ const Studio = {
         const t = this.song.tracks[this.track];
         const p = this.padPitches()[i];
         if (p == null) return '';
-        if (t.channel === 9) return this.DRUM_NAMES[p] || String(p);
+        if (t.channel === 9) return this.drumName(t, p);
         return ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][p % 12]
              + (Math.floor(p / 12) - 1);
     },
@@ -2818,6 +3244,15 @@ const Studio = {
             if (ev.shiftKey) { if (here) this.select(here, true); }
             else this.select(here, false);
             this.toolbar(); this.draw(); this.refreshAct();
+            return;
+        }
+        // In the roll they move the held notes: a grid line or a row at a
+        // time, or one tick with Shift.
+        if (STEP[ev.key] && this.view === 'edit' && this.editing && !this._rec &&
+            this.heldNotes().length) {
+            ev.preventDefault();
+            const [dx, dy] = STEP[ev.key];
+            this.noteNudge(dx, dy, ev.shiftKey && dx !== 0);
             return;
         }
         if (ev.key === 'Home' && this.view === 'edit' && this.editing) {
@@ -3877,9 +4312,8 @@ const Studio = {
         this.refreshAct(); this.toolbar(); this.layout();
     },
 
-    /// A fader moved. Web Audio graphs are not reshapeable, so a change
-    /// means rebuilding one — cheap, and the only honest way to make a
-    /// setting that adds or removes a node take effect.
+    /// A bus setting moved. It goes onto the running graph as a ramp, so
+    /// the beat carries on through the drag.
     setMix(bus, field, value, id, text) {
         const set = this.mix();
         if (!set[bus]) return;
@@ -3894,7 +4328,8 @@ const Studio = {
         }
         const n = document.getElementById(id);
         if (n) n.textContent = text;
-        this.remix(true);
+        this.mixLive();
+        this.keep();
     },
 
     toggleMix(bus, field) {
@@ -3907,49 +4342,193 @@ const Studio = {
 
     resetMix() {
         this.mark('Reset the mix');
-        this.mixSet = Mixer.fresh();
+        this.mixSet = Mixer.look(this.mix(), 'standard');
         this.remix();
-        this.say('Back to the standard mix');
+        this.say('Back to the standard mix — pans and sends kept');
+    },
+
+    /// A whole mix to start from. Pans and sends stay: those are about
+    /// this song, and a look is not.
+    useLook(id) {
+        const L = Mixer.LOOKS[id];
+        if (!L) return;
+        this.mark('Mix: ' + L.name);
+        this.mixSet = Mixer.look(this.mix(), id);
+        this.remix();
+        this.say('Mix: ' + L.name);
+    },
+
+    /// A channel strip moved. A MIDI track's level is the track's own
+    /// volume — the number the .vbm and the .mid both carry — so it is
+    /// stored there; everything else lives in the mix.
+    setStrip(kind, key, field, value, id) {
+        const set = this.mix();
+        this.mark(field === 'vol' || field === 'gain' ? 'Track level' : 'Mix',
+                  'strip-' + kind + key + field);
+        if (kind === 't') {
+            const t = this.song.tracks.find(x => x.channel === key);
+            if (!t) return;
+            if (field === 'vol') t.volume = Math.max(0, Math.min(127, Math.round(value)));
+            else Mixer.strip(set, key)[field] = value;
+            if (this._mix) { this._mix.song = this.song; Mixer.setStrip(this._mix, key); }
+        } else {
+            Mixer.lane(set, key)[field] = value;
+            if (this._mix) Mixer.setLane(this._mix, key);
+        }
+        const n = document.getElementById(id);
+        if (n) n.textContent = this.mxRead(field, value);
+        this.keep();
+    },
+
+    /// How a strip's number reads.
+    mxRead(field, v) {
+        if (field === 'vol') return this._dbs(Mixer.volDb(v));
+        if (field === 'gain') return this._dbs(v > 0 ? 20 * Math.log10(v) : -Infinity);
+        if (field === 'pan') {
+            const p = Math.round(v * 100);
+            return p === 0 ? 'C' : (p < 0 ? 'L' + -p : 'R' + p);
+        }
+        return Math.round(v * 100) + '%';
+    },
+
+    _dbs(d) {
+        if (!Number.isFinite(d)) return '-inf';
+        return (d > 0.05 ? '+' : '') + d.toFixed(1) + 'dB';
     },
 
     mixAct() {
         const act = document.getElementById('st-act');
         if (!act) return;
+        this.mixLive();
         const m = this.mix();
+        const esc = t => String(t).replace(/[<>&"]/g, ch =>
+            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[ch]));
         const pct = v => Math.round(v * 100) + '%';
         const db = v => (v > 0 ? '+' : '') + v.toFixed(1) + 'dB';
 
-        /// A fader. The read-out updates itself so the panel is not rebuilt
-        /// on every pixel of a drag.
+        /// A bus fader. The read-out updates itself so the panel is not
+        /// rebuilt on every pixel of a drag.
         const fader = (bus, field, label, min, max, step, value, fmt) => {
             const id = 'mx-' + bus + '-' + field.replace('.', '-');
+            const show = fmt === 'db' ? 'Studio._db(+this.value)'
+                       : fmt === 'hz' ? 'Studio._hz(+this.value)'
+                       : fmt === 's' ? '(+this.value).toFixed(1)+\'s\''
+                       : 'Studio._pct(+this.value)';
+            const now = fmt === 'db' ? db(value) : fmt === 'hz' ? this._hz(value)
+                      : fmt === 's' ? value.toFixed(1) + 's' : pct(value);
             return '<label>' + label +
                 '<input type="range" min="' + min + '" max="' + max + '" step="' + step +
                 '" value="' + value + '" oninput="Studio.setMix(\'' + bus + '\',\'' +
-                field + '\',+this.value,\'' + id + '\',' +
-                (fmt === 'db' ? 'Studio._db(+this.value)' : 'Studio._pct(+this.value)') + ')">' +
-                '<b id="' + id + '">' + (fmt === 'db' ? db(value) : pct(value)) + '</b></label>';
+                field + '\',+this.value,\'' + id + '\',' + show + ')">' +
+                '<b id="' + id + '">' + now + '</b></label>';
         };
 
+        /// One knob on a strip.
+        const knob = (kind, key, field, label, min, max, step, value) => {
+            const id = 'mx-' + kind + key + '-' + field;
+            const k = kind === 't' ? key : key;
+            return '<label class="mx-k" title="' + label + '"><i>' + label + '</i>' +
+                '<input type="range" min="' + min + '" max="' + max + '" step="' + step +
+                '" value="' + value + '" ' +
+                (field === 'pan' ? 'ondblclick="this.value=0;this.oninput()" ' : '') +
+                'oninput="Studio.setStrip(\'' + kind + '\',' + k + ',\'' + field +
+                '\',+this.value,\'' + id + '\')">' +
+                '<b id="' + id + '">' + this.mxRead(field, value) + '</b></label>';
+        };
+
+        const meter = id =>
+            '<span class="mx-meter" title="Level"><i id="mt-' + id + '"></i><u id="mt-' + id + '-pk"></u></span>';
+
+        /// A channel strip: name, mute and solo, a meter, and the knobs.
+        const strip = (row, kind, key, name, colour, level, s) => {
+            const muted = this.rowMuted(row), solo = this.rowSolo(row);
+            return '<div class="mx-strip' + (this.rowHeard(row) ? '' : ' mx-off') + '">' +
+                '<span class="mx-name" style="border-color:' + colour + '">' + esc(name) + '</span>' +
+                '<button class="mx-ms' + (muted ? ' on' : '') + '" title="Mute" ' +
+                    'onclick="Studio.muteRow(' + row + ')">M</button>' +
+                '<button class="mx-ms mx-solo' + (solo ? ' on' : '') + '" title="Solo" ' +
+                    'onclick="Studio.soloRow(' + row + ')">S</button>' +
+                meter(kind + key) +
+                level +
+                knob(kind, key, 'pan', 'Pan', -1, 1, 0.05, s.pan || 0) +
+                knob(kind, key, 'space', 'Space', 0, 1, 0.01, s.space || 0) +
+                knob(kind, key, 'echo', 'Echo', 0, 1, 0.01, s.echo || 0) +
+            '</div>';
+        };
+
+        let strips = '';
+        this.song.tracks.forEach((t, i) => {
+            const s = Mixer.strip(m, t.channel);
+            strips += strip(i, 't', t.channel, t.name || ('Track ' + (i + 1)),
+                            t.channel === 9 ? '#ffc83d' : '#4cd964',
+                            knob('t', t.channel, 'vol', 'Level', 0, 127, 1, t.volume == null ? 100 : t.volume), s);
+        });
+        for (let l = 0; l < this.audioRows(); l++) {
+            if (!Tape.inLane(l).length) continue;
+            const row = this.song.tracks.length + l, s = Mixer.lane(m, l);
+            strips += strip(row, 'l', l, this.rowName(row), '#4cc9d9',
+                            knob('l', l, 'gain', 'Level', 0, 2, 0.01, s.gain == null ? 1 : s.gain), s);
+        }
+
+        /// A bus: a fader and a meter.
+        const bus = (key, label, field, min, max, value, meterId) =>
+            '<div class="mx-bus"><span class="mx-name">' + label + '</span>' + meter(meterId) +
+                fader(key, field, '', min, max, 0.01, value) + '</div>';
+
+        const looks = Object.keys(Mixer.LOOKS).map(id =>
+            '<button onclick="Studio.useLook(\'' + id + '\')">' + Mixer.LOOKS[id].name + '</button>').join('');
+
+        const times = Object.keys(Mixer.TIMES).map(k =>
+            '<option value="' + k + '"' + (m.echo.time === k ? ' selected' : '') + '>' +
+            ({ eighth: '1/8', dotted: 'Dotted 1/8', quarter: '1/4', triplet: '1/8 triplet' }[k]) +
+            '</option>').join('');
+
         this.paint('mix', '&#9707; The mix',
-            '<div class="ai-key">Master &middot; everything is summed here, so these ' +
+            '<div class="mic-row mic-btns mx-looks"><i>Start from</i>' + looks + '</div>' +
+            '<div class="ai-key">Tracks &middot; every track has its own strip: level, pan, ' +
+                'and how much of it goes to the room and the echo' +
+                (this._mix ? '' : ' &mdash; press Play to light the meters') + '</div>' +
+            '<div class="mx-strips">' + strips + '</div>' +
+            '<div class="ai-key">Buses &middot; everything is summed here, so these ' +
                 'levels mean something against each other</div>' +
+            '<div class="mx-buses">' +
+                bus('drums', 'Drums', 'gain', 0, 2, m.drums.gain, 'drums') +
+                bus('music', 'Synths', 'gain', 0, 2, m.music.gain, 'music') +
+                bus('audio', 'Tape', 'gain', 0, 2, m.audio.gain, 'audio') +
+                bus('space', 'Space', 'gain', 0, 1.5, m.space.gain, 'space') +
+                bus('echo', 'Echo', 'gain', 0, 1.5, m.echo.gain, 'echo') +
+                '<div class="mx-bus mx-master"><span class="mx-name">Master</span>' + meter('master') +
+                    fader('master', 'gain', '', 0, 1.4, 0.01, m.master.gain) +
+                    '<em id="mt-clip" title="Hitting the ceiling">CLIP</em></div>' +
+            '</div>' +
+            '<div class="ai-key">The room and the echo</div>' +
             '<div class="mic-row mic-dials">' +
-                fader('master', 'gain', 'Master', 0, 1.4, 0.01, m.master.gain) +
-                fader('drums', 'gain', 'Drums', 0, 2, 0.01, m.drums.gain) +
+                fader('space', 'size', 'Size', 0.3, 5, 0.1, m.space.size, 's') +
+                fader('space', 'tone', 'Tone', 1500, 12000, 100, m.space.tone, 'hz') +
+                fader('audio', 'space', 'Tape in it', 0, 1, 0.01, m.audio.space) +
             '</div>' +
             '<div class="mic-row mic-dials">' +
-                fader('music', 'gain', 'Synths', 0, 2, 0.01, m.music.gain) +
-                fader('audio', 'gain', 'Tape', 0, 2, 0.01, m.audio.gain) +
+                '<label>Time<select onchange="Studio.setMix(\'echo\',\'time\',this.value,\'\',\'\')">' +
+                    times + '</select></label>' +
+                fader('echo', 'feedback', 'Repeats', 0, 0.85, 0.01, m.echo.feedback) +
+                fader('echo', 'tone', 'Tone', 1000, 10000, 100, m.echo.tone, 'hz') +
+                fader('audio', 'echo', 'Tape in it', 0, 1, 0.01, m.audio.echo) +
             '</div>' +
             '<div class="ai-key">The kit</div>' +
             '<div class="mic-row mic-dials">' +
                 fader('drums', 'punch', 'Punch', 0, 1, 0.01, m.drums.punch) +
                 fader('drums', 'weight', 'Weight', 0, 1, 0.01, m.drums.weight) +
+                fader('drums', 'parallel', 'Behind', 0, 1, 0.01, m.drums.parallel) +
             '</div>' +
             '<div class="mic-row mic-dials">' +
-                fader('drums', 'parallel', 'Behind', 0, 1, 0.01, m.drums.parallel) +
                 fader('drums', 'kick', 'Kick', -6, 8, 0.1, m.drums.kick, 'db') +
+                fader('drums', 'snap', 'Snap', -6, 8, 0.1, m.drums.snap, 'db') +
+                fader('music', 'hpf', 'Synth low cut', 20, 300, 1, m.music.hpf, 'hz') +
+            '</div>' +
+            '<div class="ai-key">The master</div>' +
+            '<div class="mic-row mic-dials">' +
+                fader('master', 'tilt.low', 'Lows', -6, 6, 0.1, m.master.tilt.low, 'db') +
+                fader('master', 'tilt.high', 'Highs', -6, 6, 0.1, m.master.tilt.high, 'db') +
             '</div>' +
             '<div class="mic-row mic-btns">' +
                 '<button class="' + (m.master.glue.on ? 'st-hot' : '') +
@@ -3958,13 +4537,64 @@ const Studio = {
                 '<button onclick="Studio.resetMix()">Reset</button>' +
                 '<button onclick="Studio.mixPanel()">Done</button>' +
             '</div>' +
-            '<div class="st-note">Punch lets the stick through before it clamps. ' +
-                'Behind is a squashed copy slid under the kit &mdash; it makes the ' +
-                'drums bigger without making them louder. Nothing gets past the ' +
-                'ceiling, so it will not crackle.</div>');
+            '<div class="st-note">Every fader works while the beat plays. Double-click a pan to ' +
+                'centre it. Space is one room everything shares, which is what makes a mix ' +
+                'sound like one place; Echo repeats in time with the song. Nothing gets past ' +
+                'the ceiling, so it will not crackle &mdash; if CLIP lights, it is squashing, ' +
+                'and the master wants turning down.</div>');
+        this.meters();
+    },
+
+    // ── Meters ────────────────────────────────────────────────────────────
+
+    _meterRaf: null,
+    _peaks: {},
+
+    /// Run the meters for as long as the mix panel is on screen. A frame
+    /// at a time, reading each tap; nothing is drawn on a canvas, the bars
+    /// are elements whose width moves.
+    meters() {
+        if (this._meterRaf || typeof requestAnimationFrame !== 'function') return;
+        const frame = () => {
+            this._meterRaf = null;
+            if (!this._mixOpen || this._folded.mix) return;
+            const mix = this._mix;
+            if (mix) {
+                const now = performance.now();
+                const show = (id, an) => {
+                    const bar = document.getElementById('mt-' + id);
+                    if (!bar) return null;
+                    const d = Mixer.level(an);
+                    // -60dB is empty, +3 is full; 0dB sits at 95%.
+                    const w = Number.isFinite(d) ? Math.max(0, Math.min(1, (d + 60) / 63)) : 0;
+                    bar.style.width = (w * 100).toFixed(1) + '%';
+                    bar.className = d > -1 ? 'hot' : d > -9 ? 'warm' : '';
+                    const pk = this._peaks[id] || { w: 0, at: 0 };
+                    if (w >= pk.w || now - pk.at > 1200) { pk.w = w; pk.at = now; }
+                    this._peaks[id] = pk;
+                    const mark = document.getElementById('mt-' + id + '-pk');
+                    if (mark) mark.style.left = (pk.w * 100).toFixed(1) + '%';
+                    return d;
+                };
+                for (const [ch, st] of mix.strips) show('t' + ch, st.meter);
+                for (const [l, st] of mix.lanes) show('l' + l, st.meter);
+                show('drums', mix.drums.meter); show('music', mix.music.meter);
+                show('audio', mix.audio.meter); show('space', mix.space.meter);
+                show('echo', mix.echo.meter);
+                const d = show('master', mix.master.meter);
+                const clip = document.getElementById('mt-clip');
+                if (clip) {
+                    if (d > (mix.set.master.ceiling || -1.2) - 0.5) this._clipAt = now;
+                    clip.className = this._clipAt && now - this._clipAt < 1500 ? 'on' : '';
+                }
+            }
+            this._meterRaf = requestAnimationFrame(frame);
+        };
+        this._meterRaf = requestAnimationFrame(frame);
     },
 
     _pct(v) { return Math.round(v * 100) + '%'; },
+    _hz(v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v) + 'Hz'; },
     _db(v) { return (v > 0 ? '+' : '') + (+v).toFixed(1) + 'dB'; },
 
     audioAct() {

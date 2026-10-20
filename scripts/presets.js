@@ -1,7 +1,7 @@
 // ── The preset library ────────────────────────────────────────────────────
 // Patterns worth starting from, as data.
 //
-// Two decisions shape everything here.
+// Three decisions shape everything here.
 //
 // The first is what a preset IS. These are not audio loops and not finished
 // parts: they are MIDI, written into an ordinary riff, so the moment one
@@ -13,15 +13,27 @@
 // knows the key because it is the thing that made the song. So the same
 // progression lands in F minor or in C minor without being written twice,
 // and a bass line dropped under an existing beat is in tune before anyone
-// touches a tuner. It is the same trick Ctx.STYLE already uses for its
-// progressions, applied to the whole library.
+// touches a tuner. A preset written in minor dropped into a major song goes
+// to the relative minor, which shares every note, rather than clashing.
+//
+// The third is that the parts of a style belong together. Each style has
+// ONE progression (PROG), and its chords, bass, keys and melodies are all
+// written over it — so the bass under the chords under the hook agree with
+// each other, which is most of what "sounds solid" means. Chords are voiced
+// here rather than written out: each one is placed as close as it can sit to
+// the one before, the way a player's hand moves, instead of every chord
+// jumping to root position.
+//
+// The roll can now say things a sixteenth grid could not, and these use
+// them: each style's swing is written into the notes (the off-sixteenths
+// sit late by the style's amount), rolls are written in triplets and
+// thirty-seconds, a laid-back snare is actually laid back, and a drum
+// drawn long rings — which is what an 808 is.
 //
 // On the patterns themselves: a rhythm is not anybody's property, and these
 // are the common ones — the tresillo, four-on-the-floor, the dembow, the
-// shaker running sixteenths. Where sources disagree (and for the dembow
-// snare they do) the most widely cited placement is used. What is NOT here
-// is any actual tune: the melodic presets are idiomatic shapes — the way a
-// highlife guitar line moves, the lift of an amapiano log drum figure — not
+// shaker running sixteenths. What is NOT here is any actual tune: the
+// melodic presets are idiomatic shapes over common progressions, not
 // quotations of songs anybody wrote.
 
 const Presets = {
@@ -33,7 +45,8 @@ const Presets = {
     HAT: 42, PEDAL: 44, OPEN: 46, RIDE: 51, CRASH: 49,
 
     /// The styles, in the order they are offered. Each carries the tempo it
-    /// wants, because a dembow at 104 is not a dembow.
+    /// wants, because a dembow at 104 is not a dembow — and the swing, as a
+    /// fraction of a step that every off-sixteenth is played late by.
     STYLES: [
         { id: 'afrobeats', name: 'Afrobeats', tempo: 104, swing: 0.14 },
         { id: 'amapiano',  name: 'Amapiano',  tempo: 112, swing: 0.10 },
@@ -55,128 +68,211 @@ const Presets = {
         { id: 'guitar', name: 'Guitar' },
     ],
 
-    // ── Shorthand ─────────────────────────────────────────────────────────
-
-    /// Every step, for a shaker that never stops.
-    every(n = 16, from = 0, by = 1) {
-        const out = [];
-        for (let i = from; i < n; i += by) out.push(i);
-        return out;
-    },
-
-    /// The same pattern again a bar later, for two-bar presets.
-    twice(steps, bars = 2) {
-        const out = [];
-        for (let b = 0; b < bars; b++) for (const s of steps) out.push(s + b * 16);
-        return out;
-    },
-
     // ── Chord shapes, in semitones above the chord's own root ─────────────
-    MIN: [0, 3, 7], MAJ: [0, 4, 7], MIN7: [0, 3, 7, 10], MAJ7: [0, 4, 7, 11],
-    DOM7: [0, 4, 7, 10], SUS4: [0, 5, 7], MIN9: [0, 3, 7, 14],
+    MIN: [0, 3, 7], MAJ: [0, 4, 7], SUS2: [0, 2, 7], SUS4: [0, 5, 7],
+    MIN7: [0, 3, 7, 10], MAJ7: [0, 4, 7, 11], DOM7: [0, 4, 7, 10],
+    MIN9: [0, 3, 7, 10, 14], MAJ9: [0, 4, 7, 11, 14], DOM9: [0, 4, 7, 10, 14],
+    ADD9: [0, 4, 7, 14], MIN11: [0, 3, 7, 10, 17], HALFDIM: [0, 3, 6, 10],
+    DOM7b9: [0, 4, 7, 10, 13],
 
-    /// A chord: a root in semitones above the key's tonic, and a shape.
-    ch(at, dur, root, shape) { return { at, dur, root, shape }; },
+    // ── Each style's progression ──────────────────────────────────────────
+    // [start step, length in steps, root above the tonic, shape]. Two bars
+    // each. Minor unless the style's presets say `mode: 'major'`.
+    PROG: {
+        // i9 – VImaj7 – III(add9) – VII. The loop the genre leans on.
+        afro:   [[0, 8, 0, 'MIN9'], [8, 8, 8, 'MAJ7'], [16, 8, 3, 'ADD9'], [24, 8, 10, 'MAJ']],
+        // i7 – iv9 – VII – IIImaj7. Darker; the fourth pulls it somewhere.
+        afro2:  [[0, 8, 0, 'MIN7'], [8, 8, 5, 'MIN9'], [16, 8, 10, 'MAJ'], [24, 8, 3, 'MAJ7']],
+        // i9 for a bar, then iv9 and VImaj9. Amapiano keys sit on one chord.
+        ama:    [[0, 16, 0, 'MIN9'], [16, 8, 5, 'MIN9'], [24, 8, 8, 'MAJ9']],
+        // i9 – VII(add9) – VImaj7. House is patient.
+        afh:    [[0, 16, 0, 'MIN9'], [16, 8, 10, 'ADD9'], [24, 8, 8, 'MAJ7']],
+        // I – IV – V7 – I, in major. Highlife does not brood.
+        high:   [[0, 8, 0, 'MAJ'], [8, 8, 5, 'MAJ'], [16, 8, 7, 'DOM7'], [24, 8, 0, 'MAJ']],
+        // i – VI – VII. Riddims need few chords.
+        dh:     [[0, 16, 0, 'MIN'], [16, 8, 8, 'MAJ'], [24, 8, 10, 'MAJ']],
+        // i – VI – III – VII. The reggaeton loop.
+        dem:    [[0, 8, 0, 'MIN'], [8, 8, 8, 'MAJ'], [16, 8, 3, 'MAJ'], [24, 8, 10, 'MAJ']],
+        // i9 – iv7 – VImaj7 – V7. The V is major, so it pulls home.
+        hh:     [[0, 12, 0, 'MIN9'], [12, 4, 5, 'MIN7'], [16, 12, 8, 'MAJ7'], [28, 4, 7, 'DOM7']],
+        // i – bII – VI – v. The flat second is the menace.
+        trap:   [[0, 12, 0, 'MIN'], [12, 4, 1, 'MAJ'], [16, 8, 8, 'MAJ'], [24, 8, 7, 'MIN']],
+        // i9 – VII(add9) – VImaj7 – iv7.
+        house:  [[0, 8, 0, 'MIN9'], [8, 8, 10, 'ADD9'], [16, 8, 8, 'MAJ7'], [24, 8, 5, 'MIN7']],
+        // iiø – V7b9 – i9. The minor turnaround.
+        gos:    [[0, 8, 2, 'HALFDIM'], [8, 8, 7, 'DOM7b9'], [16, 16, 0, 'MIN9']],
+        // Imaj9 – vi9 – ii9 – V9, in major. The church turnaround.
+        gosmaj: [[0, 8, 0, 'MAJ9'], [8, 8, 9, 'MIN9'], [16, 8, 2, 'MIN9'], [24, 8, 7, 'DOM9']],
+    },
 
     // ── The library ───────────────────────────────────────────────────────
-    // `bars` is how long the preset is. Drums are step lists per kit piece.
-    // Pitched presets are notes in semitones above the tonic, where 12 is
-    // the octave above; `oct` shifts the whole thing.
+    // `bars` is how long the preset is.
+    //
+    // Drums: `hits` per kit piece, each a list of steps — or of
+    // [step, velocity, length] where one needs saying. Steps may be
+    // fractions: 12 + 2/3 is the second note of a triplet.
+    //
+    // Pitched: `notes` are [step, length, semitones above the tonic,
+    // velocity?]. `chords` names a progression, which is played as held
+    // chords, or in the rhythm `comp` gives ([offset, length, velocity],
+    // repeating every `every` steps through each chord), or broken up by
+    // `arp`. `follow` writes a bass `line` under a progression: intervals
+    // above each chord's root, where 't' and 'f' are that chord's own third
+    // and fifth, 'o' the octave, 'n' the next chord's root (anticipating it)
+    // and 'a' the note a semitone under it (walking into it). `oct` moves
+    // the whole thing; `swing` overrides the style's.
 
     LIST: [
 
         // ── Afrobeats ─────────────────────────────────────────────────────
         {
-            id: 'afro-lagos', kind: 'drums', style: 'afrobeats', bars: 1,
+            id: 'afro-lagos', kind: 'drums', style: 'afrobeats', bars: 2,
             name: 'Lagos bounce',
-            note: 'The common one. Kick off the one more often than on it.',
-            hits: { 36: [0, 6, 10], 39: [4, 12], 42: 'every16', 46: [6, 14], 37: [2, 11] },
+            note: 'The common one, with ghost snares and the open hat ringing on the and.',
+            hits: {
+                36: [0, 6, 10, 16, 22, 26, 29],
+                39: [4, 12, 20, 28],
+                38: [[7, 34], [15, 40], [23, 34], [31, 46]],
+                42: 'every16x2',
+                46: [[6, 84, 2], [14, 80, 2], [22, 84, 2], [30, 80, 2]],
+                37: [3, 11, 19, 25, 27],
+            },
         },
         {
             id: 'afro-zanku', kind: 'drums', style: 'afrobeats', bars: 1,
             name: 'Zanku',
             note: 'Busier kick, the shaker carrying it.',
-            hits: { 36: [0, 3, 6, 10], 39: [4, 12], 42: 'every16', 46: [14], 37: [7, 15] },
+            hits: { 36: [0, 3, 6, 10], 39: [4, 12], 42: 'every16', 46: [[14, 84, 2]], 37: [7, 15] },
         },
         {
-            id: 'afro-pop', kind: 'drums', style: 'afrobeats', bars: 2,
-            name: 'Afro pop, two bars',
-            note: 'A bar that answers itself, so a loop stops sounding like a loop.',
+            id: 'afro-half', kind: 'drums', style: 'afrobeats', bars: 1,
+            name: 'Half-time afro',
+            note: 'Clap on three only. Everything feels twice as slow and twice as big.',
+            hits: { 36: [0, 6, 10], 39: [8], 42: 'every16', 46: [[14, 84, 2]], 37: [3, 13] },
+        },
+        {
+            id: 'afro-fill', kind: 'drums', style: 'afrobeats', bars: 1,
+            name: 'Afro fill',
+            note: 'For the bar before the change: the snare rolls in thirty-seconds and lifts into the one.',
             hits: {
-                36: [0, 6, 10, 16, 22, 26, 29],
-                39: [4, 12, 20, 28],
-                42: 'every16x2',
-                46: [6, 14, 22, 30],
+                36: [0, 6, 10], 39: [4],
+                42: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+                38: [[12, 62], [13, 68], [14, 74], [14.5, 80], [15, 88], [15.5, 100]],
             },
         },
         {
             id: 'afro-chords', kind: 'chords', style: 'afrobeats', bars: 2,
-            name: 'i VII VI VII',
-            note: 'The progression the whole genre leans on.',
-            chords: [[0, 8, 0, 'MIN7'], [8, 8, 10, 'MAJ'], [16, 8, 8, 'MAJ7'], [24, 8, 10, 'MAJ']],
+            name: 'Lagos keys',
+            note: 'i9 VI III VII, played three-three-two. Lands with the bass and the hook.',
+            chords: 'afro', every: 8,
+            comp: [[0, 2.5, 92], [3, 2.5, 78], [6, 1.5, 84]],
         },
         {
-            id: 'afro-chords2', kind: 'chords', style: 'afrobeats', bars: 2,
-            name: 'i iv VII III',
-            note: 'Darker. The fourth pulls it somewhere.',
-            chords: [[0, 8, 0, 'MIN9'], [8, 8, 5, 'MIN7'], [16, 8, 10, 'MAJ'], [24, 8, 3, 'MAJ7']],
+            id: 'afro-pad', kind: 'chords', style: 'afrobeats', bars: 2,
+            name: 'Warm pad',
+            note: 'i7 iv9 VII III, held. For under a vocal.',
+            chords: 'afro2', vel: 76,
         },
         {
             id: 'afro-bass', kind: 'bass', style: 'afrobeats', bars: 2,
             name: 'Afrobeats bass',
-            note: 'Sits in the holes the kick leaves, which is the whole job.',
-            notes: [[0, 3, 0], [6, 2, 0], [10, 2, 10], [13, 2, 10],
-                    [16, 3, 8], [22, 2, 8], [26, 2, 10], [29, 2, 12]],
-            oct: -2,
+            note: 'Under Lagos keys. Sits in the holes the kick leaves and pushes into each chord.',
+            follow: 'afro', every: 8,
+            line: [[0, 2.5, 0, 106], [3, 1, 'o', 80], [4, 1.5, 0, 90], [6, 1, 'f', 86], [7, 1, 'n', 82]],
         },
         {
-            id: 'afro-gtr', kind: 'guitar', style: 'afrobeats', bars: 2,
-            name: 'Highlife-ish guitar',
-            note: 'Two voices picked apart, the way the style plays triads.',
-            notes: [[0, 1, 12], [2, 1, 15], [4, 1, 19], [6, 1, 15],
-                    [8, 1, 10], [10, 1, 14], [12, 1, 17], [14, 1, 14],
-                    [16, 1, 8], [18, 1, 12], [20, 1, 15], [22, 1, 12],
-                    [24, 1, 10], [26, 1, 14], [28, 1, 17], [30, 1, 22]],
+            id: 'afro-bass2', kind: 'bass', style: 'afrobeats', bars: 2,
+            name: 'Sub and fifth',
+            note: 'Under Warm pad. Long root, a fifth to lean on.',
+            follow: 'afro2', every: 8,
+            line: [[0, 5, 0, 104], [6, 2, 'f', 88]],
         },
         {
             id: 'afro-lead', kind: 'melody', style: 'afrobeats', bars: 2,
             name: 'Pentatonic hook',
-            note: 'Five notes, lots of space. Space is the hook.',
-            notes: [[0, 3, 12], [4, 2, 15], [7, 1, 17], [8, 4, 15],
-                    [16, 3, 19], [20, 2, 17], [23, 1, 15], [24, 6, 12]],
+            note: 'Over Lagos keys. Every long note is a chord tone, so it sits.',
+            notes: [[2, 2, 7], [4, 1, 10], [5, 3, 12],
+                    [8, 2, 15], [10, 1, 12], [11, 1, 10], [12, 3, 7],
+                    [18, 2, 15], [20, 1, 14], [21, 1, 15], [22, 2, 19],
+                    [24, 3, 17], [27, 1, 15], [28, 4, 14]],
+        },
+        {
+            id: 'afro-call', kind: 'melody', style: 'afrobeats', bars: 2,
+            name: 'Call and answer',
+            note: 'Over Warm pad. A phrase that rises, and one that falls home.',
+            notes: [[0, 2, 12], [2, 1, 15], [3, 1, 17], [4, 3, 19],
+                    [8, 1, 17], [9, 1, 15], [10, 2, 12], [12, 3, 8],
+                    [16, 2, 10], [18, 1, 14], [19, 1, 17], [20, 3, 14],
+                    [24, 2, 15], [26, 1, 14], [27, 1, 12], [28, 4, 7]],
+        },
+        {
+            id: 'afro-gtr', kind: 'guitar', style: 'afrobeats', bars: 2,
+            name: 'Picked guitar',
+            note: 'Over Lagos keys. Sixteenths round each chord, the top note accented.',
+            chords: 'afro', oct: 1,
+            arp: { order: [2, 0, 1, 2, 3, 1, 2, 0], rate: 1, len: 0.75, accent: [96, 70, 78, 88] },
         },
 
         // ── Amapiano ──────────────────────────────────────────────────────
         {
             id: 'ama-four', kind: 'drums', style: 'amapiano', bars: 1,
             name: 'Piano four',
-            note: 'Four on the floor, open hat answering on the off.',
-            hits: { 36: [0, 4, 8, 12], 46: [2, 6, 10, 14], 42: 'every16', 37: [3, 7, 11, 15] },
+            note: 'Four on the floor, the shaker soft and swung, the open hat answering.',
+            hits: {
+                36: [0, 4, 8, 12], 39: [[12, 88]],
+                42: 'every16', 46: [[2, 80, 2], [6, 78, 2], [10, 80, 2], [14, 78, 2]],
+                37: [3, 7, 11, 14],
+            },
         },
         {
             id: 'ama-shuffle', kind: 'drums', style: 'amapiano', bars: 2,
             name: 'Shuffled piano',
-            note: 'Same kick, percussion loosened. Swing it and the log drum with it.',
+            note: 'The percussion loosened, with a triplet tumble into the next bar.',
             hits: {
                 36: [0, 4, 8, 12, 16, 20, 24, 28],
-                46: [2, 6, 10, 14, 18, 22, 26, 30],
+                46: [[2, 80, 2], [6, 78, 2], [10, 80, 2], [14, 78, 2],
+                     [18, 80, 2], [22, 78, 2], [26, 80, 2]],
                 42: 'every16x2',
-                39: [12, 28], 37: [3, 7, 15, 19, 23, 31],
+                39: [12, 28],
+                37: [3, 7, 15, 19, 23, [29 + 1 / 3, 64], [30, 70], [30 + 2 / 3, 76]],
             },
         },
         {
-            id: 'ama-log', kind: 'bass', style: 'amapiano', bars: 2,
-            name: 'Log drum figure',
-            note: 'The lead instrument of the genre, and it is tuned — so it is written in the key.',
-            notes: [[2, 2, 0], [5, 1, 0], [6, 2, 7], [10, 2, 10], [14, 1, 7],
-                    [18, 2, 0], [21, 1, 0], [22, 2, 8], [26, 2, 10], [30, 2, 12]],
-            oct: -1,
+            id: 'ama-sparse', kind: 'drums', style: 'amapiano', bars: 1,
+            name: 'Sparse piano',
+            note: 'For when the log drum is the loudest thing, which it should be.',
+            hits: { 36: [0, 4, 8, 12], 46: [[6, 80, 2], [14, 80, 2]], 37: [2, 7, 10, 15] },
         },
         {
             id: 'ama-chords', kind: 'chords', style: 'amapiano', bars: 2,
             name: 'Deep piano',
-            note: 'Sevenths and ninths, held. The chords are the pad.',
-            chords: [[0, 12, 0, 'MIN9'], [12, 10, 8, 'MAJ7'], [22, 10, 5, 'MIN7']],
+            note: 'i9 iv9 VImaj9, both hands: the left on the root, the right off the beat.',
+            chords: 'ama', every: 16, root: true,
+            comp: [[0, 3, 90], [3, 3, 74], [6, 2, 82], [10, 2, 72], [12, 4, 80]],
+        },
+        {
+            id: 'ama-log', kind: 'bass', style: 'amapiano', bars: 2,
+            name: 'Log drum figure',
+            note: 'Under Deep piano. Off the beat, jumping the octave — the genre’s lead instrument.',
+            notes: [[3, 2, 0, 108], [6, 1, 0, 86], [7, 2, 12, 98], [10, 2, 7, 90],
+                    [13, 1, 0, 84], [14, 2, 10, 94],
+                    [19, 2, 5, 106], [22, 1, 5, 86], [23, 1, 17, 96],
+                    [26, 2, -4, 106], [29, 1, -4, 84], [30, 2, 3, 94]],
+        },
+        {
+            id: 'ama-lead', kind: 'melody', style: 'amapiano', bars: 2,
+            name: 'Piano lead',
+            note: 'Over Deep piano. Right hand high, landing on the ninths.',
+            notes: [[0, 2, 14], [2, 1, 12], [3, 3, 10], [8, 1, 7], [9, 1, 10], [10, 2, 12], [12, 4, 14],
+                    [16, 2, 15], [18, 1, 12], [19, 3, 8],
+                    [24, 2, 12], [26, 1, 15], [27, 3, 19], [30, 2, 17]],
+        },
+        {
+            id: 'ama-gtr', kind: 'guitar', style: 'amapiano', bars: 2,
+            name: 'Muted stabs',
+            note: 'Over Deep piano. Short, high, never where the log drum is.',
+            chords: 'ama', every: 16, oct: 1,
+            comp: [[2, 0.75, 80], [5, 0.5, 68], [8, 0.75, 76], [11, 0.5, 66], [15, 0.75, 74]],
         },
 
         // ── Afro house ────────────────────────────────────────────────────
@@ -184,13 +280,60 @@ const Presets = {
             id: 'afh-four', kind: 'drums', style: 'afrohouse', bars: 1,
             name: 'Afro house',
             note: 'Four on the floor with the percussion doing the talking.',
-            hits: { 36: [0, 4, 8, 12], 39: [4, 12], 46: [2, 6, 10, 14], 42: 'every16', 37: [1, 6, 9, 14] },
+            hits: {
+                36: [0, 4, 8, 12], 39: [4, 12],
+                46: [[2, 82, 2], [6, 82, 2], [10, 82, 2], [14, 82, 2]],
+                42: 'every16', 37: [1, 6, 9, 14],
+            },
+        },
+        {
+            id: 'afh-tribal', kind: 'drums', style: 'afrohouse', bars: 2,
+            name: 'Tribal groove',
+            note: 'The second snare tuned down to a hand drum, playing round the kick.',
+            hits: {
+                36: [0, 4, 8, 12, 16, 20, 24, 28], 39: [4, 12, 20, 28],
+                46: [[2, 80, 2], [6, 80, 2], [10, 80, 2], [14, 80, 2],
+                     [18, 80, 2], [22, 80, 2], [26, 80, 2], [30, 80, 2]],
+                40: [[3, 54], [7, 48], [10, 58], [11, 46], [19, 54], [23, 48], [26, 58],
+                     [29, 50], [30, 56], [31, 62]],
+                37: [6, 14, 22, 27],
+            },
         },
         {
             id: 'afh-chords', kind: 'chords', style: 'afrohouse', bars: 2,
             name: 'Rolling minor',
-            note: 'Two chords, a long time each. House is patient.',
-            chords: [[0, 16, 0, 'MIN7'], [16, 16, 10, 'MAJ7']],
+            note: 'i9 VII VI, held long. House is patient.',
+            chords: 'afh', vel: 78,
+        },
+        {
+            id: 'afh-stabs', kind: 'chords', style: 'afrohouse', bars: 2,
+            name: 'Afro house stabs',
+            note: 'The same chords as a rhythm.',
+            chords: 'afh', every: 16,
+            comp: [[0, 1, 92], [3, 1, 78], [6, 1, 86], [10, 1, 78], [12, 1.5, 84]],
+        },
+        {
+            id: 'afh-bass', kind: 'bass', style: 'afrohouse', bars: 2,
+            name: 'Deep house bass',
+            note: 'Between the kicks, with an octave pop. Under either chord part.',
+            follow: 'afh', every: 8,
+            line: [[2, 1.5, 0, 102], [6, 1, 0, 92], [7, 0.75, 'o', 78]],
+        },
+        {
+            id: 'afh-gtr', kind: 'guitar', style: 'afrohouse', bars: 2,
+            name: 'Rolling arpeggio',
+            note: 'Sixteenths going round each chord. Set it and leave it.',
+            chords: 'afh', oct: 1,
+            arp: { order: [0, 1, 2, 3, 2, 1, 2, 3], rate: 1, len: 0.9, accent: [92, 72, 80, 72] },
+        },
+        {
+            id: 'afh-lead', kind: 'melody', style: 'afrohouse', bars: 2,
+            name: 'Marimba motif',
+            note: 'Short notes in a pattern that repeats against the bar.',
+            notes: [[0, 1, 12], [2, 1, 15], [3, 1, 19], [6, 1, 17], [8, 1, 15], [10, 1, 12],
+                    [11, 1, 10], [14, 1, 12],
+                    [16, 1, 14], [18, 1, 17], [19, 1, 22], [22, 1, 17], [24, 1, 15],
+                    [26, 1, 12], [27, 1, 19], [30, 1, 15]],
         },
 
         // ── Highlife ──────────────────────────────────────────────────────
@@ -201,17 +344,53 @@ const Presets = {
             hits: {
                 36: [0, 10, 16, 26], 38: [4, 12, 20, 28],
                 51: [0, 3, 6, 10, 12, 16, 19, 22, 26, 28],
-                37: [6, 22],
+                37: [6, 22], 42: [2, 8, 14, 18, 24, 30],
             },
         },
         {
-            id: 'high-gtr', kind: 'guitar', style: 'highlife', bars: 2,
+            id: 'high-kit', kind: 'drums', style: 'highlife', bars: 1,
+            name: 'Highlife kit',
+            note: 'Straighter than the shuffle, for when the guitar is busy.',
+            hits: { 36: [0, 8], 38: [4, 12], 42: 'every16', 37: [6, 14] },
+        },
+        {
+            id: 'high-chords', kind: 'chords', style: 'highlife', bars: 2, mode: 'major',
+            name: 'Offbeat chords',
+            note: 'I IV V7 I, on the and of every beat. Bright, and it keeps moving.',
+            chords: 'high', every: 4,
+            comp: [[2, 1.5, 86]],
+        },
+        {
+            id: 'high-gtr', kind: 'guitar', style: 'highlife', bars: 2, mode: 'major',
             name: 'Palm-wine guitar',
-            note: 'Thirds walking down, which is the sound of the style.',
-            notes: [[0, 2, 16], [2, 2, 12], [4, 2, 15], [6, 2, 11],
-                    [8, 2, 14], [10, 2, 10], [12, 2, 12], [14, 2, 15],
-                    [16, 2, 17], [18, 2, 12], [20, 2, 15], [22, 2, 11],
-                    [24, 2, 14], [26, 2, 10], [28, 4, 12]],
+            note: 'Over Offbeat chords. Thirds and sixths walking, the sound of the style.',
+            notes: [[0, 1, 16], [0, 1, 19], [2, 1, 14], [2, 1, 17], [4, 2, 12], [4, 2, 16],
+                    [8, 1, 17], [8, 1, 21], [10, 1, 16], [10, 1, 19], [12, 2, 12], [12, 2, 17],
+                    [16, 1, 14], [16, 1, 17], [18, 1, 11], [18, 1, 14], [20, 2, 17], [20, 2, 23],
+                    [24, 2, 12], [24, 2, 16], [26, 1, 14], [26, 1, 19], [28, 4, 12], [28, 4, 16]],
+        },
+        {
+            id: 'high-pick', kind: 'guitar', style: 'highlife', bars: 2, mode: 'major',
+            name: 'Picked lead guitar',
+            note: 'Over Offbeat chords. Fast and light round each chord.',
+            chords: 'high', oct: 1,
+            arp: { order: [2, 0, 1, 2, 0, 1, 3, 1], rate: 1, len: 0.8, accent: [92, 70, 80, 74] },
+        },
+        {
+            id: 'high-horn', kind: 'melody', style: 'highlife', bars: 2, mode: 'major',
+            name: 'Horn line',
+            note: 'Short, bright, on the beat. Written to be doubled.',
+            notes: [[0, 2, 12], [2, 2, 16], [4, 2, 19], [6, 3, 16],
+                    [10, 1, 17], [11, 1, 19], [12, 2, 21], [14, 2, 17],
+                    [16, 2, 19], [18, 1, 17], [19, 1, 14], [20, 3, 11],
+                    [24, 2, 12], [26, 2, 7], [28, 4, 4]],
+        },
+        {
+            id: 'high-bass', kind: 'bass', style: 'highlife', bars: 2, mode: 'major',
+            name: 'Highlife bass',
+            note: 'Walks between the chords. Never sits on the root for long.',
+            follow: 'high', every: 8,
+            line: [[0, 2, 0, 104], [3, 1, 't', 82], [4, 2, 'f', 94], [6, 2, 'n', 86]],
         },
 
         // ── Dancehall ─────────────────────────────────────────────────────
@@ -219,13 +398,43 @@ const Presets = {
             id: 'dh-onedrop', kind: 'drums', style: 'dancehall', bars: 1,
             name: 'One drop',
             note: 'Nothing on the one. That is the point of it.',
-            hits: { 36: [8], 38: [8], 42: [0, 2, 4, 6, 8, 10, 12, 14], 37: [4, 12] },
+            hits: {
+                36: [8], 38: [8], 37: [4, 12],
+                42: [0, 2, 4, 6, 8, 10, 12, [14, 70], [14 + 2 / 3, 62], [15 + 1 / 3, 72]],
+            },
         },
         {
             id: 'dh-steppers', kind: 'drums', style: 'dancehall', bars: 1,
             name: 'Steppers',
             note: 'Kick on every beat, snare answering the half.',
-            hits: { 36: [0, 4, 8, 12], 38: [8], 42: 'every16', 46: [14] },
+            hits: { 36: [0, 4, 8, 12], 38: [8], 42: 'every16', 46: [[14, 84, 2]] },
+        },
+        {
+            id: 'dh-bounce', kind: 'drums', style: 'dancehall', bars: 1,
+            name: 'Dancehall bounce',
+            note: 'The modern one: kick three-three-two, clap on the backbeat.',
+            hits: { 36: [0, 3, 8, 11], 39: [4, 12], 38: [[7, 40], [15, 46]], 42: [0, 2, 4, 6, 8, 10, 12, 14],
+                    46: [[6, 82, 2]] },
+        },
+        {
+            id: 'dh-chords', kind: 'chords', style: 'dancehall', bars: 2,
+            name: 'Riddim chords',
+            note: 'i VI VII, held. Two or three chords is plenty when the drums are doing this much.',
+            chords: 'dh', vel: 80,
+        },
+        {
+            id: 'dh-skank', kind: 'guitar', style: 'dancehall', bars: 2,
+            name: 'Skank',
+            note: 'The offbeat chop, and nothing else. That is the part.',
+            chords: 'dh', every: 4, oct: 1,
+            comp: [[2, 0.75, 90]],
+        },
+        {
+            id: 'dh-bass', kind: 'bass', style: 'dancehall', bars: 2,
+            name: 'Riddim bass',
+            note: 'Root, then up to the fifth and third. Heavy and in no hurry.',
+            follow: 'dh', every: 8,
+            line: [[0, 3, 0, 106], [3, 1, 0, 80], [4, 2, 'f', 94], [6, 2, 't', 88]],
         },
 
         // ── Dembow / reggaeton ────────────────────────────────────────────
@@ -236,51 +445,151 @@ const Presets = {
             hits: { 36: [0, 8], 38: [3, 6, 11, 14], 42: [0, 2, 4, 6, 8, 10, 12, 14] },
         },
         {
+            id: 'dem-perreo', kind: 'drums', style: 'dembow', bars: 2,
+            name: 'Perreo',
+            note: 'The dembow over two bars, with a rim roll into the top of the loop.',
+            hits: {
+                36: [0, 8, 16, 24], 38: [3, 6, 11, 14, 19, 22, 27],
+                42: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26],
+                37: [[28, 64], [29, 70], [30, 76], [30.5, 82], [31, 90], [31.5, 98]],
+            },
+        },
+        {
             id: 'dem-tresillo', kind: 'drums', style: 'dembow', bars: 1,
             name: 'Tresillo kick',
             note: 'Three, three, two — the figure underneath half the music on earth.',
             hits: { 36: [0, 6, 12], 38: [4, 12], 42: 'every16', 37: [3, 11] },
+        },
+        {
+            id: 'dem-chords', kind: 'chords', style: 'dembow', bars: 2,
+            name: 'Reggaeton keys',
+            note: 'i VI III VII, in the tresillo.',
+            chords: 'dem', every: 8,
+            comp: [[0, 2.5, 88], [3, 2.5, 78], [6, 2, 82]],
+        },
+        {
+            id: 'dem-bass', kind: 'bass', style: 'dembow', bars: 2,
+            name: 'Dembow bass',
+            note: 'Under Reggaeton keys. Three, three, two, with the kick.',
+            follow: 'dem', every: 8,
+            line: [[0, 3, 0, 106], [3, 2.5, 0, 90], [6, 2, 'f', 90]],
+        },
+        {
+            id: 'dem-lead', kind: 'melody', style: 'dembow', bars: 2,
+            name: 'Reggaeton lead',
+            note: 'Over Reggaeton keys. The rhythm of the drums, sung.',
+            notes: [[0, 2, 12], [3, 2, 12], [6, 2, 15],
+                    [8, 2, 15], [11, 2, 12], [14, 2, 8],
+                    [16, 2, 7], [19, 2, 10], [22, 2, 15],
+                    [24, 2, 14], [27, 2, 10], [30, 2, 14]],
         },
 
         // ── Hip hop ───────────────────────────────────────────────────────
         {
             id: 'hh-boom', kind: 'drums', style: 'hiphop', bars: 1,
             name: 'Boom bap',
-            note: 'Kick, snare, and swing on the hats.',
-            hits: { 36: [0, 10], 38: [4, 12], 42: [0, 2, 4, 6, 8, 10, 12, 14] },
+            note: 'Kick, snare, ghost notes swung late. Head-nod.',
+            hits: {
+                36: [0, 7, 10], 38: [4, 12, [7, 34], [15, 40]],
+                42: [0, 2, 4, 6, 8, 10, 12, 14], 44: [[3, 42], [11, 42]],
+            },
         },
         {
             id: 'hh-laid', kind: 'drums', style: 'hiphop', bars: 2,
             name: 'Laid back',
-            note: 'Two bars so the second can arrive differently.',
+            note: 'The snare a hair behind the beat — written in, not left to swing.',
             hits: {
-                36: [0, 10, 16, 22, 26], 38: [4, 12, 20, 28],
+                36: [0, 10, 16, 22, 26],
+                38: [4 + 2 / 24, 12 + 2 / 24, 20 + 2 / 24, 28 + 2 / 24, [27, 36]],
                 42: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30],
-                46: [14, 30],
+                46: [[14, 80, 2], [30, 80, 2]],
             },
         },
         {
             id: 'hh-chords', kind: 'chords', style: 'hiphop', bars: 2,
             name: 'Dusty minor',
-            note: 'Sevenths, close together, low. Let it be muddy.',
-            chords: [[0, 12, 0, 'MIN7'], [12, 4, 5, 'MIN7'], [16, 12, 8, 'MAJ7'], [28, 4, 10, 'DOM7']],
+            note: 'i9 iv7 VImaj7 V7, held and low. Let it be muddy.',
+            chords: 'hh', vel: 74, oct: -1,
+        },
+        {
+            id: 'hh-keys', kind: 'guitar', style: 'hiphop', bars: 2,
+            name: 'Rhodes figure',
+            note: 'The same chords, comped loose. Behind the beat if you swing it.',
+            chords: 'hh', every: 16,
+            comp: [[0, 3, 82], [6, 1.5, 68], [10, 2, 76]],
+        },
+        {
+            id: 'hh-bass', kind: 'bass', style: 'hiphop', bars: 2,
+            name: 'Boom bap bass',
+            note: 'Under Dusty minor. With the kick, then out of its way.',
+            follow: 'hh', every: 16,
+            line: [[0, 4, 0, 104], [7, 1, 0, 80], [10, 3, 'f', 92], [14, 2, 'o', 82]],
+        },
+        {
+            id: 'hh-lead', kind: 'melody', style: 'hiphop', bars: 2,
+            name: 'Soul sample',
+            note: 'Over Dusty minor. The kind of line you would chop from a record.',
+            notes: [[0, 3, 15], [4, 2, 14], [6, 2, 10], [8, 4, 12], [12, 2, 8], [14, 2, 12],
+                    [16, 3, 15], [20, 2, 19], [22, 2, 15], [24, 4, 12], [28, 2, 11], [30, 2, 14]],
         },
 
         // ── Trap ──────────────────────────────────────────────────────────
         {
             id: 'trap-basic', kind: 'drums', style: 'trap', bars: 1,
             name: 'Trap',
-            note: 'Snare on three, hats doing the work.',
-            hits: { 36: [0, 6, 11], 38: [8], 42: 'every16', 46: [15] },
+            note: 'Clap on three, hats on eighths, a triplet flick at the end.',
+            hits: {
+                36: [0, 6, 11], 39: [8],
+                42: [0, 2, 4, 6, 8, 10, [12, 72], [12 + 2 / 3, 64], [13 + 1 / 3, 70], 14],
+                46: [[15, 80, 1]],
+            },
         },
         {
             id: 'trap-rolls', kind: 'drums', style: 'trap', bars: 2,
             name: 'Trap with rolls',
-            note: 'The triplet roll is the genre, so it is written in rather than left to taste.',
+            note: 'Triplet rolls and thirty-seconds — the hats are the genre.',
             hits: {
-                36: [0, 6, 11, 16, 19, 27], 38: [8, 24],
-                42: [0, 2, 4, 6, 8, 10, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 29, 30, 31],
+                36: [0, 6, 11, 16, 19, 27], 39: [8, 24],
+                42: [0, 2, 4, 6, 8, 10, [12, 70], [12 + 2 / 3, 62], [13 + 1 / 3, 68],
+                     [14, 66], [14.5, 70], [15, 76], [15.5, 82],
+                     16, 18, 20, 22, 24, 26,
+                     [28, 64], [28 + 2 / 3, 68], [29 + 1 / 3, 72], [30, 76], [30 + 2 / 3, 80], [31 + 1 / 3, 86]],
+                46: [[23, 80, 1]],
             },
+        },
+        {
+            id: 'trap-808kit', kind: 'drums', style: 'trap', bars: 2,
+            name: '808 kick',
+            note: 'The low kick drawn long so it rings — stretch or shorten each one to taste.',
+            hits: {
+                35: [[0, 112, 6], [7, 100, 3], [11, 104, 5], [16, 112, 3], [19, 100, 5], [27, 104, 5]],
+                39: [8, 24],
+                42: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26,
+                     [28, 66], [28.5, 70], [29, 74], [29.5, 78], [30, 82], [31, 86]],
+            },
+        },
+        {
+            id: 'trap-chords', kind: 'chords', style: 'trap', bars: 2,
+            name: 'Dark minor',
+            note: 'i bII VI v. The flat second is the whole trick.',
+            chords: 'trap', vel: 78,
+        },
+        {
+            id: 'trap-808', kind: 'bass', style: 'trap', bars: 2,
+            name: '808 line',
+            note: 'Under Dark minor. Long notes; let them ring into each other.',
+            notes: [[0, 6, 0, 110], [6, 4, 0, 100], [10, 2, 12, 90], [12, 4, 1, 104],
+                    [16, 6, -4, 108], [22, 2, -4, 96], [24, 6, -5, 106], [30, 2, -2, 94]],
+        },
+        {
+            id: 'trap-bell', kind: 'melody', style: 'trap', bars: 2,
+            name: 'Bell motif',
+            note: 'Over Dark minor. Three notes, repeated until they mean something, then a triplet.',
+            notes: [[0, 1.5, 12], [2, 1.5, 15], [4, 1.5, 19], [6, 1.5, 15],
+                    [8, 1.5, 12], [10, 1.5, 15], [12, 2, 13], [14, 2, 17],
+                    [16, 1.5, 15], [18, 1.5, 12], [20, 1.5, 8], [22, 1.5, 12],
+                    [24, 1.5, 14], [26, 1.5, 10],
+                    [28, 2 / 3, 10], [28 + 2 / 3, 2 / 3, 12], [29 + 1 / 3, 2 / 3, 14], [30, 2, 15]],
         },
 
         // ── House ─────────────────────────────────────────────────────────
@@ -288,187 +597,11 @@ const Presets = {
             id: 'house-four', kind: 'drums', style: 'house', bars: 1,
             name: 'Four to the floor',
             note: 'The oldest one in the book, and still right.',
-            hits: { 36: [0, 4, 8, 12], 39: [4, 12], 46: [2, 6, 10, 14], 42: [0, 2, 4, 6, 8, 10, 12, 14] },
-        },
-        {
-            id: 'house-bass', kind: 'bass', style: 'house', bars: 1,
-            name: 'Offbeat bass',
-            note: 'Between the kicks, never on them.',
-            notes: [[2, 2, 0], [6, 2, 0], [10, 2, 10], [14, 2, 8]],
-            oct: -2,
-        },
-
-        // ── Gospel / soul ─────────────────────────────────────────────────
-        {
-            id: 'gos-shuffle', kind: 'drums', style: 'gospel', bars: 1,
-            name: 'Gospel shuffle',
-            note: 'Slow, swung hard, snare laid back.',
-            hits: { 36: [0, 7, 10], 38: [4, 12], 51: [0, 3, 4, 7, 8, 11, 12, 15] },
-        },
-        {
-            id: 'gos-chords', kind: 'chords', style: 'gospel', bars: 2,
-            name: 'ii V i',
-            note: 'The turnaround. Everything resolves and then goes round again.',
-            chords: [[0, 8, 2, 'MIN7'], [8, 8, 7, 'DOM7'], [16, 16, 0, 'MIN9']],
-        },
-        {
-            id: 'gos-bass', kind: 'bass', style: 'gospel', bars: 2,
-            name: 'Walking up',
-            note: 'A bass that moves between the chords instead of sitting on them.',
-            notes: [[0, 4, 2], [4, 2, 5], [6, 2, 7], [8, 4, 7], [12, 2, 10], [14, 2, 11],
-                    [16, 8, 0], [24, 4, 10], [28, 4, 7]],
-            oct: -2,
-        },
-
-        // ── More melody ───────────────────────────────────────────────────
-        {
-            id: 'ama-lead', kind: 'melody', style: 'amapiano', bars: 2,
-            name: 'Piano lead',
-            note: 'Right hand on top of the chords, answering itself across the bar.',
-            notes: [[0, 2, 12], [3, 1, 15], [4, 2, 19], [8, 2, 17], [11, 1, 15], [12, 3, 12],
-                    [16, 2, 15], [19, 1, 17], [20, 2, 20], [24, 4, 19], [29, 3, 12]],
-        },
-        {
-            id: 'afro-call', kind: 'melody', style: 'afrobeats', bars: 2,
-            name: 'Call and answer',
-            note: 'A phrase, then the same phrase lower. Half the hooks in the genre.',
-            notes: [[0, 2, 19], [2, 2, 17], [4, 4, 15], [10, 2, 17], [12, 3, 15],
-                    [16, 2, 15], [18, 2, 12], [20, 4, 10], [26, 2, 12], [28, 4, 8]],
-        },
-        {
-            id: 'high-horn', kind: 'melody', style: 'highlife', bars: 2,
-            name: 'Horn line',
-            note: 'Short, bright, on the beat. Written to be doubled.',
-            notes: [[0, 2, 12], [2, 2, 16], [4, 2, 19], [6, 4, 16],
-                    [12, 2, 14], [14, 2, 12],
-                    [16, 2, 17], [18, 2, 19], [20, 4, 24], [26, 2, 19], [28, 4, 16]],
-        },
-        {
-            id: 'gos-lead', kind: 'melody', style: 'gospel', bars: 2,
-            name: 'Gospel run',
-            note: 'Down the scale and back, the way a hand falls off a chord.',
-            notes: [[0, 2, 19], [2, 1, 17], [3, 1, 15], [4, 1, 14], [5, 1, 12], [6, 4, 10],
-                    [12, 2, 12], [14, 2, 14],
-                    [16, 6, 15], [24, 2, 17], [26, 2, 19], [28, 4, 24]],
-        },
-        {
-            id: 'trap-bell', kind: 'melody', style: 'trap', bars: 2,
-            name: 'Bell motif',
-            note: 'Three notes, repeated until they mean something.',
-            notes: [[0, 2, 12], [4, 2, 15], [6, 2, 12], [10, 2, 19], [14, 2, 15],
-                    [16, 2, 12], [20, 2, 15], [22, 2, 12], [26, 2, 20], [30, 2, 19]],
-        },
-
-        // ── More guitar ───────────────────────────────────────────────────
-        {
-            id: 'ama-gtr', kind: 'guitar', style: 'amapiano', bars: 2,
-            name: 'Muted stabs',
-            note: 'Off the beat, short, never where the log drum is.',
-            notes: [[2, 1, 12], [3, 1, 15], [7, 1, 19], [10, 1, 15], [11, 1, 12],
-                    [18, 1, 10], [19, 1, 14], [23, 1, 17], [26, 1, 14], [27, 1, 10]],
-        },
-        {
-            id: 'afh-gtr', kind: 'guitar', style: 'afrohouse', bars: 2,
-            name: 'Rolling arpeggio',
-            note: 'Sixteenths going round a chord. Set it and leave it.',
-            notes: [[0, 1, 12], [2, 1, 15], [4, 1, 19], [6, 1, 24], [8, 1, 19], [10, 1, 15],
-                    [12, 1, 19], [14, 1, 15],
-                    [16, 1, 10], [18, 1, 14], [20, 1, 17], [22, 1, 22], [24, 1, 17],
-                    [26, 1, 14], [28, 1, 17], [30, 1, 14]],
-        },
-        {
-            id: 'dh-skank', kind: 'guitar', style: 'dancehall', bars: 1,
-            name: 'Skank',
-            note: 'The offbeat chop, and nothing else. That is the part.',
-            notes: [[2, 1, 12], [2, 1, 15], [2, 1, 19],
-                    [6, 1, 12], [6, 1, 15], [6, 1, 19],
-                    [10, 1, 12], [10, 1, 15], [10, 1, 19],
-                    [14, 1, 12], [14, 1, 15], [14, 1, 19]],
-        },
-        {
-            id: 'hh-keys', kind: 'guitar', style: 'hiphop', bars: 2,
-            name: 'Rhodes figure',
-            note: 'Loose, behind the beat if you swing it.',
-            notes: [[0, 3, 12], [4, 2, 15], [7, 1, 17], [8, 4, 15],
-                    [16, 3, 10], [20, 2, 14], [23, 1, 15], [24, 6, 12]],
-        },
-
-        // ── More bass ─────────────────────────────────────────────────────
-        {
-            id: 'dem-bass', kind: 'bass', style: 'dembow', bars: 1,
-            name: 'Dembow bass',
-            note: 'Under the kick on one and three, and out of the way after.',
-            notes: [[0, 4, 0], [8, 3, 0], [12, 2, 10], [14, 2, 8]],
-            oct: -2,
-        },
-        {
-            id: 'trap-808', kind: 'bass', style: 'trap', bars: 2,
-            name: '808 line',
-            note: 'Long notes that slide. Let them ring into each other.',
-            notes: [[0, 6, 0], [6, 5, 0], [11, 5, 10], [16, 3, 8], [19, 8, 0], [27, 5, 5]],
-            oct: -2,
-        },
-        {
-            id: 'high-bass', kind: 'bass', style: 'highlife', bars: 2,
-            name: 'Highlife bass',
-            note: 'Walks. Never sits on the root for a whole bar.',
-            notes: [[0, 2, 0], [4, 2, 7], [6, 2, 10], [8, 2, 12], [12, 2, 10], [14, 2, 7],
-                    [16, 2, 8], [20, 2, 12], [22, 2, 15], [24, 2, 10], [28, 4, 0]],
-            oct: -2,
-        },
-        {
-            id: 'afh-bass', kind: 'bass', style: 'afrohouse', bars: 1,
-            name: 'Deep house bass',
-            note: 'One note, placed well. Most of house is one note placed well.',
-            notes: [[2, 2, 0], [6, 2, 0], [10, 2, 0], [13, 1, 10], [14, 2, 12]],
-            oct: -2,
-        },
-
-        // ── More chords ───────────────────────────────────────────────────
-        {
-            id: 'high-chords', kind: 'chords', style: 'highlife', bars: 2,
-            name: 'Highlife major',
-            note: 'Bright, and it keeps moving. The genre does not brood.',
-            chords: [[0, 8, 3, 'MAJ'], [8, 8, 8, 'MAJ'], [16, 8, 10, 'MAJ'], [24, 8, 3, 'MAJ7']],
-        },
-        {
-            id: 'dh-chords', kind: 'chords', style: 'dancehall', bars: 2,
-            name: 'Minor two-chord',
-            note: 'Two chords is plenty when the drums are doing this much.',
-            chords: [[0, 16, 0, 'MIN'], [16, 16, 10, 'MAJ']],
-        },
-        {
-            id: 'pop-chords', kind: 'chords', style: 'afrobeats', bars: 2,
-            name: 'i VI III VII',
-            note: 'The one that sounds like everything and belongs to nobody.',
-            chords: [[0, 8, 0, 'MIN'], [8, 8, 8, 'MAJ'], [16, 8, 3, 'MAJ'], [24, 8, 10, 'MAJ']],
-        },
-        {
-            id: 'trap-chords', kind: 'chords', style: 'trap', bars: 2,
-            name: 'Dark minor',
-            note: 'Two chords a semitone apart at the end, which is the whole trick.',
-            chords: [[0, 12, 0, 'MIN'], [12, 4, 1, 'MAJ'], [16, 12, 0, 'MIN'], [28, 4, 11, 'MAJ']],
-        },
-        {
-            id: 'house-chords', kind: 'chords', style: 'house', bars: 2,
-            name: 'House stabs',
-            note: 'Short and off the beat. The chord is a percussion instrument here.',
-            chords: [[2, 2, 0, 'MIN7'], [6, 2, 0, 'MIN7'], [10, 2, 10, 'MAJ7'], [14, 2, 10, 'MAJ7'],
-                     [18, 2, 8, 'MAJ7'], [22, 2, 8, 'MAJ7'], [26, 2, 5, 'MIN7'], [30, 2, 5, 'MIN7']],
-        },
-
-        // ── A few more kits ───────────────────────────────────────────────
-        {
-            id: 'high-kit', kind: 'drums', style: 'highlife', bars: 1,
-            name: 'Highlife kit',
-            note: 'Straighter than the shuffle, for when the guitar is busy.',
-            hits: { 36: [0, 8], 38: [4, 12], 42: 'every16', 37: [6, 14] },
-        },
-        {
-            id: 'gos-straight', kind: 'drums', style: 'gospel', bars: 1,
-            name: 'Gospel straight',
-            note: 'Backbeat, hats on eighths, nothing clever.',
-            hits: { 36: [0, 8], 38: [4, 12], 42: [0, 2, 4, 6, 8, 10, 12, 14], 46: [14] },
+            hits: {
+                36: [0, 4, 8, 12], 39: [4, 12],
+                46: [[2, 84, 2], [6, 84, 2], [10, 84, 2], [14, 84, 2]],
+                42: [0, 4, 8, 12],
+            },
         },
         {
             id: 'house-perc', kind: 'drums', style: 'house', bars: 2,
@@ -477,22 +610,99 @@ const Presets = {
             hits: {
                 36: [0, 4, 8, 12, 16, 20, 24, 28],
                 39: [4, 12, 20, 28],
-                46: [2, 6, 10, 14, 18, 22, 26, 30],
+                46: [[2, 82, 2], [6, 82, 2], [10, 82, 2], [14, 82, 2],
+                     [18, 82, 2], [22, 82, 2], [26, 82, 2], [30, 82, 2]],
                 42: 'every16x2',
                 37: [3, 9, 15, 19, 25, 31],
             },
         },
         {
-            id: 'ama-sparse', kind: 'drums', style: 'amapiano', bars: 1,
-            name: 'Sparse piano',
-            note: 'For when the log drum is the loudest thing, which it should be.',
-            hits: { 36: [0, 4, 8, 12], 46: [6, 14], 37: [2, 7, 10, 15] },
+            id: 'house-swing', kind: 'drums', style: 'house', bars: 1, swing: 0.2,
+            name: 'Swung house',
+            note: 'The same floor with the sixteenths pushed late — the shuffle in garage and deep house.',
+            hits: {
+                36: [0, 4, 8, 12], 39: [4, 12],
+                42: 'every16', 46: [[2, 82, 2], [6, 82, 2], [10, 82, 2], [14, 82, 2]],
+                37: [3, 7, 13],
+            },
         },
         {
-            id: 'afro-half', kind: 'drums', style: 'afrobeats', bars: 1,
-            name: 'Half-time afro',
-            note: 'Clap on three only. Everything feels twice as slow and twice as big.',
-            hits: { 36: [0, 6, 10], 39: [8], 42: 'every16', 46: [14] },
+            id: 'house-chords', kind: 'chords', style: 'house', bars: 2,
+            name: 'House stabs',
+            note: 'i9 VII VI iv7, short and off the beat. The chord is a percussion instrument here.',
+            chords: 'house', every: 8,
+            comp: [[2, 1.25, 92], [6, 1.25, 84]],
+        },
+        {
+            id: 'house-organ', kind: 'chords', style: 'house', bars: 2,
+            name: 'Organ chords',
+            note: 'The same chords, held, for a pad or an organ.',
+            chords: 'house', vel: 78,
+        },
+        {
+            id: 'house-bass', kind: 'bass', style: 'house', bars: 2,
+            name: 'Offbeat bass',
+            note: 'Between the kicks, never on them, popping up the octave.',
+            follow: 'house', every: 8,
+            line: [[2, 1.5, 0, 102], [6, 1, 'o', 86], [7, 0.75, 0, 80]],
+        },
+        {
+            id: 'house-riff', kind: 'melody', style: 'house', bars: 2,
+            name: 'House piano riff',
+            note: 'Over House stabs. Three notes answering each chord.',
+            notes: [[2, 1, 14], [3, 1, 15], [6, 2, 19],
+                    [10, 1, 17], [11, 1, 14], [14, 2, 10],
+                    [18, 1, 12], [19, 1, 15], [22, 2, 19],
+                    [26, 1, 12], [27, 1, 15], [30, 2, 17]],
+        },
+
+        // ── Gospel / soul ─────────────────────────────────────────────────
+        {
+            id: 'gos-shuffle', kind: 'drums', style: 'gospel', bars: 1, swing: 0,
+            name: 'Gospel shuffle',
+            note: 'A real twelve-eight: the ride on triplets, the snare laid back on two and four.',
+            hits: {
+                36: [0, 6 + 2 / 3, 8, 14 + 2 / 3],
+                38: [4 + 1 / 24, 12 + 1 / 24, [10 + 2 / 3, 34], [14 + 2 / 3, 40]],
+                51: [0, 2 + 2 / 3, 4, 6 + 2 / 3, 8, 10 + 2 / 3, 12, 14 + 2 / 3],
+                44: [4, 12],
+            },
+        },
+        {
+            id: 'gos-straight', kind: 'drums', style: 'gospel', bars: 1,
+            name: 'Gospel straight',
+            note: 'Backbeat, hats on eighths, nothing clever.',
+            hits: { 36: [0, 8, 10], 38: [4, 12], 42: [0, 2, 4, 6, 8, 10, 12, 14], 46: [[14, 82, 2]] },
+        },
+        {
+            id: 'gos-chords', kind: 'chords', style: 'gospel', bars: 2,
+            name: 'ii V i',
+            note: 'The minor turnaround: half-diminished, a flat-nine dominant, home.',
+            chords: 'gos', vel: 80, root: true,
+        },
+        {
+            id: 'gos-church', kind: 'chords', style: 'gospel', bars: 2, mode: 'major', swing: 0,
+            name: 'Church keys',
+            note: 'I vi ii V in ninths, comped in triplets. The Sunday morning one.',
+            chords: 'gosmaj', every: 4, root: true,
+            comp: [[0, 2.5, 86], [2 + 2 / 3, 1.25, 68]],
+        },
+        {
+            id: 'gos-bass', kind: 'bass', style: 'gospel', bars: 2,
+            name: 'Walking up',
+            note: 'Under ii V i. Walks into each chord from a semitone below.',
+            follow: 'gos', every: 8,
+            line: [[0, 4, 0, 100], [4, 2, 'f', 86], [6, 2, 'a', 84]],
+        },
+        {
+            id: 'gos-lead', kind: 'melody', style: 'gospel', bars: 2,
+            name: 'Gospel run',
+            note: 'Over ii V i. Down the chord, through the flat nine, a triplet into home.',
+            notes: [[0, 2, 17], [2, 1, 15], [3, 1, 14], [4, 1, 12], [5, 1, 8], [6, 2, 5],
+                    [8, 1, 11], [9, 1, 14], [10, 1, 17], [11, 1, 20], [12, 4, 19],
+                    [16, 3, 15], [19, 1, 14], [20, 2, 12],
+                    [22, 2 / 3, 10], [22 + 2 / 3, 2 / 3, 12], [23 + 1 / 3, 2 / 3, 14],
+                    [24, 6, 15], [30, 2, 14]],
         },
     ],
 
@@ -514,53 +724,136 @@ const Presets = {
 
     // ── Turning one into notes ────────────────────────────────────────────
 
+    /// To the nearest MIDI tick — 24 to a step — so a triplet written as a
+    /// third lands on a position the roll and the file can both say.
+    fine(x) { return Math.round(x * 24) / 24; },
+
     /// A preset becomes a list of {pitch, vel, dur, tick}. Nothing here
     /// knows about riffs or tracks — that is the caller's business — so
     /// this stays testable and the same call serves preview and apply.
     ///
-    /// `at` is the MIDI note the pitched material should sit around, and
-    /// `tonic` is the key it should be in. Drums ignore both.
+    /// `at` is the MIDI note the pitched material should sit around,
+    /// `tonic` and `scale` the key it should be in. Drums ignore all three.
     realise(preset, opts) {
         const o = opts || {};
         if (!preset) return [];
-        return preset.kind === 'drums'
+        const out = preset.kind === 'drums'
             ? this.drumNotes(preset)
-            : this.tunedNotes(preset, o.tonic | 0, o.at == null ? 60 : o.at);
+            : this.tunedNotes(preset, this.keyFor(preset, o.tonic | 0, o.scale),
+                              o.at == null ? 60 : o.at);
+        return this.feel(preset, out);
+    },
+
+    /// The tonic to write in. A minor preset in a major song goes to the
+    /// relative minor and the other way about: the same seven notes, so
+    /// it is in key rather than a third out.
+    keyFor(preset, tonic, scale) {
+        const mine = preset.mode || 'minor';
+        const songMajor = scale === 'major';
+        if (mine === 'minor' && songMajor) return tonic + 9;
+        if (mine === 'major' && scale && !songMajor) return tonic + 3;
+        return tonic;
+    },
+
+    /// The style's swing, written into the notes: every off-sixteenth goes
+    /// late by the style's fraction of a step. Notes already off the grid
+    /// were placed there on purpose and are left alone.
+    feel(preset, notes) {
+        const style = this.styleOf(preset.style);
+        const swing = preset.swing != null ? preset.swing : (style ? style.swing : 0);
+        const span = (preset.bars || 1) * 16;
+        if (swing > 0) {
+            for (const n of notes) {
+                const k = Math.round(n.tick);
+                if (Math.abs(n.tick - k) > 1e-6 || k % 2 !== 1) continue;
+                const to = this.fine(n.tick + swing);
+                if (to < span) n.tick = to;
+            }
+        }
+        return notes.sort((a, b) => a.tick - b.tick);
     },
 
     drumNotes(preset) {
         const out = [];
         const span = (preset.bars || 1) * 16;
+        const all = n => Array.from({ length: n }, (_, i) => i);
         for (const key of Object.keys(preset.hits || {})) {
             const pitch = +key;
+            if (!Number.isInteger(pitch)) continue;
             let steps = preset.hits[key];
-            if (steps === 'every16') steps = this.every(16);
-            else if (steps === 'every16x2') steps = this.every(32);
-            for (const s of steps) {
-                if (s < 0 || s >= span) continue;
-                out.push({ pitch, vel: this.weight(pitch, s), dur: 1, tick: s });
-            }
+            if (steps === 'every16') steps = all(16);
+            else if (steps === 'every16x2') steps = all(32);
+            const hits = steps.map(h => (Array.isArray(h) ? h : [h]))
+                              .filter(([s]) => s >= 0 && s < span)
+                              .sort((a, b) => a[0] - b[0]);
+            hits.forEach(([s, vel, dur], i) => {
+                // A hit is a step long — or as long as the gap to the next
+                // one, so a roll reads as a roll and not as one long smear.
+                const gap = i + 1 < hits.length ? hits[i + 1][0] - s : 1;
+                out.push({ pitch, vel: vel || this.weight(pitch, s),
+                           dur: dur || this.fine(Math.max(1 / 6, Math.min(1, gap))), tick: this.fine(s) });
+            });
         }
-        return out.sort((a, b) => a.tick - b.tick);
+        return out;
     },
 
     /// Not everything at 100. A shaker that never varies sounds like a
     /// machine, and the downbeat of a bar is louder than the rest of it
     /// in every style here.
     weight(pitch, step) {
-        if (pitch === this.HAT) return step % 4 === 0 ? 92 : (step % 2 === 0 ? 76 : 58);
-        if (pitch === this.RIDE) return step % 4 === 0 ? 90 : 68;
+        const on = Math.abs(step - Math.round(step)) < 1e-6 ? Math.round(step) : -1;
+        if (pitch === this.HAT) return on % 4 === 0 ? 92 : (on % 2 === 0 ? 76 : 58);
+        if (pitch === this.RIDE) return on % 4 === 0 ? 90 : 68;
         if (pitch === this.RIM) return 70;
         if (pitch === this.OPEN) return 86;
-        return step % 16 === 0 ? 110 : 100;
+        if (pitch === this.PEDAL) return 60;
+        return on % 16 === 0 ? 110 : 100;
+    },
+
+    /// Voice a chord near the one before it. Every inversion, in every
+    /// octave near home, is scored: how far it sits from where the hand
+    /// was (and, more gently, from home, so a progression does not
+    /// wander off the keyboard), and how muddy it is — a semitone rub or
+    /// a close interval down low.
+    ///
+    /// A five-note chord leaves its root out, as a pianist would: the
+    /// bass, or the left hand, has it, and five notes in one hand is a
+    /// cluster rather than a chord.
+    voice(root, shape, prev, home) {
+        const base = (shape.length >= 5 ? shape.slice(1) : shape.slice()).sort((a, b) => a - b);
+        const mean = v => v.reduce((a, b) => a + b, 0) / v.length;
+        const target = prev ? mean(prev) * 0.6 + home * 0.4 : home;
+        let best = null, bestCost = Infinity;
+        for (let inv = 0; inv < base.length; inv++) {
+            const v0 = base.map((s, i) => (i < inv ? s + 12 : s)).sort((a, b) => a - b);
+            for (const shift of [-24, -12, 0, 12]) {
+                const v = v0.map(s => root + s + shift);
+                let cost = Math.abs(mean(v) - target);
+                if (prev) {
+                    let move = 0;
+                    for (const p of v) move += Math.min(...prev.map(q => Math.abs(p - q)));
+                    cost += move * 0.3;
+                }
+                for (let i = 1; i < v.length; i++) {
+                    const gap = v[i] - v[i - 1];
+                    if (gap === 1) cost += 6;
+                    if (gap <= 4 && v[i - 1] < 52) cost += 3;
+                    if (i > 1 && v[i] - v[i - 2] <= 3) cost += 3;   // three in a fist
+                }
+                if (cost < bestCost) { bestCost = cost; best = v; }
+            }
+        }
+        return best;
     },
 
     /// Pitched material, placed in the key and in a sensible octave.
     ///
     /// `at` is where the instrument lives — the same number the piano roll
-    /// uses to decide what to show — so a bass preset lands on the bass's
-    /// strings rather than three octaves above them.
+    /// uses to decide what to show. A bass preset ignores it and sits round
+    /// E2 wherever it is put: a bass line on a piano track is still a bass
+    /// line, and one written an octave up from wherever it landed is not.
     tunedNotes(preset, tonic, at) {
+        if (preset.kind === 'bass') at = 40;
         const out = [];
         const span = (preset.bars || 1) * 16;
         // The tonic nearest the instrument's home, so a preset is in the
@@ -569,21 +862,81 @@ const Presets = {
         root += Math.round((at - root) / 12) * 12;
         root += (preset.oct || 0) * 12;
 
-        if (preset.chords) {
-            for (const [tick, dur, chordRoot, shapeName] of preset.chords) {
+        const push = (tick, dur, pitch, vel) => {
+            if (tick < 0 || tick >= span || pitch < 0 || pitch > 127) return;
+            out.push({ pitch, vel: Math.max(1, Math.min(127, Math.round(vel))),
+                       dur: this.fine(Math.max(0.25, Math.min(dur, span - tick))),
+                       tick: this.fine(tick) });
+        };
+        const accent = tick => (tick % 16 === 0 ? 104 : tick % 4 === 0 ? 96 : 88);
+
+        // Chords: voiced, then held, comped or broken up.
+        const prog = typeof preset.chords === 'string' ? this.PROG[preset.chords] : null;
+        if (prog) {
+            let prev = null;
+            for (const [tick, dur, r, shapeName] of prog) {
                 if (tick >= span) continue;
-                const shape = this[shapeName] || this.MIN;
-                for (const s of shape)
-                    out.push({ pitch: root + chordRoot + s, vel: 84,
-                               dur: Math.max(1, dur), tick });
+                const v = this.voice(root + r, this[shapeName] || this.MIN, prev, root + 7);
+                prev = v;
+                const low = root + r - (r > 6 ? 24 : 12);   // the left hand
+                const end = tick + dur;
+                if (preset.arp) {
+                    const a = preset.arp, rate = a.rate || 1, acc = a.accent || [90, 76];
+                    let k = 0;
+                    for (let s = tick; s < end - 1e-6; s += rate, k++) {
+                        const i = a.order[k % a.order.length];
+                        const pitch = v[i % v.length] + 12 * Math.floor(i / v.length);
+                        push(s, Math.min(a.len || rate, end - s), pitch, acc[k % acc.length]);
+                    }
+                    if (preset.root) push(tick, dur, low, 84);
+                } else if (preset.comp) {
+                    const every = preset.every || dur;
+                    for (let b = tick; b < end - 1e-6; b += every)
+                        for (const [off, len, vel] of preset.comp) {
+                            const s = b + off;
+                            if (s >= end - 1e-6) continue;
+                            for (const p of v) push(s, Math.min(len, end - s), p, vel);
+                            if (preset.root) push(s, Math.min(len, end - s), low, vel);
+                        }
+                } else {
+                    for (const p of v) push(tick, dur, p, preset.vel || 82);
+                    if (preset.root) push(tick, dur, low, (preset.vel || 82) + 6);
+                }
             }
+        } else if (Array.isArray(preset.chords)) {
+            // The old form, a chord list written out: kept for anything
+            // saved that still uses it.
+            for (const [tick, dur, r, shapeName] of preset.chords)
+                for (const s of this[shapeName] || this.MIN) push(tick, dur, root + r + s, 84);
         }
-        for (const [tick, dur, semis] of (preset.notes || [])) {
-            if (tick >= span) continue;
-            out.push({ pitch: root + semis, vel: tick % 16 === 0 ? 104 : 94,
-                       dur: Math.max(1, dur), tick });
+
+        // A bass line written once and played under every chord, each time
+        // from that chord's root — kept within a sixth either side of the
+        // key's root, so it does not climb with the progression.
+        const follow = preset.follow ? this.PROG[preset.follow] : null;
+        if (follow) {
+            const near = r => (r > 6 ? r - 12 : r);
+            follow.forEach(([tick, dur, r, shapeName], i) => {
+                const shape = this[shapeName] || this.MIN;
+                const next = near(follow[(i + 1) % follow.length][2]);
+                const iv = { t: shape[1], f: shape[2], o: 12 };
+                const end = tick + dur, every = preset.every || dur;
+                for (let b = tick; b < end - 1e-6; b += every)
+                    for (const [off, len, step, vel] of preset.line) {
+                        const s = b + off;
+                        if (s >= end - 1e-6) continue;
+                        const pitch = step === 'n' ? root + next
+                                    : step === 'a' ? root + next - 1
+                                    : root + near(r) + (iv[step] != null ? iv[step] : step);
+                        push(s, Math.min(len, end - s + (step === 'n' || step === 'a' ? 1 : 0)),
+                             pitch, vel || accent(s));
+                    }
+            });
         }
-        return out.sort((a, b) => a.tick - b.tick);
+
+        for (const [tick, dur, semis, vel] of (preset.notes || []))
+            push(tick, dur, root + semis, vel || accent(tick));
+        return out;
     },
 };
 

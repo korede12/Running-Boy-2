@@ -66,8 +66,9 @@ const Bounce = {
         // similarly. This is the whole reason Mixer takes a context.
         let bus = null;
         if (typeof Mixer !== 'undefined') {
-            bus = Mixer.build(ctx, mix, Tape.ctxInfo);
-            synth.route(bus.in.drums, bus.in.music);
+            bus = Mixer.build(ctx, mix, Tape.ctxInfo, song);
+            Mixer.apply(bus, null, true);
+            synth.route(bus.in.drums, bus.in.music, bus.strip);
         }
 
         for (let i = 0; i < bars; i++) {
@@ -88,13 +89,14 @@ const Bounce = {
                 for (const e of p.riff.events) {
                     if (!e.isNote || e.tick < from || e.tick >= to) continue;
                     synth.hit(t.channel, e.data[0], e.data[1],
-                              Math.max(1, e.dur) * stepLen, at + (e.tick - from) * stepLen);
+                              (e.dur > 0 ? e.dur : 1) * stepLen, at + (e.tick - from) * stepLen,
+                              e.dur > 1 ? e.dur * stepLen : 0);
                 }
             }
 
             for (const [clip, buf] of clips)
                 if (clip.at === bar)
-                    Tape.voice(ctx, clip, at, barLen, buf, bus ? bus.in.audio : null);
+                    Tape.voice(ctx, clip, at, barLen, buf, bus ? bus.lane(clip.lane | 0) : null);
         }
 
         return ctx.startRendering();

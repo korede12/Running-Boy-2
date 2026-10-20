@@ -404,7 +404,8 @@ const Tape = {
         g.gain.value = clip.gain == null ? 1 : clip.gain;
         // The mixer if there is one. Going straight to the destination is
         // what made a clip and a synth part impossible to balance.
-        g.connect(dest || this.bus || ctx.destination);
+        // Each lane has its own strip on the mixer when there is one.
+        g.connect(dest || (this.laneBus && this.laneBus(clip.lane | 0)) || this.bus || ctx.destination);
 
         const src = ctx.createBufferSource();
         src.buffer = buf;
