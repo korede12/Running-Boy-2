@@ -293,7 +293,14 @@ const Studio = {
     chrome() {
         return '<div class="st-top">' +
                 '<span class="st-name">&#9835; Naijabeats</span>' +
-                '<button class="pl-out" onclick="Studio.close()">&#10005; Leave</button>' +
+                '<span class="st-top-r">' +
+                    // Only shown on a phone, where the toolbar has no room
+                    // for things done once a session. See menu().
+                    '<button id="st-menu-btn" class="st-menu-btn" aria-label="Menu" ' +
+                        'aria-haspopup="true" aria-expanded="false" onclick="Studio.menu()">&#9776;</button>' +
+                    '<button class="pl-out" onclick="Studio.close()">&#10005; Leave</button>' +
+                '</span>' +
+                '<div class="st-menu" id="st-menu" role="menu" hidden></div>' +
             '</div>' +
             '<div class="st-bar" id="st-bar"></div>' +
             '<canvas id="st-grid"></canvas>' +
@@ -399,8 +406,9 @@ const Studio = {
                 b('&rarr;&#9679;', 'loopTo()', 'Loop ends here') +
                 this.addMenu() +
                 b('&minus;', 'dropTrack()', 'Remove this track') +
-                b('Save', 'saveSong()', 'Save this beat') +
-                b('Beats', 'beats()', 'Your saved beats') +
+                // On a phone these two live in the menu instead.
+                b('Save', 'saveSong()', 'Save this beat', 'st-filed') +
+                b('Beats', 'beats()', 'Your saved beats', 'st-filed') +
                 b('&minus;', 'zoomBy(-1)', 'Zoom out', this.zoom <= this.ZOOM_MIN ? 'st-dim' : '') +
                 b('+', 'zoomBy(1)', 'Zoom in', this.zoom >= this.ZOOM_MAX ? 'st-dim' : '') +
                 (this.solo ? b('Unsolo', 'clearSolo()', 'Hear everything again', 'st-go on') : '') +
@@ -3269,6 +3277,7 @@ const Studio = {
     /// Ctrl+Z and Ctrl+Shift+Z — or Ctrl+Y, for anyone whose hands learned
     /// it that way. Keys 1–8 are the pads while a take is running.
     key(ev) {
+        if (ev.key === 'Escape' && this._menuOpen) { this.menu(false); return; }
         if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
             const k = (ev.key || '').toLowerCase();
             if (k === 'z') { ev.preventDefault(); ev.shiftKey ? this.redo() : this.undo(); }
@@ -4378,6 +4387,58 @@ const Studio = {
         if (bar) bar.style.width = Math.round(level * 100) + '%';
         const hot = document.getElementById('mic-pk');
         if (hot) hot.className = peak > 0.98 ? 'mic-pk on' : 'mic-pk';
+    },
+
+    // ── The menu ──────────────────────────────────────────────────────────
+    // On a phone the toolbar wraps onto three rows, and most of what is on
+    // them is for making the beat. Starting a new one, saving, and opening
+    // the list of saved ones happen once a session, so on a narrow screen
+    // they move behind the button in the header and the toolbar keeps the
+    // work. On a wide screen they stay where they were, and so does this
+    // button: hidden.
+
+    /// Items a host adds: [label, function]. The standalone page puts its
+    /// .vbm files here; the game has none to add.
+    menuExtra: [],
+    _menuOpen: false,
+
+    menuItems() {
+        return [
+            ['&#10010;&nbsp; New beat', () => this.newBeat()],
+            ['&#128190;&nbsp; Save beat', () => this.saveSong()],
+            ['&#128193;&nbsp; Saved beats', () => this.beats()],
+        ].concat(this.menuExtra);
+    },
+
+    menu(open) {
+        const want = open == null ? !this._menuOpen : !!open;
+        this._menuOpen = want;
+        const m = document.getElementById('st-menu'), btn = document.getElementById('st-menu-btn');
+        if (btn) btn.setAttribute('aria-expanded', want ? 'true' : 'false');
+        if (!m) return;
+        if (want) {
+            const items = this.menuItems();
+            m.innerHTML = items.map(([label], i) =>
+                '<button role="menuitem" onclick="Studio.menuDo(' + i + ')">' + label + '</button>').join('');
+            // Close on any press outside it, the way every menu does.
+            if (!this._menuAway) {
+                this._menuAway = e => {
+                    if (!this._menuOpen) return;
+                    const t = e.target;
+                    if (t && t.closest && (t.closest('#st-menu') || t.closest('#st-menu-btn'))) return;
+                    this.menu(false);
+                };
+                document.addEventListener('pointerdown', this._menuAway, true);
+            }
+        }
+        m.hidden = !want;
+    },
+
+    /// Shut the menu first, so what the item opens is not under it.
+    menuDo(i) {
+        const item = this.menuItems()[i];
+        this.menu(false);
+        if (item) item[1]();
     },
 
     // ── The mix ───────────────────────────────────────────────────────────
