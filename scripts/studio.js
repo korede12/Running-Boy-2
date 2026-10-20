@@ -106,6 +106,17 @@ const Studio = {
     // engine (KITS in synth.js); a drum track's program says which it is.
     kit(t) { return kitFor(t.program | 0); },
 
+    /// The voice a track sounds on — its channel, except that drum tracks
+    /// after the first get voices of their own, so each can have a kit.
+    vk(t) { return Mixer.keyOf(this.song, t); },
+
+    /// Every track's instrument onto its voice. Called whenever tracks
+    /// come or go, because a drum track's voice depends on its order.
+    syncPrograms() {
+        if (!this.synth) return;
+        for (const t of this.song.tracks) this.synth.setProgram(this.vk(t), t.program);
+    },
+
     /// A drum track's rows: the kit's own, loud-and-high to
     /// low-and-fundamental, plus one on top for any note in the riff that
     /// the kit does not have. The synth plays those from the standard kit,
@@ -182,7 +193,7 @@ const Studio = {
         Mic.onlevel = (lv, pk) => this.micMeter(lv, pk);
         Mic.onclip = take => this.micKeep(take);
         if (!this.synth) this.synth = new Synth();
-        for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
+        this.syncPrograms();
 
         host.innerHTML = this.chrome();
         host.classList.add('on');
@@ -387,6 +398,7 @@ const Studio = {
                 b('&#9679;&rarr;', 'loopFrom()', 'Loop starts here') +
                 b('&rarr;&#9679;', 'loopTo()', 'Loop ends here') +
                 b('+ Track', 'newTrack()', 'Add a track') +
+                b('+ Drums', 'newDrums()', 'Add another drum track, with a kit of its own') +
                 b('&minus;', 'dropTrack()', 'Remove this track') +
                 b('Save', 'saveSong()', 'Save this beat') +
                 b('Beats', 'beats()', 'Your saved beats') +
@@ -2033,7 +2045,7 @@ const Studio = {
         const dr = Math.round((p.y - m.y) / c.h);
         if (this.shiftNotes(m, dt, dr, 'Move notes') && m.e.data[0] !== m.pitch) {
             m.pitch = m.e.data[0];
-            this.preview(this.song.tracks[this.track].channel, m.pitch);
+            this.preview(this.vk(this.song.tracks[this.track]), m.pitch);
         }
     },
 
@@ -2097,7 +2109,7 @@ const Studio = {
         const dt = dx * (tiny ? 1 / TICKS_PER_STEP : this.grid().steps);
         if (!this.shiftNotes(m, dt, dy, 'Nudge notes')) return;
         this.settleNotes(held);
-        if (dy && held.length === 1) this.preview(t.channel, held[0].data[0]);
+        if (dy && held.length === 1) this.preview(this.vk(t), held[0].data[0]);
         this.refreshAct(); this.keep();
     },
 
@@ -2160,10 +2172,25 @@ const Studio = {
         if (!preset) return null;
         const wantDrums = preset.kind === 'drums';
         const here = this.song.tracks[this.track];
-        if (here && (here.channel === 9) === wantDrums) return this.track;
-        // The first track of the right sort, if the cursor is on the wrong one.
-        const i = this.song.tracks.findIndex(t => (t.channel === 9) === wantDrums);
-        return i === -1 ? null : i;
+        if (!wantDrums) {
+            if (here && here.channel !== 9) return this.track;
+            const i = this.song.tracks.findIndex(t => t.channel !== 9);
+            return i === -1 ? null : i;
+        }
+        // A drum preset goes to a drum track with its kit: the one under
+        // the cursor if it fits, then the first that does. Percussion
+        // written for a kit nobody has yet gets a new track — 'new' — so it
+        // goes beside the beat instead of over it. A standard-kit preset
+        // with no standard kit about takes whatever drum track there is.
+        const kit = preset.kit || 0;
+        const has = t => t && t.channel === 9 && (t.program | 0) === kit;
+        if (has(here)) return this.track;
+        const i = this.song.tracks.findIndex(has);
+        if (i !== -1) return i;
+        if (kit) return 'new';
+        if (here && here.channel === 9) return this.track;
+        const j = this.song.tracks.findIndex(t => t.channel === 9);
+        return j === -1 ? 'new' : j;
     },
 
     /// Take a preset: write it into a riff on a suitable track.
@@ -2175,7 +2202,11 @@ const Studio = {
     usePreset(id) {
         const preset = Presets.get(id);
         if (!preset) return;
-        const ti = this.presetTarget(preset);
+        let ti = this.presetTarget(preset);
+        if (ti === 'new') {
+            if (!this.newDrums(preset.kit || 0)) return;
+            ti = this.song.tracks.length - 1;
+        }
         if (ti == null) {
             this.say(preset.kind === 'drums'
                 ? 'No drum track to put that on' : 'No melodic track to put that on');
@@ -2478,7 +2509,7 @@ const Studio = {
 
         // The keyboard sounds a note rather than writing one — which is
         // what it is for, and what it does everywhere else.
-        if (px < c.x0 - 1) { this.preview(t.channel, this.rows(t)[row]); return; }
+        if (px < c.x0 - 1) { this.preview(this.vk(t), this.rows(t)[row]); return; }
         const pitch = this.rows(t)[row];
         // Anywhere along a long note is that note: tapping its tail used to
         // stack a second note on top of it.
@@ -2494,7 +2525,7 @@ const Studio = {
             const len = t.channel === 9 ? Math.min(1, unit)
                       : this.fine(Math.min(this._noteLen || unit, this.editing.steps - s));
             this.editing.add(Event.note(pitch, 100, len, s));
-            this.preview(t.channel, pitch);
+            this.preview(this.vk(t), pitch);
         }
         this.draw();
         this.refreshAct();
@@ -2715,22 +2746,44 @@ const Studio = {
         this.draw(); this.say('Loop ends at bar ' + (this.bar + 1));
     },
 
+    DRUM_TRACKS: 8,          // as many kits as anyone will want at once
+
+    /// A new melodic track, on the first free channel. With no drum track
+    /// yet, the first new track is drums, as it always was.
     newTrack() {
-        const wantDrums = this.song.tracks.every(t => t.channel !== 9);
-        let ch = this.song.freeChannel(wantDrums);
-        if (ch === -1) ch = this.song.freeChannel(false);
-        if (ch === -1) { this.say('No channels left'); return; }
+        if (this.song.tracks.every(t => t.channel !== 9)) return this.newDrums();
+        const ch = this.song.freeChannel(false);
+        if (ch === -1) { this.say('No channels left — try another drum track'); return; }
         this.mark('New track');
-        const t = this.newTrackOn(ch, ch === 9 ? 'Drums' : 'Track ' + (this.song.tracks.length + 1));
-        this.synth.setProgram(t.channel, t.program);
+        this.newTrackOn(ch, 'Track ' + (this.song.tracks.length + 1));
         this.track = this.song.tracks.length - 1;
+        this.syncPrograms();
         this.toolbar(); this.layout(); this.refreshAct();
+    },
+
+    /// Another drum track. They all sit on MIDI's drum channel — that is
+    /// what makes them drums in a .vbm or a .mid — and each plays its own
+    /// kit on a voice of its own, so a standard kit and the percussion, or
+    /// two standard kits, play side by side with a strip each.
+    newDrums(kit, name) {
+        const drums = this.song.tracks.filter(t => t.channel === 9).length;
+        if (drums >= this.DRUM_TRACKS) { this.say('That is ' + drums + ' drum tracks already'); return null; }
+        this.mark('New drum track');
+        const k = kit == null ? 0 : kit;
+        const t = this.newTrackOn(9, name || (k === 64 ? 'Percussion' : drums ? 'Drums ' + (drums + 1) : 'Drums'));
+        t.program = k;
+        this.track = this.song.tracks.length - 1;
+        this.syncPrograms();
+        this.toolbar(); this.layout(); this.refreshAct();
+        this.say(t.name + ' — ' + kitFor(k).name);
+        return t;
     },
 
     dropTrack() {
         if (this.song.tracks.length <= 1) return;
         this.mark('Remove track');
         this.song.tracks.splice(this.track, 1);
+        this.syncPrograms();
         this.tidy();
         if (this.track >= this.song.tracks.length) this.track = this.song.tracks.length - 1;
         this.toolbar(); this.layout(); this.refreshAct();
@@ -2740,7 +2793,7 @@ const Studio = {
         this.mark('Instrument', 'inst');
         const t = this.song.tracks[this.track];
         t.program = p;
-        this.synth.setProgram(t.channel, p);
+        this.synth.setProgram(this.vk(t), p);
         // A bass and a piccolo do not want the same grid, and the one you
         // just chose is a better guess than the one you had.
         if (this.view === 'edit') {
@@ -2816,7 +2869,7 @@ const Studio = {
                 const t = this.song.tracks[this.track];
                 for (const e of this.editing.events)
                     if (inStep(e, step))
-                        this.synth.hit(t.channel, e.data[0], e.data[1], hold(e),
+                        this.synth.hit(this.vk(t), e.data[0], e.data[1], hold(e),
                                        when + (e.tick - step) * sps, ring(e));
             } else {
                 for (let ti = 0; ti < this.song.tracks.length; ti++) {
@@ -2830,7 +2883,7 @@ const Studio = {
                     const into = (bar - p.at) * 16 + step;
                     for (const e of p.riff.events)
                         if (inStep(e, into))
-                            this.synth.hit(t.channel, e.data[0], e.data[1], hold(e),
+                            this.synth.hit(this.vk(t), e.data[0], e.data[1], hold(e),
                                            when + (e.tick - into) * sps, ring(e));
                 }
             }
@@ -3177,7 +3230,7 @@ const Studio = {
         const t = this.song.tracks[this.track];
         const pitch = this.padPitches()[i];
         if (pitch == null) return;
-        this.preview(t.channel, pitch);
+        this.preview(this.vk(t), pitch);
         if (!this._rec || this._step < 0) return;
 
         const at = this._slot();
@@ -4366,7 +4419,7 @@ const Studio = {
         this.mark(field === 'vol' || field === 'gain' ? 'Track level' : 'Mix',
                   'strip-' + kind + key + field);
         if (kind === 't') {
-            const t = this.song.tracks.find(x => x.channel === key);
+            const t = this.song.tracks.find(x => this.vk(x) === key);
             if (!t) return;
             if (field === 'vol') t.volume = Math.max(0, Math.min(127, Math.round(value)));
             else Mixer.strip(set, key)[field] = value;
@@ -4458,10 +4511,10 @@ const Studio = {
 
         let strips = '';
         this.song.tracks.forEach((t, i) => {
-            const s = Mixer.strip(m, t.channel);
-            strips += strip(i, 't', t.channel, t.name || ('Track ' + (i + 1)),
+            const key = this.vk(t), s = Mixer.strip(m, key);
+            strips += strip(i, 't', key, t.name || ('Track ' + (i + 1)),
                             t.channel === 9 ? '#ffc83d' : '#4cd964',
-                            knob('t', t.channel, 'vol', 'Level', 0, 127, 1, t.volume == null ? 100 : t.volume), s);
+                            knob('t', key, 'vol', 'Level', 0, 127, 1, t.volume == null ? 100 : t.volume), s);
         });
         for (let l = 0; l < this.audioRows(); l++) {
             if (!Tape.inLane(l).length) continue;
@@ -4907,7 +4960,7 @@ const Studio = {
             o.k === 'clip' ? Tape.clips.some(c => c.id === o.id)
                            : !!this.objAt(o.t, o.at));
 
-        for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
+        this.syncPrograms();
         const grid = document.getElementById('st-grid');
         if (grid) grid.style.display = '';
         this.keep();
@@ -5071,7 +5124,7 @@ const Studio = {
             this.mixSet = Mixer.settle(row.mix);
             this._mix = null;
             this.selectNone();
-            for (const t of this.song.tracks) this.synth.setProgram(t.channel, t.program);
+            this.syncPrograms();
             this.keep();
             this.view = 'arrange';
             this.toolbar(); this.layout(); this.refreshAct();
@@ -5349,6 +5402,9 @@ const Studio = {
         html += '<div class="st-note">' +
             (ti == null
                 ? 'No track of the right kind for these.'
+                : ti === 'new'
+                ? 'Lands on a new <b>' + (sample.kit === 64 ? 'Percussion' : 'Drums') + '</b> track, ' +
+                  'beside the beat, at bar ' + (this.bar + 1) + '.'
                 : 'Lands on <b>' + esc(this.song.tracks[ti].name) + '</b> at bar ' +
                   (this.bar + 1) +
                   (want.kind === 'drums' ? '' : ', in ' + esc(mus.name)) +

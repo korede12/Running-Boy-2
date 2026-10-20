@@ -142,6 +142,13 @@ const KITS = {
 /// standard one, which is what a General MIDI player does too.
 function kitFor(program) { return KITS[program] || KITS[0]; }
 
+/// Is this voice a drum kit? Channel 10 (index 9) is, as in General MIDI.
+/// A song can have more than one drum track, but MIDI has one drum
+/// channel, so every drum track after the first is given a voice numbered
+/// from 16 up — past the sixteen real channels, so it can never be
+/// mistaken for one — and that is a kit too, with its own program.
+function isDrumVoice(channel) { return channel === 9 || channel >= 16; }
+
 class Synth {
     constructor() {
         this.ctx = null;
@@ -199,7 +206,7 @@ class Synth {
             }
             if (p) return p;
         }
-        return channel === 9 ? r.drums : r.music;
+        return isDrumVoice(channel) ? r.drums : r.music;
     }
 
     /// Browsers will not make a sound until a gesture starts the context.
@@ -234,7 +241,7 @@ class Synth {
         const t = when == null ? this.ctx.currentTime : when;
         const gain = Math.min(1, velocity / 127) * 0.9;
         const bus = this.busFor(channel);
-        if (channel === 9) this.drum(note, gain, t, bus, ring);
+        if (isDrumVoice(channel)) this.drum(note, gain, t, bus, ring, this.programs.get(channel) ?? 0);
         else this.voice(this.programs.get(channel) ?? 0, note, gain, seconds, t, bus);
     }
 
@@ -277,14 +284,14 @@ class Synth {
         }
     }
 
-    drum(note, gain, t, bus, ring = 0) {
+    drum(note, gain, t, bus, ring = 0, program = 0) {
         bus = bus || this.out;
         // Every decay goes through this, so a long note is a long tail and
         // a short one is the drum as it always was.
         const R = len => Math.max(len, ring);
         // A note this kit lacks plays as the standard kit would play it, so
         // a beat written for one kit is never silent on another.
-        const spec = kitFor(this.programs.get(9) ?? 0).sounds[note]
+        const spec = kitFor(program).sounds[note]
                   || STANDARD[note] || ['hat', 0.05];
         const [kind, arg] = spec;
         if (kind === 'skin') {

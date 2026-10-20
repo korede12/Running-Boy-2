@@ -44,6 +44,14 @@ const Presets = {
     KICK: 36, KICK2: 35, SNARE: 38, SNARE2: 40, RIM: 37, CLAP: 39,
     HAT: 42, PEDAL: 44, OPEN: 46, RIDE: 51, CRASH: 49,
 
+    // The African Percussion kit (program 64), where General MIDI keeps
+    // its hand drums. A preset with `kit: 64` is written for it, and goes
+    // on a drum track of its own beside the main kit rather than over it.
+    PERC: 64,
+    SHAKER: 70, SHEKERE: 69, CLAVE: 75, AGOGO_HI: 67, AGOGO_LO: 68,
+    DJ_SLAP: 62, DJ_TONE: 63, DJ_BASS: 64, SAKARA: 65, BATA_HI: 60, BATA_LO: 61,
+    DUNDUN: 35, SANGBAN: 36,
+
     /// The styles, in the order they are offered. Each carries the tempo it
     /// wants, because a dembow at 104 is not a dembow — and the swing, as a
     /// fraction of a step that every off-sixteenth is played late by.
@@ -704,6 +712,63 @@ const Presets = {
                     [22, 2 / 3, 10], [22 + 2 / 3, 2 / 3, 12], [23 + 1 / 3, 2 / 3, 14],
                     [24, 6, 15], [30, 2, 14]],
         },
+
+        // ── Percussion, for the African Percussion kit ───────────────────
+        // Written to sit beside a drum track, not to replace it: each lands
+        // on a drum track with this kit, and makes one if there is none.
+        {
+            id: 'perc-afro', kind: 'drums', style: 'afrobeats', bars: 2, kit: 64,
+            name: 'Afrobeats percussion',
+            note: 'Shaker, bells and djembe for over the kit. Lands on a Percussion track of its own.',
+            hits: {
+                70: 'every16x2',
+                67: [0, 3, 6, 10, 12, 16, 19, 22, 26, 28],
+                68: [8, 14, 24, 30],
+                62: [7, 15, 23, 27, 31],
+                63: [2, 11, 18, 26],
+            },
+        },
+        {
+            id: 'perc-bell', kind: 'drums', style: 'highlife', bars: 1, kit: 64, swing: 0,
+            name: 'Twelve-eight bell',
+            note: 'The West African timeline on the agogo, in triplets, the shekere on every pulse.',
+            hits: {
+                67: [0, 2.6667, 5.3333, 6.6667, 9.3333, 12, 14.6667],
+                69: [0, 1.3333, 2.6667, 4, 5.3333, 6.6667, 8, 9.3333, 10.6667, 12, 13.3333, 14.6667],
+                63: [4, 12],
+                64: [0, 8],
+            },
+        },
+        {
+            id: 'perc-afh', kind: 'drums', style: 'afrohouse', bars: 2, kit: 64,
+            name: 'Afro house percussion',
+            note: 'Clave, congas on the djembe, the shaker running. Under a four-on-the-floor kit.',
+            hits: {
+                75: [0, 3, 6, 10, 12, 16, 19, 22, 26, 28],
+                70: 'every16x2',
+                63: [2, 5, 9, 13, 18, 21, 25, 29],
+                62: [7, 15, 23, 30, 31],
+                64: [0, 8, 16, 24],
+            },
+        },
+        {
+            id: 'perc-ama', kind: 'drums', style: 'amapiano', bars: 1, kit: 64,
+            name: 'Amapiano shakers',
+            note: 'The soft swung shaker and a woodblock answer, for under the log drum.',
+            hits: { 70: 'every16', 69: [[2, 70, 2], [6, 66, 2], [10, 70, 2], [14, 66, 2]], 75: [3, 11], 60: [7, 15] },
+        },
+        {
+            id: 'perc-talking', kind: 'drums', style: 'highlife', bars: 2, kit: 64,
+            name: 'Bata and sakara',
+            note: 'Talking drums and the frame drum in conversation. Busy — use it in a break.',
+            hits: {
+                60: [0, 3, 6, 9, 12, 14, 16, 19, 22, 28],
+                61: [2, 8, 10, 18, 24, 26, 30],
+                65: [4, 12, 20, 27],
+                35: [0, 16],
+                69: 'every16x2',
+            },
+        },
     ],
 
     // ── Reading the library ───────────────────────────────────────────────
@@ -807,6 +872,12 @@ const Presets = {
         if (pitch === this.RIM) return 70;
         if (pitch === this.OPEN) return 86;
         if (pitch === this.PEDAL) return 60;
+        if (pitch === this.SHAKER || pitch === this.SHEKERE)
+            return on % 4 === 0 ? 88 : (on % 2 === 0 ? 72 : 56);
+        if (pitch === this.AGOGO_HI || pitch === this.AGOGO_LO) return on % 4 === 0 ? 92 : 80;
+        if (pitch === this.DJ_SLAP) return 96;
+        if (pitch === this.DJ_TONE) return 84;
+        if (pitch === this.CLAVE) return 86;
         return on % 16 === 0 ? 110 : 100;
     },
 

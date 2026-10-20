@@ -66,9 +66,25 @@ const Mixer = {
 
     STRIP: { pan: 0, space: 0, echo: 0 },
 
+    /// The voice a track sounds on — what the synth and the strips are
+    /// keyed by. A melodic track's own channel; the first drum track's
+    /// channel 10 (9); and each drum track after it a voice from 16 up,
+    /// by its order among the drum tracks, so two kits can play at once
+    /// and each has its own strip. Nothing about this is saved: it is
+    /// worked out from the tracks, which are.
+    keyOf(song, t) {
+        if (!t || t.channel !== 9) return t ? t.channel : 0;
+        let n = 0;
+        for (const x of song.tracks) {
+            if (x === t) break;
+            if (x.channel === 9) n++;
+        }
+        return n === 0 ? 9 : 15 + n;
+    },
+
     /// Where a new track starts: drums dry, everything else in the room.
     stripDefault(channel) {
-        return channel === 9 ? { pan: 0, space: 0.04, echo: 0 }
+        return isDrumVoice(channel) ? { pan: 0, space: 0.04, echo: 0 }
                              : { pan: 0, space: 0.16, echo: 0 };
     },
 
@@ -162,7 +178,7 @@ const Mixer = {
         // Sends are post-fader, so turning a track down turns its reverb
         // down with it, which is what everyone expects and few notice.
         this.strip(mix.set, channel);
-        st = this.chain(mix, channel === 9 ? mix.drums.in : mix.music.in);
+        st = this.chain(mix, isDrumVoice(channel) ? mix.drums.in : mix.music.in);
         mix.strips.set(channel, st);
         this.setStrip(mix, channel, true);
         return st.in;
@@ -422,7 +438,7 @@ const Mixer = {
         const st = mix.strips.get(channel);
         if (!st) return;
         const s = this.strip(mix.set, channel), to = (p, v) => this.to(p, v, now);
-        const t = mix.song && mix.song.tracks.find(x => x.channel === channel);
+        const t = mix.song && mix.song.tracks.find(x => this.keyOf(mix.song, x) === channel);
         to(st.level.gain, this.volGain(t ? t.volume : 100));
         if (st.pan) to(st.pan.pan, Math.max(-1, Math.min(1, s.pan || 0)));
         to(st.space.gain, s.space || 0);

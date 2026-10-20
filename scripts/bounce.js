@@ -59,7 +59,9 @@ const Bounce = {
 
         const synth = new Synth();
         synth.adopt(ctx);
-        for (const t of song.tracks) synth.setProgram(t.channel, t.program);
+        // Each drum track on its own voice, so two kits play as two kits.
+        const key = t => (typeof Mixer !== 'undefined' ? Mixer.keyOf(song, t) : t.channel);
+        for (const t of song.tracks) synth.setProgram(key(t), t.program);
 
         // The same buses as live playback, built from the same settings, so
         // an export is mixed exactly as it was heard rather than merely
@@ -88,7 +90,7 @@ const Bounce = {
                 const from = (bar - p.at) * 16, to = from + 16;
                 for (const e of p.riff.events) {
                     if (!e.isNote || e.tick < from || e.tick >= to) continue;
-                    synth.hit(t.channel, e.data[0], e.data[1],
+                    synth.hit(key(t), e.data[0], e.data[1],
                               (e.dur > 0 ? e.dur : 1) * stepLen, at + (e.tick - from) * stepLen,
                               e.dur > 1 ? e.dur * stepLen : 0);
                 }
