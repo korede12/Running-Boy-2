@@ -1414,6 +1414,7 @@ body.in-place { overflow: hidden; }
 /* A drum track picks a kit, not a General MIDI program, and shows it in
    the kit's colour. */
 .st-bar select.st-kit { color: #ffc83d; }
+.st-bar select.st-add { color: #4cd964; font-weight: bold; }
 
 /* Something is happening. Shown in place of the panel, because while it
    runs it is the only thing worth looking at. */

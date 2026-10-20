@@ -397,8 +397,7 @@ const Studio = {
                 b('Delete', 'clear()', 'Remove what is selected') +
                 b('&#9679;&rarr;', 'loopFrom()', 'Loop starts here') +
                 b('&rarr;&#9679;', 'loopTo()', 'Loop ends here') +
-                b('+ Track', 'newTrack()', 'Add a track') +
-                b('+ Drums', 'newDrums()', 'Add another drum track, with a kit of its own') +
+                this.addMenu() +
                 b('&minus;', 'dropTrack()', 'Remove this track') +
                 b('Save', 'saveSong()', 'Save this beat') +
                 b('Beats', 'beats()', 'Your saved beats') +
@@ -2748,10 +2747,30 @@ const Studio = {
 
     DRUM_TRACKS: 8,          // as many kits as anyone will want at once
 
-    /// A new melodic track, on the first free channel. With no drum track
-    /// yet, the first new track is drums, as it always was.
+    /// One way to add a track, whatever it is for: an instrument, or a drum
+    /// track with any of the kits. A menu rather than a button per kind, so
+    /// the toolbar does not grow a button every time a kit is added — and a
+    /// select, so a phone shows its own picker.
+    addMenu() {
+        const drums = this.song.tracks.filter(t => t.channel === 9).length;
+        const room = this.song.freeChannel(false) !== -1;
+        let html = '<select class="st-add" title="Add a track" ' +
+            'onchange="const v = this.value; this.selectedIndex = 0; Studio.addTrack(v)">' +
+            '<option value="" selected disabled hidden>+ Track</option>' +
+            '<option value="inst"' + (room ? '' : ' disabled') + '>&#127929; Instrument</option>';
+        for (const p of Object.keys(KITS))
+            html += '<option value="kit:' + p + '"' + (drums < this.DRUM_TRACKS ? '' : ' disabled') + '>' +
+                    '&#129345; Drums &mdash; ' + KITS[p].name + '</option>';
+        return html + '</select>';
+    },
+
+    addTrack(what) {
+        if (what === 'inst') return this.newTrack();
+        if (String(what).indexOf('kit:') === 0) return this.newDrums(+String(what).slice(4));
+    },
+
+    /// A new melodic track, on the first free channel.
     newTrack() {
-        if (this.song.tracks.every(t => t.channel !== 9)) return this.newDrums();
         const ch = this.song.freeChannel(false);
         if (ch === -1) { this.say('No channels left — try another drum track'); return; }
         this.mark('New track');
@@ -2770,7 +2789,11 @@ const Studio = {
         if (drums >= this.DRUM_TRACKS) { this.say('That is ' + drums + ' drum tracks already'); return null; }
         this.mark('New drum track');
         const k = kit == null ? 0 : kit;
-        const t = this.newTrackOn(9, name || (k === 64 ? 'Percussion' : drums ? 'Drums ' + (drums + 1) : 'Drums'));
+        // Named for what it plays: Drums, Percussion, and a number on the
+        // second of either.
+        const base = k === 64 ? 'Percussion' : 'Drums';
+        const same = this.song.tracks.filter(t => t.channel === 9 && (t.name || '').indexOf(base) === 0).length;
+        const t = this.newTrackOn(9, name || (same ? base + ' ' + (same + 1) : base));
         t.program = k;
         this.track = this.song.tracks.length - 1;
         this.syncPrograms();
